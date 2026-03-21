@@ -220,7 +220,7 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
                               labelText: 'Booking Type',
                             ),
                             value: bookingType,
-                            items: ['PRIVATE']
+                            items: ['PRIVATE', 'SOCIETY', 'COMMERCIAL']
                                 .map(
                                   (type) => DropdownMenuItem(
                                     value: type,

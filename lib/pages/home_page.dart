@@ -24,12 +24,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   fetchDashboardData() async {
-    final data = await ApiService.getDashboardData({
-      "userId": "USR002",
-      "apartmentId": "apt456",
-      "role": "tenant",
-      "access": "ADMIN",
-    });
+    final data = await ApiService.getDashboardData();
     setState(() {
       dashboardData = data;
       loading = false;

@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 class DashboardCard extends StatelessWidget {
   final String title;
   final String value;
+  final VoidCallback? onTap;
 
-  DashboardCard(this.title, this.value);
+  DashboardCard(this.title, this.value, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    Widget card = Card(
       elevation: 3,
       child: Padding(
         padding: EdgeInsets.all(10),
@@ -30,5 +31,11 @@ class DashboardCard extends StatelessWidget {
         ),
       ),
     );
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: card);
+    }
+
+    return card;
   }
 }

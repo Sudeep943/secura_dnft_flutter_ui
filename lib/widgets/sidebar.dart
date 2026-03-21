@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../pages/booking_page.dart';
 
 class SideBar extends StatelessWidget {
-  Widget item(String title, IconData icon) {
+  Widget item(String title, IconData icon, {VoidCallback? onTap}) {
     return ListTile(
       leading: Icon(icon, color: Colors.white),
       title: Text(title, style: TextStyle(color: Colors.white)),
-      onTap: () {},
+      onTap: onTap ?? () {},
     );
   }
 
@@ -36,7 +37,16 @@ class SideBar extends StatelessWidget {
           SizedBox(height: 30),
 
           item("Payments", Icons.payment),
-          item("Book Hall", Icons.home),
+          item(
+            "Book Hall",
+            Icons.home,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => BookingPage()),
+              );
+            },
+          ),
           item("Create Profile", Icons.person_add),
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),

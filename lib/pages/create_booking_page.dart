@@ -85,6 +85,15 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
     return '$day-${monthNames[date.month - 1]}-${date.year}';
   }
 
+  String _formatHallPrice(String value) {
+    final trimmedValue = value.trim();
+    final hasCurrency = trimmedValue.startsWith('₹');
+    final hasPerDay = trimmedValue.toLowerCase().contains('per day');
+
+    final valueWithCurrency = hasCurrency ? trimmedValue : '₹$trimmedValue';
+    return hasPerDay ? valueWithCurrency : '$valueWithCurrency per day';
+  }
+
   String? _readHallPrice(Map<String, dynamic> hall) {
     const possibleKeys = [
       'hallPrice',
@@ -231,151 +240,172 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
               builder: (context, constraints) {
                 final formWidth = isMobile(context)
                     ? constraints.maxWidth * 0.92
-                    : constraints.maxWidth * 0.7;
+                    : constraints.maxWidth * 0.8;
 
-                return Center(
-                  child: SizedBox(
-                    width: formWidth,
-                    height: double.infinity,
-                    child: Container(
-                      margin: EdgeInsets.all(20),
-                      padding: EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: Color(0xFF0F8F82),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: loading
-                          ? Center(child: CircularProgressIndicator())
-                          : Form(
-                              key: _formKey,
-                              child: ListView(
-                                children: [
-                                  TextFormField(
-                                    decoration: InputDecoration(
-                                      labelText: 'Flat No',
-                                    ),
-                                    validator: (value) =>
-                                        value!.isEmpty ? 'Required' : null,
-                                    onSaved: (value) => flatNo = value!,
-                                  ),
-                                  SizedBox(height: 10),
-                                  TextFormField(
-                                    decoration: InputDecoration(
-                                      labelText: 'Event Date',
-                                      suffixIcon: IconButton(
-                                        icon: Icon(Icons.calendar_today),
-                                        onPressed: () => _selectDate(context),
-                                      ),
-                                    ),
-                                    readOnly: true,
-                                    controller: _eventDateController,
-                                    validator: (value) =>
-                                        eventDate == null ? 'Required' : null,
-                                  ),
-                                  SizedBox(height: 10),
-                                  TextFormField(
-                                    decoration: InputDecoration(
-                                      labelText: 'Expected Guests',
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    validator: (value) =>
-                                        value!.isEmpty ? 'Required' : null,
-                                    onSaved: (value) => expectedGuest = value!,
-                                  ),
-                                  SizedBox(height: 10),
-                                  DropdownButtonFormField<String>(
-                                    decoration: InputDecoration(
-                                      labelText: 'Booking Type',
-                                    ),
-                                    value: bookingType,
-                                    items: ['PRIVATE', 'SOCIETY', 'COMMERCIAL']
-                                        .map(
-                                          (type) => DropdownMenuItem(
-                                            value: type,
-                                            child: Text(type),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        bookingType = value!;
-                                      });
-                                    },
-                                  ),
-                                  SizedBox(height: 10),
-                                  TextFormField(
-                                    decoration: InputDecoration(
-                                      labelText: 'Booking Purpose',
-                                    ),
-                                    validator: (value) =>
-                                        value!.isEmpty ? 'Required' : null,
-                                    onSaved: (value) => bookingPurpose = value!,
-                                  ),
-                                  SizedBox(height: 10),
-                                  DropdownButtonFormField<String>(
-                                    decoration: InputDecoration(
-                                      labelText: 'Select Hall',
-                                    ),
-                                    value: selectedHallId,
-                                    items: halls
-                                        .map(
-                                          (hall) => DropdownMenuItem<String>(
-                                            value: hall['hallId'] as String,
-                                            child: Text(
-                                              hall['hallName'] as String,
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      final hall = halls.firstWhere(
-                                        (h) => h['hallId'] == value,
-                                      );
-                                      setState(() {
-                                        selectedHallId = value;
-                                        selectedHallName =
-                                            hall['hallName'] as String;
-                                        selectedHallPrice = _readHallPrice(
-                                          hall,
-                                        );
-                                      });
-                                    },
-                                    validator: (value) =>
-                                        value == null ? 'Required' : null,
-                                  ),
-                                  if (selectedHallPrice != null) ...[
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'Hall Price: $selectedHallPrice',
-                                      style: TextStyle(
-                                        color: Colors.orange,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                  SizedBox(height: 20),
-                                  ElevatedButton(
-                                    onPressed: submitBooking,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Color(0xFF0F8F82),
-                                    ),
-                                    child: Text('Submit Booking'),
-                                  ),
-                                ],
-                              ),
+                return SingleChildScrollView(
+                  padding: EdgeInsets.all(20),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 40,
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: formWidth,
+                        child: Container(
+                          padding: EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Color(0xFF0F8F82),
+                              width: 1.5,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 24,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: loading
+                              ? Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 40),
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              : Form(
+                                  key: _formKey,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      TextFormField(
+                                        decoration: InputDecoration(
+                                          labelText: 'Flat No',
+                                        ),
+                                        validator: (value) =>
+                                            value!.isEmpty ? 'Required' : null,
+                                        onSaved: (value) => flatNo = value!,
+                                      ),
+                                      SizedBox(height: 10),
+                                      TextFormField(
+                                        decoration: InputDecoration(
+                                          labelText: 'Event Date',
+                                          suffixIcon: IconButton(
+                                            icon: Icon(Icons.calendar_today),
+                                            onPressed: () =>
+                                                _selectDate(context),
+                                          ),
+                                        ),
+                                        readOnly: true,
+                                        controller: _eventDateController,
+                                        validator: (value) => eventDate == null
+                                            ? 'Required'
+                                            : null,
+                                      ),
+                                      SizedBox(height: 10),
+                                      TextFormField(
+                                        decoration: InputDecoration(
+                                          labelText: 'Expected Guests',
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        validator: (value) =>
+                                            value!.isEmpty ? 'Required' : null,
+                                        onSaved: (value) =>
+                                            expectedGuest = value!,
+                                      ),
+                                      SizedBox(height: 10),
+                                      DropdownButtonFormField<String>(
+                                        decoration: InputDecoration(
+                                          labelText: 'Booking Type',
+                                        ),
+                                        value: bookingType,
+                                        items:
+                                            ['PRIVATE', 'SOCIETY', 'COMMERCIAL']
+                                                .map(
+                                                  (type) => DropdownMenuItem(
+                                                    value: type,
+                                                    child: Text(type),
+                                                  ),
+                                                )
+                                                .toList(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            bookingType = value!;
+                                          });
+                                        },
+                                      ),
+                                      SizedBox(height: 10),
+                                      TextFormField(
+                                        decoration: InputDecoration(
+                                          labelText: 'Booking Purpose',
+                                        ),
+                                        validator: (value) =>
+                                            value!.isEmpty ? 'Required' : null,
+                                        onSaved: (value) =>
+                                            bookingPurpose = value!,
+                                      ),
+                                      SizedBox(height: 10),
+                                      DropdownButtonFormField<String>(
+                                        decoration: InputDecoration(
+                                          labelText: 'Select Hall',
+                                        ),
+                                        value: selectedHallId,
+                                        items: halls
+                                            .map(
+                                              (
+                                                hall,
+                                              ) => DropdownMenuItem<String>(
+                                                value: hall['hallId'] as String,
+                                                child: Text(
+                                                  hall['hallName'] as String,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (value) {
+                                          final hall = halls.firstWhere(
+                                            (h) => h['hallId'] == value,
+                                          );
+                                          setState(() {
+                                            selectedHallId = value;
+                                            selectedHallName =
+                                                hall['hallName'] as String;
+                                            selectedHallPrice = _readHallPrice(
+                                              hall,
+                                            );
+                                          });
+                                        },
+                                        validator: (value) =>
+                                            value == null ? 'Required' : null,
+                                      ),
+                                      if (selectedHallPrice != null) ...[
+                                        SizedBox(height: 16),
+                                        Text(
+                                          'Hall Price: ${_formatHallPrice(selectedHallPrice!)}',
+                                          style: TextStyle(
+                                            color: Colors.orange,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
+                                      SizedBox(height: 34),
+                                      ElevatedButton(
+                                        onPressed: submitBooking,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Color(0xFF0F8F82),
+                                        ),
+                                        child: Text('Submit Booking'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                        ),
+                      ),
                     ),
                   ),
                 );

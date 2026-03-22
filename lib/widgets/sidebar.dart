@@ -80,36 +80,21 @@ class _SidebarItemState extends State<_SidebarItem> {
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: 180),
-        margin: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: hovered ? Colors.white.withOpacity(0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: hovered
-              ? [BoxShadow(color: glowColor, blurRadius: 16, spreadRadius: 1)]
-              : null,
-        ),
-        child: ListTile(
-          leading: Icon(
-            widget.icon,
+      child: ListTile(
+        leading: Icon(widget.icon, color: Colors.white),
+        title: AnimatedDefaultTextStyle(
+          duration: Duration(milliseconds: 180),
+          style: TextStyle(
             color: Colors.white,
+            fontWeight: hovered ? FontWeight.bold : FontWeight.w500,
             shadows: hovered
                 ? [Shadow(color: glowColor, blurRadius: 12)]
                 : null,
           ),
-          title: Text(
-            widget.title,
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: hovered ? FontWeight.bold : FontWeight.w500,
-              shadows: hovered
-                  ? [Shadow(color: glowColor, blurRadius: 12)]
-                  : null,
-            ),
-          ),
-          onTap: widget.onTap,
+          child: Text(widget.title),
         ),
+        onTap: widget.onTap,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
     );
   }

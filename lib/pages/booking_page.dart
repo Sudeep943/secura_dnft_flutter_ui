@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/sidebar.dart';
 import 'check_availability_page.dart';
 import 'create_booking_page.dart';
+import 'view_bookings_page.dart';
 
 class BookingPage extends StatefulWidget {
   @override
@@ -58,8 +59,11 @@ class _BookingPageState extends State<BookingPage> {
                       title: 'View Bookings',
                       icon: Icons.list_alt,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('View Bookings tapped')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ViewBookingsPage(),
+                          ),
                         );
                       },
                     ),

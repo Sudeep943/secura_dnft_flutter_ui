@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../widgets/dashboard_card.dart';
 import '../widgets/sidebar.dart';
+import 'check_availability_page.dart';
 import 'create_booking_page.dart';
 
 class BookingPage extends StatefulWidget {
@@ -33,14 +33,14 @@ class _BookingPageState extends State<BookingPage> {
           Expanded(
             child: Center(
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 700),
+                constraints: BoxConstraints(maxWidth: 980),
                 child: GridView.count(
                   shrinkWrap: true,
                   padding: EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-                  crossAxisCount: isMobile(context) ? 1 : 2,
+                  crossAxisCount: isMobile(context) ? 1 : 3,
                   crossAxisSpacing: 20,
                   mainAxisSpacing: 20,
-                  childAspectRatio: 1.4,
+                  childAspectRatio: isMobile(context) ? 1.4 : 1.05,
                   children: [
                     _BookingActionCard(
                       title: 'Create New Booking',
@@ -60,6 +60,18 @@ class _BookingPageState extends State<BookingPage> {
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('View Bookings tapped')),
+                        );
+                      },
+                    ),
+                    _BookingActionCard(
+                      title: 'Check Availability',
+                      icon: Icons.event_available,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CheckAvailabilityPage(),
+                          ),
                         );
                       },
                     ),

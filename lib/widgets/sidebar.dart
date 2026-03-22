@@ -3,11 +3,7 @@ import '../pages/booking_page.dart';
 
 class SideBar extends StatelessWidget {
   Widget item(String title, IconData icon, {VoidCallback? onTap}) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white),
-      title: Text(title, style: TextStyle(color: Colors.white)),
-      onTap: onTap ?? () {},
-    );
+    return _SidebarItem(title: title, icon: icon, onTap: onTap ?? () {});
   }
 
   @override
@@ -54,6 +50,66 @@ class SideBar extends StatelessWidget {
           item("Finance", Icons.account_balance),
           item("Worklist", Icons.work),
         ],
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _SidebarItem({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  State<_SidebarItem> createState() => _SidebarItemState();
+}
+
+class _SidebarItemState extends State<_SidebarItem> {
+  bool hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final glowColor = Colors.white.withOpacity(0.35);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => hovered = true),
+      onExit: (_) => setState(() => hovered = false),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 180),
+        margin: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: hovered ? Colors.white.withOpacity(0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: hovered
+              ? [BoxShadow(color: glowColor, blurRadius: 16, spreadRadius: 1)]
+              : null,
+        ),
+        child: ListTile(
+          leading: Icon(
+            widget.icon,
+            color: Colors.white,
+            shadows: hovered
+                ? [Shadow(color: glowColor, blurRadius: 12)]
+                : null,
+          ),
+          title: Text(
+            widget.title,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: hovered ? FontWeight.bold : FontWeight.w500,
+              shadows: hovered
+                  ? [Shadow(color: glowColor, blurRadius: 12)]
+                  : null,
+            ),
+          ),
+          onTap: widget.onTap,
+        ),
       ),
     );
   }

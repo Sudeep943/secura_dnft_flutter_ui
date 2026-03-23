@@ -319,6 +319,7 @@ class _CheckAvailabilityPageState extends State<CheckAvailabilityPage> {
                                             : _submitAvailabilityCheck,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Color(0xFF0F8F82),
+                                          foregroundColor: Colors.white,
                                         ),
                                         child: submitting
                                             ? SizedBox(

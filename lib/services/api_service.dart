@@ -105,6 +105,61 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> createRazorPayOrder({
+    required String amountInPaisa,
+    required String eventDate,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("http://localhost:8080/payment/razorPayCreateOrder"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': userHeader,
+        'amountInPaisa': amountInPaisa,
+        'currency': 'INR',
+        'eventDate': eventDate,
+        'transactionType': 'BOOKING',
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> verifyPayment({
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("http://localhost:8080/payment/verifyPayment"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'razorpay_order_id': razorpayOrderId,
+        'razorpay_payment_id': razorpayPaymentId,
+        'razorpay_signature': razorpaySignature,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> bookHall(
     Map<String, dynamic> requestBody,
   ) async {
@@ -119,10 +174,10 @@ class ApiService {
       body: jsonEncode(requestBody),
     );
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+    if (response.body.isEmpty) {
+      return null;
     }
 
-    return null;
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }

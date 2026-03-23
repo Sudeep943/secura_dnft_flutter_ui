@@ -86,6 +86,7 @@ class _LoginPageState extends State<LoginPage> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xFF0F8F82),
+                    foregroundColor: Colors.white,
                   ),
                   onPressed: loading ? null : login,
                   child: loading

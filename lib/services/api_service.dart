@@ -2,6 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://secura-dnft-production.up.railway.app',
+  );
+
   static String? token;
   static Map<String, dynamic>? userHeader;
 
@@ -34,7 +39,7 @@ class ApiService {
 
   static Future<String?> login(String username, String password) async {
     final response = await http.post(
-      Uri.parse("http://localhost:8080/auth/login"),
+      Uri.parse("$_baseUrl/auth/login"),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({"username": username, "password": password}),
     );
@@ -53,7 +58,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/generic/getDahboardData"),
+      Uri.parse("$_baseUrl/generic/getDahboardData"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -72,7 +77,7 @@ class ApiService {
     if (token == null) return null;
 
     final response = await http.get(
-      Uri.parse("http://localhost:8080/booking/getAllHalls"),
+      Uri.parse("$_baseUrl/booking/getAllHalls"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -94,7 +99,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/booking/checkHallAvailability"),
+      Uri.parse("$_baseUrl/booking/checkHallAvailability"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -117,7 +122,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/booking/getBookings"),
+      Uri.parse("$_baseUrl/booking/getBookings"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -138,7 +143,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/booking/getBooking"),
+      Uri.parse("$_baseUrl/booking/getBooking"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -161,7 +166,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/booking/updateBooking"),
+      Uri.parse("$_baseUrl/booking/updateBooking"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -188,7 +193,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/payment/razorPayCreateOrder"),
+      Uri.parse("$_baseUrl/payment/razorPayCreateOrder"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -217,7 +222,7 @@ class ApiService {
     if (token == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/payment/verifyPayment"),
+      Uri.parse("$_baseUrl/payment/verifyPayment"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -242,7 +247,7 @@ class ApiService {
     if (token == null) return null;
 
     final response = await http.post(
-      Uri.parse("http://localhost:8080/booking/bookHall"),
+      Uri.parse("$_baseUrl/booking/bookHall"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

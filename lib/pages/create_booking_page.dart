@@ -13,6 +13,7 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
   static const String _razorpayKey = 'rzp_test_SRxceBfBqGmeGy';
 
   final _formKey = GlobalKey<FormState>();
+  final _flatNoController = TextEditingController();
   final _eventDateController = TextEditingController();
 
   String flatNo = '';
@@ -31,11 +32,14 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
   @override
   void initState() {
     super.initState();
+    _flatNoController.text = ApiService.getLoggedInFlatNo() ?? '';
+    flatNo = _flatNoController.text;
     fetchHalls();
   }
 
   @override
   void dispose() {
+    _flatNoController.dispose();
     _eventDateController.dispose();
     super.dispose();
   }
@@ -192,18 +196,35 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
     return paymentTender == 'CASH' ? 'Cash' : 'Online';
   }
 
-  Future<void> _submitBookingRequest({String? transactionId}) async {
+  String? _amountPaidFromPaise(int? amountInPaise) {
+    if (amountInPaise == null || amountInPaise <= 0) {
+      return null;
+    }
+
+    return (amountInPaise ~/ 100).toString();
+  }
+
+  Future<void> _submitBookingRequest({
+    String? transactionId,
+    int? paidAmountInPaise,
+  }) async {
+    final trimmedFlatNo = _flatNoController.text.trim();
+    final amountPaid = _amountPaidFromPaise(paidAmountInPaise);
     final requestBody = {
       'genericHeader': ApiService.userHeader,
-      'flatNo': flatNo,
+      'flatNo': trimmedFlatNo,
       'eventDate': eventDate!.toIso8601String(),
       'expectedGuest': expectedGuest,
       'bookingType': bookingType,
       'bookingPurpose': bookingPurpose,
       'bookingHallId': selectedHallId,
       'bookingHallName': selectedHallName,
+      'hallName': selectedHallName,
       'tender': _apiTenderValue(),
-      if (transactionId != null) 'bookingTransactionId': transactionId,
+      if (transactionId case final bookingTransactionId?)
+        'bookingTransactionId': bookingTransactionId,
+      if (amountPaid case final normalizedAmountPaid?)
+        'amountPaid': normalizedAmountPaid,
     };
 
     final response = await ApiService.bookHall(requestBody);
@@ -227,6 +248,7 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
   Future<void> submitBooking() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
+    flatNo = _flatNoController.text.trim();
 
     if (eventDate == null || selectedHallId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,6 +316,7 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
 
     final order = createOrderResponse['order'] as Map<String, dynamic>?;
     final orderId = order?['id']?.toString();
+    final orderAmountInPaise = _parseOrderAmountInPaise(order?['amount']);
     if (orderId == null || orderId.isEmpty) {
       setState(() {
         submitting = false;
@@ -364,7 +387,23 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
       return;
     }
 
-    await _submitBookingRequest(transactionId: paymentResult.paymentId);
+    await _submitBookingRequest(
+      transactionId: paymentResult.paymentId,
+      paidAmountInPaise:
+          paymentResult.amountInPaise ?? orderAmountInPaise ?? amountInPaise,
+    );
+  }
+
+  int? _parseOrderAmountInPaise(dynamic rawAmount) {
+    if (rawAmount == null) {
+      return null;
+    }
+
+    if (rawAmount is int) {
+      return rawAmount;
+    }
+
+    return int.tryParse(rawAmount.toString());
   }
 
   void showBookingResultModal(Map<String, dynamic> response) {
@@ -501,12 +540,19 @@ class _CreateBookingPageState extends State<CreateBookingPage> {
                                         CrossAxisAlignment.stretch,
                                     children: [
                                       TextFormField(
+                                        controller: _flatNoController,
                                         decoration: InputDecoration(
                                           labelText: 'Flat No',
                                         ),
-                                        validator: (value) =>
-                                            value!.isEmpty ? 'Required' : null,
-                                        onSaved: (value) => flatNo = value!,
+                                        validator: (value) {
+                                          if (value == null ||
+                                              value.trim().isEmpty) {
+                                            return 'Required';
+                                          }
+                                          return null;
+                                        },
+                                        onSaved: (value) =>
+                                            flatNo = value!.trim(),
                                       ),
                                       SizedBox(height: 10),
                                       TextFormField(

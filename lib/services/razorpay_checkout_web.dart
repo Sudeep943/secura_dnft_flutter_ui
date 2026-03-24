@@ -6,6 +6,7 @@ class RazorpayCheckoutResult {
   final String? orderId;
   final String? paymentId;
   final String? signature;
+  final int? amountInPaise;
   final String? errorMessage;
 
   const RazorpayCheckoutResult({
@@ -13,6 +14,7 @@ class RazorpayCheckoutResult {
     this.orderId,
     this.paymentId,
     this.signature,
+    this.amountInPaise,
     this.errorMessage,
   });
 }
@@ -46,6 +48,7 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
             orderId: response['razorpay_order_id']?.toString(),
             paymentId: response['razorpay_payment_id']?.toString(),
             signature: response['razorpay_signature']?.toString(),
+            amountInPaise: _parseAmountInPaise(response['amount']),
           ),
         );
       }),
@@ -99,4 +102,16 @@ Future<RazorpayCheckoutResult> openRazorpayCheckout({
   }
 
   return completer.future;
+}
+
+int? _parseAmountInPaise(dynamic rawAmount) {
+  if (rawAmount == null) {
+    return null;
+  }
+
+  if (rawAmount is int) {
+    return rawAmount;
+  }
+
+  return int.tryParse(rawAmount.toString());
 }

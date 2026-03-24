@@ -5,6 +5,33 @@ class ApiService {
   static String? token;
   static Map<String, dynamic>? userHeader;
 
+  static String? getLoggedInFlatNo() {
+    final header = userHeader;
+    if (header == null) return null;
+
+    const possibleKeys = [
+      'flatNo',
+      'flatName',
+      'flatNumber',
+      'flat_number',
+      'flat_no',
+      'unitNo',
+      'unitName',
+      'unitNumber',
+      'apartmentFlatNo',
+      'apartmentFlatName',
+    ];
+
+    for (final key in possibleKeys) {
+      final value = header[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+
+    return null;
+  }
+
   static Future<String?> login(String username, String password) async {
     final response = await http.post(
       Uri.parse("http://localhost:8080/auth/login"),
@@ -96,6 +123,55 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'genericHeader': userHeader}),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> getBooking({
+    required String bookingId,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("http://localhost:8080/booking/getBooking"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'genericHeader': userHeader, 'bookingId': bookingId}),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> updateBooking({
+    required String bookingId,
+    required String status,
+    String reason = '',
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("http://localhost:8080/booking/updateBooking"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': userHeader,
+        'bookingId': bookingId,
+        'reason': reason,
+        'status': status,
+      }),
     );
 
     if (response.body.isEmpty) {

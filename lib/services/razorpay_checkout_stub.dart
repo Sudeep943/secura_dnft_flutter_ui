@@ -3,6 +3,7 @@ class RazorpayCheckoutResult {
   final String? orderId;
   final String? paymentId;
   final String? signature;
+  final int? amountInPaise;
   final String? errorMessage;
 
   const RazorpayCheckoutResult({
@@ -10,6 +11,7 @@ class RazorpayCheckoutResult {
     this.orderId,
     this.paymentId,
     this.signature,
+    this.amountInPaise,
     this.errorMessage,
   });
 }

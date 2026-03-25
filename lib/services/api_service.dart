@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:8080';
+  // static const String _baseUrl = 'http://localhost:8080';
 
-  // static const String _baseUrl = String.fromEnvironment(
-  //   'API_BASE_URL',
-  //   defaultValue: 'https://secura-dnft-production.up.railway.app',
-  // );
+  static const String _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://secura-dnft-production.up.railway.app',
+  );
 
   static String? token;
   static Map<String, dynamic>? userHeader;

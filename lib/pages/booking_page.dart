@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'check_availability_page.dart';
 import 'create_booking_page.dart';
 import 'view_bookings_page.dart';
 
 class BookingPage extends StatefulWidget {
+  const BookingPage({super.key});
+
   @override
   _BookingPageState createState() => _BookingPageState();
 }
@@ -28,63 +31,65 @@ class _BookingPageState extends State<BookingPage> {
         ),
       ),
       drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
-      body: Row(
-        children: [
-          if (!isMobile(context)) SideBar(),
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 980),
-                child: GridView.count(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-                  crossAxisCount: isMobile(context) ? 1 : 3,
-                  crossAxisSpacing: 20,
-                  mainAxisSpacing: 20,
-                  childAspectRatio: isMobile(context) ? 1.4 : 1.05,
-                  children: [
-                    _BookingActionCard(
-                      title: 'Create New Booking',
-                      icon: Icons.add_box,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CreateBookingPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _BookingActionCard(
-                      title: 'View Bookings',
-                      icon: Icons.list_alt,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ViewBookingsPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _BookingActionCard(
-                      title: 'Check Availability',
-                      icon: Icons.event_available,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CheckAvailabilityPage(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+      body: BrandBackground(
+        child: Row(
+          children: [
+            if (!isMobile(context)) SideBar(),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 980),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                    crossAxisCount: isMobile(context) ? 1 : 3,
+                    crossAxisSpacing: 20,
+                    mainAxisSpacing: 20,
+                    childAspectRatio: isMobile(context) ? 1.4 : 1.05,
+                    children: [
+                      _BookingActionCard(
+                        title: 'Create New Booking',
+                        icon: Icons.add_box,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CreateBookingPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _BookingActionCard(
+                        title: 'View Bookings',
+                        icon: Icons.list_alt,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ViewBookingsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _BookingActionCard(
+                        title: 'Check Availability',
+                        icon: Icons.event_available,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CheckAvailabilityPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

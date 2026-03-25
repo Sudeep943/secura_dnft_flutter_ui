@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../pages/booking_page.dart';
+import '../pages/profile_management_page.dart';
 
 class SideBar extends StatelessWidget {
   Widget item(String title, IconData icon, {VoidCallback? onTap}) {
@@ -34,7 +35,7 @@ class SideBar extends StatelessWidget {
 
           item("Payments", Icons.payment),
           item(
-            "Book Hall",
+            "Booings",
             Icons.home,
             onTap: () {
               Navigator.push(
@@ -43,7 +44,18 @@ class SideBar extends StatelessWidget {
               );
             },
           ),
-          item("Create Profile", Icons.person_add),
+          item(
+            "Profile Management",
+            Icons.person_add,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileManagementPage(),
+                ),
+              );
+            },
+          ),
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),
           item("Admin Section", Icons.admin_panel_settings),

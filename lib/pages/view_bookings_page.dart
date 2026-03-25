@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 
 class ViewBookingsPage extends StatefulWidget {
@@ -672,114 +673,120 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
         ),
       ),
       drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
-      body: Row(
-        children: [
-          if (!isMobile(context)) SideBar(),
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 1680),
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _buildSearchBar(),
-                      if (_showErrorMessage) ...[
+      body: BrandBackground(
+        child: Row(
+          children: [
+            if (!isMobile(context)) SideBar(),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 1680),
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _buildSearchBar(),
+                        if (_showErrorMessage) ...[
+                          SizedBox(height: 18),
+                          Text(
+                            message!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
                         SizedBox(height: 18),
-                        Text(
-                          message!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                      SizedBox(height: 18),
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 14,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: loading
-                              ? Center(child: CircularProgressIndicator())
-                              : bookings.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    _showErrorMessage
-                                        ? 'No bookings found'
-                                        : (message ?? 'No bookings found'),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                )
-                              : Scrollbar(
-                                  controller: _horizontalScrollController,
-                                  thumbVisibility: true,
-                                  trackVisibility: true,
-                                  notificationPredicate: (notification) {
-                                    return notification.metrics.axis ==
-                                        Axis.horizontal;
-                                  },
-                                  child: SingleChildScrollView(
-                                    controller: _horizontalScrollController,
-                                    scrollDirection: Axis.horizontal,
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        minWidth: isMobile(context)
-                                            ? 1720
-                                            : 1850,
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: loading
+                                ? Center(child: CircularProgressIndicator())
+                                : bookings.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      _showErrorMessage
+                                          ? 'No bookings found'
+                                          : (message ?? 'No bookings found'),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
                                       ),
-                                      child: Scrollbar(
-                                        controller: _verticalScrollController,
-                                        thumbVisibility: true,
-                                        trackVisibility: true,
-                                        notificationPredicate: (notification) {
-                                          return notification.metrics.axis ==
-                                              Axis.vertical;
-                                        },
-                                        child: SingleChildScrollView(
+                                    ),
+                                  )
+                                : Scrollbar(
+                                    controller: _horizontalScrollController,
+                                    thumbVisibility: true,
+                                    trackVisibility: true,
+                                    notificationPredicate: (notification) {
+                                      return notification.metrics.axis ==
+                                          Axis.horizontal;
+                                    },
+                                    child: SingleChildScrollView(
+                                      controller: _horizontalScrollController,
+                                      scrollDirection: Axis.horizontal,
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minWidth: isMobile(context)
+                                              ? 1720
+                                              : 1850,
+                                        ),
+                                        child: Scrollbar(
                                           controller: _verticalScrollController,
-                                          child: DataTable(
-                                            headingRowColor:
-                                                WidgetStatePropertyAll(
-                                                  _brandColor,
-                                                ),
-                                            columns: _buildColumns(),
-                                            rows: _buildRows(),
-                                            dataRowMinHeight: 64,
-                                            dataRowMaxHeight: 92,
-                                            columnSpacing: 36,
-                                            horizontalMargin: 18,
+                                          thumbVisibility: true,
+                                          trackVisibility: true,
+                                          notificationPredicate:
+                                              (notification) {
+                                                return notification
+                                                        .metrics
+                                                        .axis ==
+                                                    Axis.vertical;
+                                              },
+                                          child: SingleChildScrollView(
+                                            controller:
+                                                _verticalScrollController,
+                                            child: DataTable(
+                                              headingRowColor:
+                                                  WidgetStatePropertyAll(
+                                                    _brandColor,
+                                                  ),
+                                              columns: _buildColumns(),
+                                              rows: _buildRows(),
+                                              dataRowMinHeight: 64,
+                                              dataRowMaxHeight: 92,
+                                              columnSpacing: 36,
+                                              horizontalMargin: 18,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

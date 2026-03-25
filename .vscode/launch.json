@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Secura Local Web (Chrome 5000)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "templateFor": "",
+      "toolArgs": [
+        "--web-port",
+        "5000"
+      ]
+    }
+  ]
+}

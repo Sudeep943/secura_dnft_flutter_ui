@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/dashboard_card.dart';
+import '../widgets/brand_artwork.dart';
 import '../services/api_service.dart';
 
 class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -84,48 +87,50 @@ class _HomePageState extends State<HomePage> {
 
       drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
 
-      body: Row(
-        children: [
-          if (!isMobile(context)) SideBar(),
+      body: BrandBackground(
+        child: Row(
+          children: [
+            if (!isMobile(context)) SideBar(),
 
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.all(20),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.all(20),
 
-              child: loading
-                  ? Center(child: CircularProgressIndicator())
-                  : GridView.count(
-                      crossAxisCount: isMobile(context) ? 2 : 4,
-                      crossAxisSpacing: 15,
-                      mainAxisSpacing: 15,
-                      // reduce card height by changing aspect ratio (width : height)
-                      childAspectRatio: isMobile(context) ? 1.2 : 1.8,
+                child: loading
+                    ? Center(child: CircularProgressIndicator())
+                    : GridView.count(
+                        crossAxisCount: isMobile(context) ? 2 : 4,
+                        crossAxisSpacing: 15,
+                        mainAxisSpacing: 15,
+                        childAspectRatio: isMobile(context) ? 1.2 : 1.8,
 
-                      children: [
-                        DashboardCard(
-                          "Payments",
-                          dashboardData?['payments'] ?? "₹0",
-                        ),
-                        DashboardCard(
-                          "Hall Booking",
-                          formatHallBookings(
-                            dashboardData?['upcomingBookings'],
+                        children: [
+                          DashboardCard(
+                            "Payments",
+                            dashboardData?['payments'] ?? "₹0",
                           ),
-                        ),
-                        DashboardCard(
-                          "Skill Classes",
-                          dashboardData?['skillClasses'] ?? "0",
-                        ),
-                        DashboardCard(
-                          "Worklist",
-                          dashboardData?['pendingWorklistCount']?.toString() ??
-                              "0",
-                        ),
-                      ],
-                    ),
+                          DashboardCard(
+                            "Hall Booking",
+                            formatHallBookings(
+                              dashboardData?['upcomingBookings'],
+                            ),
+                          ),
+                          DashboardCard(
+                            "Skill Classes",
+                            dashboardData?['skillClasses'] ?? "0",
+                          ),
+                          DashboardCard(
+                            "Worklist",
+                            dashboardData?['pendingWorklistCount']
+                                    ?.toString() ??
+                                "0",
+                          ),
+                        ],
+                      ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

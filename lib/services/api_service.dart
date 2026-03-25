@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://secura-dnft-production.up.railway.app',
-  );
+  static const String _baseUrl = 'http://localhost:8080';
+
+  // static const String _baseUrl = String.fromEnvironment(
+  //   'API_BASE_URL',
+  //   defaultValue: 'https://secura-dnft-production.up.railway.app',
+  // );
 
   static String? token;
   static Map<String, dynamic>? userHeader;
@@ -177,6 +179,27 @@ class ApiService {
         'reason': reason,
         'status': status,
       }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> createProfile(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/createProfile"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
     );
 
     if (response.body.isEmpty) {

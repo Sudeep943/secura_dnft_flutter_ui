@@ -11,6 +11,18 @@ class ProfileManagementPage extends StatefulWidget {
   State<ProfileManagementPage> createState() => _ProfileManagementPageState();
 }
 
+class _ProfileManagementDraft {
+  static _ProfileManagementSection? selectedSection;
+
+  static final Map<String, String> createProfile = {};
+  static String? createProfileType;
+  static String? createProfilePosition;
+  static String? createGender;
+  static String createAddressType = 'RESIDENTIAL';
+
+  static final Map<String, String> updateProfile = {};
+}
+
 class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _createProfileFormKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
@@ -31,6 +43,15 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _policeStationController = TextEditingController();
   final _pinController = TextEditingController();
 
+  final _updateDisplayNameController = TextEditingController();
+  final _updateRoleController = TextEditingController();
+  final _updateEmailController = TextEditingController();
+  final _updatePhoneController = TextEditingController();
+  final _updateFlatNoController = TextEditingController();
+  final _updateEmergencyContactController = TextEditingController();
+  final _updateAdditionalInfoController = TextEditingController();
+
+  _ProfileManagementSection? _selectedSection;
   String? _profileType;
   String? _profilePosition;
   String? _gender;
@@ -44,7 +65,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   @override
   void initState() {
     super.initState();
-    _primeCreateProfileDefaults();
+    _restoreDrafts();
+    _attachDraftListeners();
   }
 
   @override
@@ -66,40 +88,220 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _postOfficeController.dispose();
     _policeStationController.dispose();
     _pinController.dispose();
+    _updateDisplayNameController.dispose();
+    _updateRoleController.dispose();
+    _updateEmailController.dispose();
+    _updatePhoneController.dispose();
+    _updateFlatNoController.dispose();
+    _updateEmergencyContactController.dispose();
+    _updateAdditionalInfoController.dispose();
     super.dispose();
   }
 
-  void _primeCreateProfileDefaults() {
-    final nameParts = _displayName
-        .split(RegExp(r'\s+'))
-        .where((part) => part.trim().isNotEmpty)
-        .toList();
+  void _restoreDrafts() {
+    _selectedSection = _ProfileManagementDraft.selectedSection;
 
-    if (_displayName != 'Resident Profile' && nameParts.isNotEmpty) {
-      _firstNameController.text = nameParts.first;
-      if (nameParts.length == 2) {
-        _lastNameController.text = nameParts.last;
-      } else if (nameParts.length >= 3) {
-        _middleNameController.text = nameParts
-            .sublist(1, nameParts.length - 1)
-            .join(' ');
-        _lastNameController.text = nameParts.last;
-      }
-    }
+    _firstNameController.text =
+        _ProfileManagementDraft.createProfile['firstName'] ?? '';
+    _middleNameController.text =
+        _ProfileManagementDraft.createProfile['middleName'] ?? '';
+    _lastNameController.text =
+        _ProfileManagementDraft.createProfile['lastName'] ?? '';
+    _profileFlatNoController.text =
+        _ProfileManagementDraft.createProfile['profileFlatNo'] ?? '';
+    _mobileNumberController.text =
+        _ProfileManagementDraft.createProfile['mobileNumber'] ?? '';
+    _emailIdController.text =
+        _ProfileManagementDraft.createProfile['emailId'] ?? '';
+    _landlineNumberController.text =
+        _ProfileManagementDraft.createProfile['landlineNumber'] ?? '';
+    _addressLine1Controller.text =
+        _ProfileManagementDraft.createProfile['addressLine1'] ?? '';
+    _addressLine2Controller.text =
+        _ProfileManagementDraft.createProfile['addressLine2'] ?? '';
+    _addressLine3Controller.text =
+        _ProfileManagementDraft.createProfile['addressLine3'] ?? '';
+    _addressLine4Controller.text =
+        _ProfileManagementDraft.createProfile['addressLine4'] ?? '';
+    _landmarkController.text =
+        _ProfileManagementDraft.createProfile['landmark'] ?? '';
+    _cityController.text = _ProfileManagementDraft.createProfile['city'] ?? '';
+    _stateController.text =
+        _ProfileManagementDraft.createProfile['state'] ?? '';
+    _postOfficeController.text =
+        _ProfileManagementDraft.createProfile['postOffice'] ?? '';
+    _policeStationController.text =
+        _ProfileManagementDraft.createProfile['policeStation'] ?? '';
+    _pinController.text = _ProfileManagementDraft.createProfile['pin'] ?? '';
 
-    _profileFlatNoController.text = _flatNo;
-    if (_phone != '+91 98765 43210') {
-      _mobileNumberController.text = _phone;
-    }
-    if (_email != 'name@example.com') {
-      _emailIdController.text = _email;
-    }
-    _addressLine1Controller.text = 'Flat $_flatNo';
-    _addressLine2Controller.text = 'Sunshine Apartment';
-    _cityController.text = 'Bhubaneswar';
-    _stateController.text = 'Odisha';
-    _postOfficeController.text = 'Patia';
-    _policeStationController.text = 'Infocity';
+    _profileType = _ProfileManagementDraft.createProfileType;
+    _profilePosition = _ProfileManagementDraft.createProfilePosition;
+    _gender = _ProfileManagementDraft.createGender;
+    _addressType = _ProfileManagementDraft.createAddressType;
+
+    _updateDisplayNameController.text =
+        _ProfileManagementDraft.updateProfile['displayName'] ?? _displayName;
+    _updateRoleController.text =
+        _ProfileManagementDraft.updateProfile['role'] ?? _role;
+    _updateEmailController.text =
+        _ProfileManagementDraft.updateProfile['email'] ?? _email;
+    _updatePhoneController.text =
+        _ProfileManagementDraft.updateProfile['phone'] ?? _phone;
+    _updateFlatNoController.text =
+        _ProfileManagementDraft.updateProfile['flatNo'] ?? _flatNo;
+    _updateEmergencyContactController.text =
+        _ProfileManagementDraft.updateProfile['emergencyContact'] ?? _phone;
+    _updateAdditionalInfoController.text =
+        _ProfileManagementDraft.updateProfile['additionalInfo'] ??
+        'Update address details, relationship info, or access notes.';
+  }
+
+  void _attachDraftListeners() {
+    _bindDraftController(
+      controller: _firstNameController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'firstName',
+    );
+    _bindDraftController(
+      controller: _middleNameController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'middleName',
+    );
+    _bindDraftController(
+      controller: _lastNameController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'lastName',
+    );
+    _bindDraftController(
+      controller: _profileFlatNoController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'profileFlatNo',
+    );
+    _bindDraftController(
+      controller: _mobileNumberController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'mobileNumber',
+    );
+    _bindDraftController(
+      controller: _emailIdController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'emailId',
+    );
+    _bindDraftController(
+      controller: _landlineNumberController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'landlineNumber',
+    );
+    _bindDraftController(
+      controller: _addressLine1Controller,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'addressLine1',
+    );
+    _bindDraftController(
+      controller: _addressLine2Controller,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'addressLine2',
+    );
+    _bindDraftController(
+      controller: _addressLine3Controller,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'addressLine3',
+    );
+    _bindDraftController(
+      controller: _addressLine4Controller,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'addressLine4',
+    );
+    _bindDraftController(
+      controller: _landmarkController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'landmark',
+    );
+    _bindDraftController(
+      controller: _cityController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'city',
+    );
+    _bindDraftController(
+      controller: _stateController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'state',
+    );
+    _bindDraftController(
+      controller: _postOfficeController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'postOffice',
+    );
+    _bindDraftController(
+      controller: _policeStationController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'policeStation',
+    );
+    _bindDraftController(
+      controller: _pinController,
+      store: _ProfileManagementDraft.createProfile,
+      key: 'pin',
+    );
+
+    _bindDraftController(
+      controller: _updateDisplayNameController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'displayName',
+    );
+    _bindDraftController(
+      controller: _updateRoleController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'role',
+    );
+    _bindDraftController(
+      controller: _updateEmailController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'email',
+    );
+    _bindDraftController(
+      controller: _updatePhoneController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'phone',
+    );
+    _bindDraftController(
+      controller: _updateFlatNoController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'flatNo',
+    );
+    _bindDraftController(
+      controller: _updateEmergencyContactController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'emergencyContact',
+    );
+    _bindDraftController(
+      controller: _updateAdditionalInfoController,
+      store: _ProfileManagementDraft.updateProfile,
+      key: 'additionalInfo',
+    );
+  }
+
+  void _bindDraftController({
+    required TextEditingController controller,
+    required Map<String, String> store,
+    required String key,
+  }) {
+    controller.addListener(() {
+      store[key] = controller.text;
+    });
+  }
+
+  void _openSection(_ProfileManagementSection section) {
+    setState(() {
+      _selectedSection = section;
+      _ProfileManagementDraft.selectedSection = section;
+    });
+  }
+
+  void _closeSection() {
+    setState(() {
+      _selectedSection = null;
+      _ProfileManagementDraft.selectedSection = null;
+    });
   }
 
   String _readHeaderValue(List<String> keys, {String fallback = ''}) {
@@ -317,205 +519,271 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       isSuccess: isSuccess,
       profileId: response['profileId']?.toString(),
     );
+
+    if (isSuccess) {
+      _resetCreateProfileForm();
+    }
+  }
+
+  void _resetCreateProfileForm() {
+    _createProfileFormKey.currentState?.reset();
+    _firstNameController.clear();
+    _middleNameController.clear();
+    _lastNameController.clear();
+    _profileFlatNoController.clear();
+    _mobileNumberController.clear();
+    _emailIdController.clear();
+    _landlineNumberController.clear();
+    _addressLine1Controller.clear();
+    _addressLine2Controller.clear();
+    _addressLine3Controller.clear();
+    _addressLine4Controller.clear();
+    _landmarkController.clear();
+    _cityController.clear();
+    _stateController.clear();
+    _postOfficeController.clear();
+    _policeStationController.clear();
+    _pinController.clear();
+    setState(() {
+      _profileType = null;
+      _profilePosition = null;
+      _gender = null;
+      _addressType = 'RESIDENTIAL';
+    });
+    _ProfileManagementDraft.createProfile.clear();
+    _ProfileManagementDraft.createProfileType = null;
+    _ProfileManagementDraft.createProfilePosition = null;
+    _ProfileManagementDraft.createGender = null;
+    _ProfileManagementDraft.createAddressType = 'RESIDENTIAL';
+  }
+
+  String _sectionTitle() {
+    switch (_selectedSection) {
+      case _ProfileManagementSection.createProfile:
+        return 'Create Profile';
+      case _ProfileManagementSection.updateProfile:
+        return 'Update Profile';
+      case _ProfileManagementSection.updatePassword:
+        return 'Update Password';
+      case null:
+        return 'Profile Management';
+    }
+  }
+
+  String _sectionSubtitle() {
+    switch (_selectedSection) {
+      case _ProfileManagementSection.createProfile:
+        return 'Fill in the required details and submit a new resident profile.';
+      case _ProfileManagementSection.updateProfile:
+        return 'Open profile editing tools, including the profile picture update area.';
+      case _ProfileManagementSection.updatePassword:
+        return 'Update account credentials from the password management form.';
+      case null:
+        return 'Choose one of the profile management actions below.';
+    }
+  }
+
+  Widget _buildSelectedSectionContent(bool mobile) {
+    switch (_selectedSection!) {
+      case _ProfileManagementSection.createProfile:
+        return _CreateProfileTab(
+          formKey: _createProfileFormKey,
+          firstNameController: _firstNameController,
+          middleNameController: _middleNameController,
+          lastNameController: _lastNameController,
+          profileFlatNoController: _profileFlatNoController,
+          mobileNumberController: _mobileNumberController,
+          emailIdController: _emailIdController,
+          landlineNumberController: _landlineNumberController,
+          addressLine1Controller: _addressLine1Controller,
+          addressLine2Controller: _addressLine2Controller,
+          addressLine3Controller: _addressLine3Controller,
+          addressLine4Controller: _addressLine4Controller,
+          landmarkController: _landmarkController,
+          cityController: _cityController,
+          stateController: _stateController,
+          postOfficeController: _postOfficeController,
+          policeStationController: _policeStationController,
+          pinController: _pinController,
+          profileType: _profileType,
+          profilePosition: _profilePosition,
+          gender: _gender,
+          addressType: _addressType,
+          onProfileTypeChanged: (value) {
+            setState(() {
+              _profileType = value;
+              _ProfileManagementDraft.createProfileType = value;
+            });
+          },
+          onProfilePositionChanged: (value) {
+            setState(() {
+              _profilePosition = value;
+              _ProfileManagementDraft.createProfilePosition = value;
+            });
+          },
+          onGenderChanged: (value) {
+            setState(() {
+              _gender = value;
+              _ProfileManagementDraft.createGender = value;
+            });
+          },
+          onAddressTypeChanged: (value) {
+            setState(() {
+              _addressType = value ?? 'RESIDENTIAL';
+              _ProfileManagementDraft.createAddressType = _addressType;
+            });
+          },
+          requiredValidator: _requiredValidator,
+          mobileValidator: _mobileValidator,
+          emailValidator: _emailValidator,
+          submitting: _creatingProfile,
+          onSubmit: _submitCreateProfile,
+          mobile: mobile,
+        );
+      case _ProfileManagementSection.updateProfile:
+        return _UpdateProfileTab(
+          displayNameController: _updateDisplayNameController,
+          emailController: _updateEmailController,
+          phoneController: _updatePhoneController,
+          flatNoController: _updateFlatNoController,
+          roleController: _updateRoleController,
+          emergencyContactController: _updateEmergencyContactController,
+          additionalInfoController: _updateAdditionalInfoController,
+          mobile: mobile,
+        );
+      case _ProfileManagementSection.updatePassword:
+        return _UpdatePasswordTab(mobile: mobile);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final mobile = isMobile(context);
 
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Color(0xFF0F8F82),
-          title: Text('Profile Management'),
-          leading: IconButton(
-            icon: Icon(Icons.home),
-            onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            },
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Color(0xFF0F8F82),
+        title: Text('Profile Management'),
+        leading: IconButton(
+          icon: Icon(Icons.home),
+          onPressed: () {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
         ),
-        drawer: mobile ? Drawer(child: SideBar()) : null,
-        body: BrandBackground(
-          child: Row(
-            children: [
-              if (!mobile) SideBar(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(mobile ? 16 : 24),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: 1080),
-                      child: Container(
-                        padding: EdgeInsets.all(mobile ? 18 : 28),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Color(0xFF0F8F82),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.10),
-                              blurRadius: 24,
-                              offset: Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _EditableProfileAvatar(name: _displayName),
-                            SizedBox(height: 18),
-                            Text(
-                              _displayName,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF124B45),
+      ),
+      drawer: mobile ? Drawer(child: SideBar()) : null,
+      body: BrandBackground(
+        child: Row(
+          children: [
+            if (!mobile) SideBar(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(mobile ? 16 : 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: 1080),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_selectedSection == null)
+                          Container(
+                            padding: EdgeInsets.all(mobile ? 18 : 28),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Color(0xFF0F8F82),
+                                width: 1.5,
                               ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              'Manage profile details, updates, and password settings from one place.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            SizedBox(height: 24),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Color(0xFFF5FBFA),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Color(0xFFD2ECE7)),
-                              ),
-                              child: TabBar(
-                                indicator: BoxDecoration(
-                                  color: Color(0xFF0F8F82),
-                                  borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.10),
+                                  blurRadius: 24,
+                                  offset: Offset(0, 10),
                                 ),
-                                labelColor: Colors.white,
-                                unselectedLabelColor: Color(0xFF124B45),
-                                dividerColor: Colors.transparent,
-                                padding: EdgeInsets.all(6),
-                                tabs: const [
-                                  Tab(text: 'Create New Profile'),
-                                  Tab(text: 'Update Profile'),
-                                  Tab(text: 'Update Password'),
-                                ],
-                              ),
+                              ],
                             ),
-                            SizedBox(height: 24),
-                            SizedBox(
-                              height: mobile ? 1700 : 980,
-                              child: TabBarView(
-                                children: [
-                                  _ProfileSectionCard(
-                                    title: 'Create New Profile',
-                                    subtitle:
-                                        'Use this section to onboard a new resident or member profile.',
-                                    child: _CreateProfileTab(
-                                      formKey: _createProfileFormKey,
-                                      firstNameController: _firstNameController,
-                                      middleNameController:
-                                          _middleNameController,
-                                      lastNameController: _lastNameController,
-                                      profileFlatNoController:
-                                          _profileFlatNoController,
-                                      mobileNumberController:
-                                          _mobileNumberController,
-                                      emailIdController: _emailIdController,
-                                      landlineNumberController:
-                                          _landlineNumberController,
-                                      addressLine1Controller:
-                                          _addressLine1Controller,
-                                      addressLine2Controller:
-                                          _addressLine2Controller,
-                                      addressLine3Controller:
-                                          _addressLine3Controller,
-                                      addressLine4Controller:
-                                          _addressLine4Controller,
-                                      landmarkController: _landmarkController,
-                                      cityController: _cityController,
-                                      stateController: _stateController,
-                                      postOfficeController:
-                                          _postOfficeController,
-                                      policeStationController:
-                                          _policeStationController,
-                                      pinController: _pinController,
-                                      profileType: _profileType,
-                                      profilePosition: _profilePosition,
-                                      gender: _gender,
-                                      addressType: _addressType,
-                                      onProfileTypeChanged: (value) {
-                                        setState(() {
-                                          _profileType = value;
-                                        });
-                                      },
-                                      onProfilePositionChanged: (value) {
-                                        setState(() {
-                                          _profilePosition = value;
-                                        });
-                                      },
-                                      onGenderChanged: (value) {
-                                        setState(() {
-                                          _gender = value;
-                                        });
-                                      },
-                                      onAddressTypeChanged: (value) {
-                                        setState(() {
-                                          _addressType = value ?? 'RESIDENTIAL';
-                                        });
-                                      },
-                                      requiredValidator: _requiredValidator,
-                                      mobileValidator: _mobileValidator,
-                                      emailValidator: _emailValidator,
-                                      submitting: _creatingProfile,
-                                      onSubmit: _submitCreateProfile,
-                                      mobile: mobile,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  _sectionTitle(),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF124B45),
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  _sectionSubtitle(),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                                SizedBox(height: 28),
+                                GridView.count(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  crossAxisCount: mobile ? 1 : 3,
+                                  crossAxisSpacing: 20,
+                                  mainAxisSpacing: 20,
+                                  childAspectRatio: mobile ? 2.2 : 1.18,
+                                  children: [
+                                    _ProfileActionCard(
+                                      title: 'Create Profile',
+                                      icon: Icons.person_add_alt_1,
+                                      selected: false,
+                                      onTap: () => _openSection(
+                                        _ProfileManagementSection.createProfile,
+                                      ),
                                     ),
-                                  ),
-                                  _ProfileSectionCard(
-                                    title: 'Update Profile',
-                                    subtitle:
-                                        'Refresh contact, role, and location details for the selected profile.',
-                                    child: _UpdateProfileTab(
-                                      displayName: _displayName,
-                                      email: _email,
-                                      phone: _phone,
-                                      flatNo: _flatNo,
-                                      role: _role,
-                                      mobile: mobile,
+                                    _ProfileActionCard(
+                                      title: 'Update Profile',
+                                      icon: Icons.manage_accounts,
+                                      selected: false,
+                                      onTap: () => _openSection(
+                                        _ProfileManagementSection.updateProfile,
+                                      ),
                                     ),
-                                  ),
-                                  _ProfileSectionCard(
-                                    title: 'Update Password',
-                                    subtitle:
-                                        'Keep your account secure by rotating the password regularly.',
-                                    child: _UpdatePasswordTab(mobile: mobile),
-                                  ),
-                                ],
-                              ),
+                                    _ProfileActionCard(
+                                      title: 'Update Password',
+                                      icon: Icons.password,
+                                      selected: false,
+                                      onTap: () => _openSection(
+                                        _ProfileManagementSection
+                                            .updatePassword,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        if (_selectedSection != null)
+                          _ProfileSectionCard(
+                            title: _sectionTitle(),
+                            subtitle: _sectionSubtitle(),
+                            onBack: _closeSection,
+                            child: _buildSelectedSectionContent(mobile),
+                          ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
+
+enum _ProfileManagementSection { createProfile, updateProfile, updatePassword }
 
 class _EditableProfileAvatar extends StatefulWidget {
   const _EditableProfileAvatar({required this.name});
@@ -626,11 +894,13 @@ class _ProfileSectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.onBack,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -643,7 +913,17 @@ class _ProfileSectionCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          if (onBack != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onBack,
+                icon: Icon(Icons.arrow_back),
+                label: Text('Back'),
+              ),
+            ),
           Text(
             title,
             style: TextStyle(
@@ -655,8 +935,74 @@ class _ProfileSectionCard extends StatelessWidget {
           SizedBox(height: 6),
           Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.black54)),
           SizedBox(height: 24),
-          Expanded(child: SingleChildScrollView(child: child)),
+          child,
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileActionCard extends StatefulWidget {
+  const _ProfileActionCard({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+    required this.selected,
+  });
+
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  State<_ProfileActionCard> createState() => _ProfileActionCardState();
+}
+
+class _ProfileActionCardState extends State<_ProfileActionCard> {
+  bool hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = hovered || widget.selected;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => hovered = true),
+      onExit: (_) => setState(() => hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: 150),
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: active ? Color(0xFFE0DA84) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: widget.selected ? Color(0xFF0F8F82) : Color(0xFFE4ECEA),
+              width: widget.selected ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 50, color: Color(0xFF0F8F82)),
+              SizedBox(height: 15),
+              Text(
+                widget.title,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -954,25 +1300,32 @@ class _CreateProfileTab extends StatelessWidget {
 
 class _UpdateProfileTab extends StatelessWidget {
   const _UpdateProfileTab({
-    required this.displayName,
-    required this.email,
-    required this.phone,
-    required this.flatNo,
-    required this.role,
+    required this.displayNameController,
+    required this.emailController,
+    required this.phoneController,
+    required this.flatNoController,
+    required this.roleController,
+    required this.emergencyContactController,
+    required this.additionalInfoController,
     required this.mobile,
   });
 
-  final String displayName;
-  final String email;
-  final String phone;
-  final String flatNo;
-  final String role;
+  final TextEditingController displayNameController;
+  final TextEditingController emailController;
+  final TextEditingController phoneController;
+  final TextEditingController flatNoController;
+  final TextEditingController roleController;
+  final TextEditingController emergencyContactController;
+  final TextEditingController additionalInfoController;
   final bool mobile;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _EditableProfileAvatar(name: displayNameController.text),
+        SizedBox(height: 18),
         Container(
           padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -986,7 +1339,7 @@ class _UpdateProfileTab extends StatelessWidget {
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Current profile selected for editing: $displayName',
+                  'Current profile selected for editing: ${displayNameController.text}. Profile picture update is available here only.',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF124B45),
@@ -1002,32 +1355,43 @@ class _UpdateProfileTab extends StatelessWidget {
           children: [
             _ProfileInputField(
               label: 'Display Name',
-              initialValue: displayName,
+              controller: displayNameController,
             ),
-            _ProfileInputField(label: 'Resident Role', initialValue: role),
+            _ProfileInputField(
+              label: 'Resident Role',
+              controller: roleController,
+            ),
           ],
         ),
         SizedBox(height: 16),
         _ResponsiveFieldRow(
           mobile: mobile,
           children: [
-            _ProfileInputField(label: 'Email Address', initialValue: email),
-            _ProfileInputField(label: 'Phone Number', initialValue: phone),
+            _ProfileInputField(
+              label: 'Email Address',
+              controller: emailController,
+            ),
+            _ProfileInputField(
+              label: 'Phone Number',
+              controller: phoneController,
+            ),
           ],
         ),
         SizedBox(height: 16),
         _ResponsiveFieldRow(
           mobile: mobile,
           children: [
-            _ProfileInputField(label: 'Flat No', initialValue: flatNo),
-            _ProfileInputField(label: 'Emergency Contact', initialValue: phone),
+            _ProfileInputField(label: 'Flat No', controller: flatNoController),
+            _ProfileInputField(
+              label: 'Emergency Contact',
+              controller: emergencyContactController,
+            ),
           ],
         ),
         SizedBox(height: 16),
         _ProfileInputField(
           label: 'Additional Information',
-          initialValue:
-              'Update address details, relationship info, or access notes.',
+          controller: additionalInfoController,
           maxLines: 4,
         ),
         SizedBox(height: 22),

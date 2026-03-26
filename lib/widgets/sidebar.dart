@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../pages/booking_page.dart';
+import '../pages/module_hub_pages.dart';
 import '../pages/profile_management_page.dart';
 import '../services/api_service.dart';
 
@@ -75,7 +76,7 @@ class SideBar extends StatelessWidget {
 
           item("Payments", Icons.payment),
           item(
-            "Booings",
+            "Bookings",
             Icons.home,
             onTap: () {
               Navigator.push(
@@ -96,10 +97,117 @@ class SideBar extends StatelessWidget {
               );
             },
           ),
+          item(
+            "Meeting And Notice",
+            Icons.event_note,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MeetingAndNoticeManagementPage(),
+                ),
+              );
+            },
+          ),
+          item(
+            "Ticket Management",
+            Icons.confirmation_number,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => TicketManagementPage()),
+              );
+            },
+          ),
+          item(
+            "Security",
+            Icons.security,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SecurityManagementPage(),
+                ),
+              );
+            },
+          ),
+          item(
+            "Group Management",
+            Icons.groups,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => GroupManagementPage()),
+              );
+            },
+          ),
+          item(
+            "Staff Management",
+            Icons.badge,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => StaffManagementPage()),
+              );
+            },
+          ),
+          item(
+            "Vendor Management",
+            Icons.storefront,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => VendorManagementPage()),
+              );
+            },
+          ),
+          item(
+            "Role And Access",
+            Icons.lock_person,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => RoleAndAccessPage()),
+              );
+            },
+          ),
+          item(
+            "Reports",
+            Icons.assessment,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ReportsManagementPage(),
+                ),
+              );
+            },
+          ),
+          item(
+            "Others",
+            Icons.more_horiz,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => OthersManagementPage()),
+              );
+            },
+          ),
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),
           item("Admin Section", Icons.admin_panel_settings),
-          item("Finance", Icons.account_balance),
+          item(
+            "Finance",
+            Icons.account_balance,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FinanceManagementPage(),
+                ),
+              );
+            },
+          ),
           item("Worklist", Icons.work),
         ],
       ),

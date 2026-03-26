@@ -1,14 +1,40 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
 import '../pages/booking_page.dart';
 import '../pages/profile_management_page.dart';
+import '../services/api_service.dart';
 
 class SideBar extends StatelessWidget {
+  const SideBar({super.key});
+
   Widget item(String title, IconData icon, {VoidCallback? onTap}) {
     return _SidebarItem(title: title, icon: icon, onTap: onTap ?? () {});
   }
 
+  Uint8List? _profileImageBytes() {
+    final profilePic = ApiService.dashboardProfilePic;
+    if (profilePic == null || profilePic.trim().isEmpty) {
+      return null;
+    }
+
+    final encodedValue = profilePic.contains(',')
+        ? profilePic.split(',').last
+        : profilePic;
+
+    try {
+      return base64Decode(encodedValue);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final profileImageBytes = _profileImageBytes();
+
     return Container(
       width: 240,
       color: Color(0xFF0F8F82),
@@ -16,10 +42,24 @@ class SideBar extends StatelessWidget {
         children: [
           SizedBox(height: 30),
 
-          CircleAvatar(
-            radius: 35,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.person, size: 35),
+          Center(
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: profileImageBytes == null
+                  ? Icon(Icons.person, size: 48)
+                  : Image.memory(
+                      profileImageBytes,
+                      fit: BoxFit.cover,
+                      width: 104,
+                      height: 104,
+                    ),
+            ),
           ),
 
           SizedBox(height: 10),

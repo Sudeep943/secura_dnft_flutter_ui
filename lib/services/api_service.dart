@@ -10,7 +10,9 @@ class ApiService {
   );
 
   static String? token;
+  static String? loginPassword;
   static Map<String, dynamic>? userHeader;
+  static String? dashboardProfilePic;
 
   static String? getLoggedInFlatNo() {
     final header = userHeader;
@@ -49,6 +51,7 @@ class ApiService {
     if (response.statusCode == 200 && response.body.isNotEmpty) {
       final data = jsonDecode(response.body);
       token = data['token'];
+      loginPassword = password;
       userHeader = data['header'];
       return token;
     }
@@ -69,7 +72,9 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      dashboardProfilePic = data['profilePic']?.toString();
+      return data;
     }
 
     return null;
@@ -195,6 +200,57 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse("$_baseUrl/profile/createProfile"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> getProfile({String? profileId}) async {
+    if (token == null || userHeader == null) return null;
+
+    final resolvedProfileId = (profileId != null && profileId.trim().isNotEmpty)
+        ? profileId.trim()
+        : userHeader?['userId']?.toString().trim();
+
+    if (resolvedProfileId == null || resolvedProfileId.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/getProfile"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': userHeader,
+        'profileID': resolvedProfileId,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> updateProfile(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/updateProfile"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

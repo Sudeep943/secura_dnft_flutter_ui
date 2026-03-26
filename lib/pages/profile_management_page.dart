@@ -1120,12 +1120,6 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
         title: Text('Profile Management'),
-        leading: IconButton(
-          icon: Icon(Icons.home),
-          onPressed: () {
-            openAppShellSection(context, AppSection.dashboard);
-          },
-        ),
       ),
       drawer: mobile
           ? Drawer(

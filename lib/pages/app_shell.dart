@@ -19,6 +19,8 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   late AppSection _selectedSection;
+  static const int _notificationCount = 3;
+  static const int _worklistCount = 10;
 
   static const List<AppSection> _sections = [
     AppSection.dashboard,
@@ -79,6 +81,80 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  void _showShellMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildNotificationButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          TextButton.icon(
+            onPressed: () => _showShellMessage(
+              'You have $_notificationCount pending community notifications.',
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+              ),
+            ),
+            icon: const Icon(Icons.notifications_none_rounded),
+            label: const Text('Notifications'),
+          ),
+          Positioned(
+            right: -2,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0DA84),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$_notificationCount',
+                style: const TextStyle(
+                  color: Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorklistButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      child: TextButton.icon(
+        onPressed: () => _showShellMessage(
+          'You have $_worklistCount active worklist items.',
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.white.withValues(alpha: 0.10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+        ),
+        icon: const Icon(Icons.work_outline_rounded),
+        label: Text('Worklist ($_worklistCount)'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = _isMobile(context);
@@ -87,15 +163,7 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F8F82),
-        title: Text(_selectedSection.title),
-        actions: [
-          if (_selectedSection != AppSection.dashboard)
-            IconButton(
-              tooltip: 'Dashboard',
-              icon: const Icon(Icons.home),
-              onPressed: () => _selectSection(AppSection.dashboard),
-            ),
-        ],
+        actions: [_buildNotificationButton(), _buildWorklistButton()],
       ),
       drawer: mobile
           ? Drawer(

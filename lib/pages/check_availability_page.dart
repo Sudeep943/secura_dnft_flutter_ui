@@ -7,7 +7,9 @@ import '../widgets/sidebar.dart';
 import 'app_shell.dart';
 
 class CheckAvailabilityPage extends StatefulWidget {
-  const CheckAvailabilityPage({super.key});
+  const CheckAvailabilityPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<CheckAvailabilityPage> createState() => _CheckAvailabilityPageState();
@@ -212,18 +214,122 @@ class _CheckAvailabilityPageState extends State<CheckAvailabilityPage> {
     return _formatDisplayDate(parsedDate.toLocal());
   }
 
+  Widget _buildPageContent(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final formWidth = isMobile(context)
+            ? constraints.maxWidth * 0.92
+            : constraints.maxWidth * 0.8;
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(20),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+            child: Center(
+              child: SizedBox(
+                width: formWidth,
+                child: Container(
+                  padding: EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: loading
+                      ? Padding(
+                          padding: EdgeInsets.symmetric(vertical: 40),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      : Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              DropdownButtonFormField<String>(
+                                decoration: InputDecoration(
+                                  labelText: 'Hall Name',
+                                ),
+                                value: selectedHallId,
+                                items: halls.map((hall) {
+                                  return DropdownMenuItem<String>(
+                                    value: hall['hallId'] as String,
+                                    child: Text(hall['hallName'] as String),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedHallId = value;
+                                  });
+                                },
+                                validator: (value) =>
+                                    value == null ? 'Required' : null,
+                              ),
+                              SizedBox(height: 10),
+                              TextFormField(
+                                controller: _eventDateController,
+                                decoration: InputDecoration(
+                                  labelText: 'Event Date',
+                                  suffixIcon: IconButton(
+                                    icon: Icon(Icons.calendar_today),
+                                    onPressed: _selectDate,
+                                  ),
+                                ),
+                                readOnly: true,
+                                validator: (value) =>
+                                    value == null || value.isEmpty
+                                    ? 'Required'
+                                    : null,
+                              ),
+                              SizedBox(height: 34),
+                              ElevatedButton(
+                                onPressed: submitting
+                                    ? null
+                                    : _submitAvailabilityCheck,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xFF0F8F82),
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: submitting
+                                    ? SizedBox(
+                                        height: 18,
+                                        width: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text('Check Availability'),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _buildPageContent(context);
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
         title: Text('Check Hall Availability'),
-        leading: IconButton(
-          icon: Icon(Icons.home),
-          onPressed: () {
-            openAppShellSection(context, AppSection.dashboard);
-          },
-        ),
       ),
       drawer: isMobile(context)
           ? Drawer(
@@ -243,127 +349,7 @@ class _CheckAvailabilityPageState extends State<CheckAvailabilityPage> {
                 onSectionSelected: (section) =>
                     openAppShellSection(context, section),
               ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final formWidth = isMobile(context)
-                      ? constraints.maxWidth * 0.92
-                      : constraints.maxWidth * 0.8;
-
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.all(20),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight - 40,
-                      ),
-                      child: Center(
-                        child: SizedBox(
-                          width: formWidth,
-                          child: Container(
-                            padding: EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: Color(0xFF0F8F82),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.12),
-                                  blurRadius: 24,
-                                  offset: Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: loading
-                                ? Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 40),
-                                    child: Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  )
-                                : Form(
-                                    key: _formKey,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        DropdownButtonFormField<String>(
-                                          decoration: InputDecoration(
-                                            labelText: 'Hall Name',
-                                          ),
-                                          value: selectedHallId,
-                                          items: halls
-                                              .map(
-                                                (
-                                                  hall,
-                                                ) => DropdownMenuItem<String>(
-                                                  value:
-                                                      hall['hallId'] as String,
-                                                  child: Text(
-                                                    hall['hallName'] as String,
-                                                  ),
-                                                ),
-                                              )
-                                              .toList(),
-                                          onChanged: (value) {
-                                            setState(() {
-                                              selectedHallId = value;
-                                            });
-                                          },
-                                          validator: (value) =>
-                                              value == null ? 'Required' : null,
-                                        ),
-                                        SizedBox(height: 10),
-                                        TextFormField(
-                                          controller: _eventDateController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Event Date',
-                                            suffixIcon: IconButton(
-                                              icon: Icon(Icons.calendar_today),
-                                              onPressed: _selectDate,
-                                            ),
-                                          ),
-                                          readOnly: true,
-                                          validator: (value) =>
-                                              value == null || value.isEmpty
-                                              ? 'Required'
-                                              : null,
-                                        ),
-                                        SizedBox(height: 34),
-                                        ElevatedButton(
-                                          onPressed: submitting
-                                              ? null
-                                              : _submitAvailabilityCheck,
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Color(0xFF0F8F82),
-                                            foregroundColor: Colors.white,
-                                          ),
-                                          child: submitting
-                                              ? SizedBox(
-                                                  height: 18,
-                                                  width: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white,
-                                                      ),
-                                                )
-                                              : Text('Check Availability'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
+            Expanded(child: _buildPageContent(context)),
           ],
         ),
       ),

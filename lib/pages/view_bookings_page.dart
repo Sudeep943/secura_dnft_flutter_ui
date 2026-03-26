@@ -7,7 +7,10 @@ import '../widgets/sidebar.dart';
 import 'app_shell.dart';
 
 class ViewBookingsPage extends StatefulWidget {
-  const ViewBookingsPage({super.key});
+  const ViewBookingsPage({super.key, this.embedded = false, this.onBack});
+
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<ViewBookingsPage> createState() => _ViewBookingsPageState();
@@ -661,18 +664,182 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
       message != null &&
       message!.trim().isNotEmpty;
 
+  Widget _buildEmbeddedHeader() {
+    final onBack = widget.onBack;
+    if (!widget.embedded || onBack == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(17, 59, 52, 0.05),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF5FBF9),
+              foregroundColor: const Color(0xFF0F8F82),
+            ),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'View Bookings',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Review approvals, payments, search results, and booking actions.',
+                  style: TextStyle(color: Colors.black54, height: 1.45),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageContent(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1680),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _buildEmbeddedHeader(),
+                    _buildSearchBar(),
+                    if (_showErrorMessage) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        message!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : bookings.isEmpty
+                            ? Center(
+                                child: Text(
+                                  _showErrorMessage
+                                      ? 'No bookings found'
+                                      : (message ?? 'No bookings found'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              )
+                            : Scrollbar(
+                                controller: _horizontalScrollController,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                notificationPredicate: (notification) {
+                                  return notification.metrics.axis ==
+                                      Axis.horizontal;
+                                },
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScrollController,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: isMobile(context) ? 1720 : 1850,
+                                    ),
+                                    child: Scrollbar(
+                                      controller: _verticalScrollController,
+                                      thumbVisibility: true,
+                                      trackVisibility: true,
+                                      notificationPredicate: (notification) {
+                                        return notification.metrics.axis ==
+                                            Axis.vertical;
+                                      },
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScrollController,
+                                        child: DataTable(
+                                          headingRowColor:
+                                              const WidgetStatePropertyAll(
+                                                _brandColor,
+                                              ),
+                                          dataRowMinHeight: 70,
+                                          dataRowMaxHeight: 70,
+                                          columns: _buildColumns(),
+                                          rows: _buildRows(),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _buildPageContent(context);
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
         title: Text('View Bookings'),
-        leading: IconButton(
-          icon: Icon(Icons.home),
-          onPressed: () {
-            openAppShellSection(context, AppSection.dashboard);
-          },
-        ),
       ),
       drawer: isMobile(context)
           ? Drawer(
@@ -692,114 +859,7 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
                 onSectionSelected: (section) =>
                     openAppShellSection(context, section),
               ),
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 1680),
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildSearchBar(),
-                        if (_showErrorMessage) ...[
-                          SizedBox(height: 18),
-                          Text(
-                            message!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ],
-                        SizedBox(height: 18),
-                        Expanded(
-                          child: Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: loading
-                                ? Center(child: CircularProgressIndicator())
-                                : bookings.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      _showErrorMessage
-                                          ? 'No bookings found'
-                                          : (message ?? 'No bookings found'),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    ),
-                                  )
-                                : Scrollbar(
-                                    controller: _horizontalScrollController,
-                                    thumbVisibility: true,
-                                    trackVisibility: true,
-                                    notificationPredicate: (notification) {
-                                      return notification.metrics.axis ==
-                                          Axis.horizontal;
-                                    },
-                                    child: SingleChildScrollView(
-                                      controller: _horizontalScrollController,
-                                      scrollDirection: Axis.horizontal,
-                                      child: ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                          minWidth: isMobile(context)
-                                              ? 1720
-                                              : 1850,
-                                        ),
-                                        child: Scrollbar(
-                                          controller: _verticalScrollController,
-                                          thumbVisibility: true,
-                                          trackVisibility: true,
-                                          notificationPredicate:
-                                              (notification) {
-                                                return notification
-                                                        .metrics
-                                                        .axis ==
-                                                    Axis.vertical;
-                                              },
-                                          child: SingleChildScrollView(
-                                            controller:
-                                                _verticalScrollController,
-                                            child: DataTable(
-                                              headingRowColor:
-                                                  WidgetStatePropertyAll(
-                                                    _brandColor,
-                                                  ),
-                                              columns: _buildColumns(),
-                                              rows: _buildRows(),
-                                              dataRowMinHeight: 64,
-                                              dataRowMaxHeight: 92,
-                                              columnSpacing: 36,
-                                              horizontalMargin: 18,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            Expanded(child: _buildPageContent(context)),
           ],
         ),
       ),

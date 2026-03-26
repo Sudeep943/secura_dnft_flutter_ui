@@ -18,11 +18,25 @@ class BookingPage extends StatefulWidget {
 }
 
 class _BookingPageState extends State<BookingPage> {
+  _BookingView _selectedView = _BookingView.menu;
+
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
   }
 
-  Widget _buildBookingContent(BuildContext context) {
+  void _showEmbeddedView(_BookingView view) {
+    setState(() {
+      _selectedView = view;
+    });
+  }
+
+  void _goBackToMenu() {
+    setState(() {
+      _selectedView = _BookingView.menu;
+    });
+  }
+
+  Widget _buildBookingContent(BuildContext context, {required bool embedded}) {
     return SingleChildScrollView(
       padding: EdgeInsets.all(24),
       child: Center(
@@ -74,10 +88,15 @@ class _BookingPageState extends State<BookingPage> {
                       title: 'Create New Booking',
                       icon: Icons.add_box,
                       onTap: () {
+                        if (embedded) {
+                          _showEmbeddedView(_BookingView.createBooking);
+                          return;
+                        }
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => CreateBookingPage(),
+                            builder: (context) => const CreateBookingPage(),
                           ),
                         );
                       },
@@ -86,10 +105,15 @@ class _BookingPageState extends State<BookingPage> {
                       title: 'View Bookings',
                       icon: Icons.list_alt,
                       onTap: () {
+                        if (embedded) {
+                          _showEmbeddedView(_BookingView.viewBookings);
+                          return;
+                        }
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => ViewBookingsPage(),
+                            builder: (context) => const ViewBookingsPage(),
                           ),
                         );
                       },
@@ -98,10 +122,15 @@ class _BookingPageState extends State<BookingPage> {
                       title: 'Check Availability',
                       icon: Icons.event_available,
                       onTap: () {
+                        if (embedded) {
+                          _showEmbeddedView(_BookingView.checkAvailability);
+                          return;
+                        }
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => CheckAvailabilityPage(),
+                            builder: (context) => const CheckAvailabilityPage(),
                           ),
                         );
                       },
@@ -116,22 +145,54 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
+  Widget _buildEmbeddedInnerView() {
+    switch (_selectedView) {
+      case _BookingView.menu:
+        return _buildBookingContent(context, embedded: true);
+      case _BookingView.createBooking:
+        return Column(
+          children: [
+            _EmbeddedBookingHeader(
+              title: 'Create New Booking',
+              subtitle:
+                  'Capture event details, select a hall, and proceed to payment.',
+              onBack: _goBackToMenu,
+            ),
+            const SizedBox(height: 16),
+            const Expanded(child: CreateBookingPage(embedded: true)),
+          ],
+        );
+      case _BookingView.viewBookings:
+        return ViewBookingsPage(embedded: true, onBack: _goBackToMenu);
+      case _BookingView.checkAvailability:
+        return Column(
+          children: [
+            _EmbeddedBookingHeader(
+              title: 'Check Hall Availability',
+              subtitle:
+                  'Verify date availability before raising a booking request.',
+              onBack: _goBackToMenu,
+            ),
+            const SizedBox(height: 16),
+            const Expanded(child: CheckAvailabilityPage(embedded: true)),
+          ],
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.embedded) {
-      return _buildBookingContent(context);
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: _buildEmbeddedInnerView(),
+      );
     }
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
         title: Text("Booking"),
-        leading: IconButton(
-          icon: Icon(Icons.home),
-          onPressed: () {
-            openAppShellSection(context, AppSection.dashboard);
-          },
-        ),
       ),
       drawer: isMobile(context)
           ? Drawer(
@@ -151,9 +212,74 @@ class _BookingPageState extends State<BookingPage> {
                 onSectionSelected: (section) =>
                     openAppShellSection(context, section),
               ),
-            Expanded(child: _buildBookingContent(context)),
+            Expanded(child: _buildBookingContent(context, embedded: false)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+enum _BookingView { menu, createBooking, viewBookings, checkAvailability }
+
+class _EmbeddedBookingHeader extends StatelessWidget {
+  const _EmbeddedBookingHeader({
+    required this.title,
+    required this.subtitle,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(17, 59, 52, 0.05),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF5FBF9),
+              foregroundColor: const Color(0xFF0F8F82),
+            ),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.black54, height: 1.45),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

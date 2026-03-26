@@ -50,16 +50,90 @@ class SideBar extends StatelessWidget {
     }
   }
 
+  String _displayName() {
+    final header = ApiService.userHeader;
+    if (header == null) {
+      return 'Resident';
+    }
+
+    const firstNameKeys = ['firstName', 'fname'];
+    const lastNameKeys = ['lastName', 'lname'];
+    const fullNameKeys = ['name', 'fullName', 'userName', 'username'];
+
+    for (final key in fullNameKeys) {
+      final value = header[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    String? firstName;
+    String? lastName;
+
+    for (final key in firstNameKeys) {
+      final value = header[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        firstName = value;
+        break;
+      }
+    }
+
+    for (final key in lastNameKeys) {
+      final value = header[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        lastName = value;
+        break;
+      }
+    }
+
+    final composedName = [
+      firstName,
+      lastName,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(' ').trim();
+    if (composedName.isNotEmpty) {
+      return composedName;
+    }
+
+    return header['userId']?.toString().trim().isNotEmpty == true
+        ? header['userId'].toString().trim()
+        : 'Resident';
+  }
+
+  String _flatLabel() {
+    final flatNo = ApiService.getLoggedInFlatNo();
+    if (flatNo == null || flatNo.isEmpty) {
+      return 'Community Portal';
+    }
+
+    return 'Flat $flatNo';
+  }
+
   @override
   Widget build(BuildContext context) {
     final profileImageBytes = _profileImageBytes();
+    final displayName = _displayName();
+    final flatLabel = _flatLabel();
 
     return Container(
       width: 240,
       color: Color(0xFF0F8F82),
       child: ListView(
         children: [
-          SizedBox(height: 30),
+          SizedBox(height: 10),
+
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18),
+            child: Text(
+              selectedSection.title,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          SizedBox(height: 18),
 
           Center(
             child: Container(
@@ -85,15 +159,35 @@ class SideBar extends StatelessWidget {
 
           Center(
             child: Text(
-              "John Doe",
-              style: TextStyle(color: Colors.white, fontSize: 18),
+              displayName,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          SizedBox(height: 4),
+
+          Center(
+            child: Text(
+              flatLabel,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 12,
+              ),
             ),
           ),
 
           SizedBox(height: 30),
 
-          item("Payments", Icons.payment),
-          item("Bookings", Icons.home, section: AppSection.bookings),
+          item(
+            "Dashboard",
+            Icons.dashboard_outlined,
+            section: AppSection.dashboard,
+          ),
+          item("Bookings", Icons.event_available, section: AppSection.bookings),
           item(
             "Profile Management",
             Icons.person_add,

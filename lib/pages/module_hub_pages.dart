@@ -317,16 +317,7 @@ class _ModuleHubPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Color(0xFF0F8F82),
-        title: Text(title),
-        leading: IconButton(
-          icon: Icon(Icons.home),
-          onPressed: () {
-            openAppShellSection(context, AppSection.dashboard);
-          },
-        ),
-      ),
+      appBar: AppBar(backgroundColor: Color(0xFF0F8F82), title: Text(title)),
       drawer: mobile
           ? Drawer(
               child: SideBar(

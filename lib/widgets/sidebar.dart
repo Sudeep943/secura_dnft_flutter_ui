@@ -3,16 +3,34 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../pages/booking_page.dart';
-import '../pages/module_hub_pages.dart';
-import '../pages/profile_management_page.dart';
+import '../navigation/app_section.dart';
 import '../services/api_service.dart';
 
 class SideBar extends StatelessWidget {
-  const SideBar({super.key});
+  const SideBar({
+    super.key,
+    required this.selectedSection,
+    required this.onSectionSelected,
+  });
 
-  Widget item(String title, IconData icon, {VoidCallback? onTap}) {
-    return _SidebarItem(title: title, icon: icon, onTap: onTap ?? () {});
+  final AppSection selectedSection;
+  final ValueChanged<AppSection> onSectionSelected;
+
+  Widget item(
+    String title,
+    IconData icon, {
+    AppSection? section,
+    VoidCallback? onTap,
+  }) {
+    final effectiveOnTap =
+        onTap ?? (section == null ? null : () => onSectionSelected(section));
+
+    return _SidebarItem(
+      title: title,
+      icon: icon,
+      selected: section != null && selectedSection == section,
+      onTap: effectiveOnTap,
+    );
   }
 
   Uint8List? _profileImageBytes() {
@@ -75,139 +93,49 @@ class SideBar extends StatelessWidget {
           SizedBox(height: 30),
 
           item("Payments", Icons.payment),
-          item(
-            "Bookings",
-            Icons.home,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => BookingPage()),
-              );
-            },
-          ),
+          item("Bookings", Icons.home, section: AppSection.bookings),
           item(
             "Profile Management",
             Icons.person_add,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileManagementPage(),
-                ),
-              );
-            },
+            section: AppSection.profileManagement,
           ),
           item(
             "Meeting And Notice",
             Icons.event_note,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => MeetingAndNoticeManagementPage(),
-                ),
-              );
-            },
+            section: AppSection.meetingAndNotice,
           ),
           item(
             "Ticket Management",
             Icons.confirmation_number,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TicketManagementPage()),
-              );
-            },
+            section: AppSection.ticketManagement,
           ),
-          item(
-            "Security",
-            Icons.security,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SecurityManagementPage(),
-                ),
-              );
-            },
-          ),
+          item("Security", Icons.security, section: AppSection.security),
           item(
             "Group Management",
             Icons.groups,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => GroupManagementPage()),
-              );
-            },
+            section: AppSection.groupManagement,
           ),
           item(
             "Staff Management",
             Icons.badge,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => StaffManagementPage()),
-              );
-            },
+            section: AppSection.staffManagement,
           ),
           item(
             "Vendor Management",
             Icons.storefront,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => VendorManagementPage()),
-              );
-            },
+            section: AppSection.vendorManagement,
           ),
           item(
             "Role And Access",
             Icons.lock_person,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => RoleAndAccessPage()),
-              );
-            },
+            section: AppSection.roleAndAccess,
           ),
-          item(
-            "Reports",
-            Icons.assessment,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ReportsManagementPage(),
-                ),
-              );
-            },
-          ),
-          item(
-            "Others",
-            Icons.more_horiz,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => OthersManagementPage()),
-              );
-            },
-          ),
+          item("Reports", Icons.assessment, section: AppSection.reports),
+          item("Others", Icons.more_horiz, section: AppSection.others),
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),
           item("Admin Section", Icons.admin_panel_settings),
-          item(
-            "Finance",
-            Icons.account_balance,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FinanceManagementPage(),
-                ),
-              );
-            },
-          ),
+          item("Finance", Icons.account_balance, section: AppSection.finance),
           item("Worklist", Icons.work),
         ],
       ),
@@ -218,11 +146,13 @@ class SideBar extends StatelessWidget {
 class _SidebarItem extends StatefulWidget {
   final String title;
   final IconData icon;
-  final VoidCallback onTap;
+  final bool selected;
+  final VoidCallback? onTap;
 
   const _SidebarItem({
     required this.title,
     required this.icon,
+    required this.selected,
     required this.onTap,
   });
 
@@ -236,24 +166,37 @@ class _SidebarItemState extends State<_SidebarItem> {
   @override
   Widget build(BuildContext context) {
     final glowColor = Colors.white.withOpacity(0.35);
+    final isActive = widget.selected;
+    final tileColor = isActive
+        ? Colors.white.withOpacity(0.16)
+        : hovered
+        ? Colors.white.withOpacity(0.08)
+        : Colors.transparent;
 
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
       child: ListTile(
+        selected: isActive,
+        selectedTileColor: Colors.transparent,
+        tileColor: tileColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         leading: Icon(widget.icon, color: Colors.white),
         title: AnimatedDefaultTextStyle(
           duration: Duration(milliseconds: 180),
           style: TextStyle(
             color: Colors.white,
-            fontWeight: hovered ? FontWeight.bold : FontWeight.w500,
-            shadows: hovered
+            fontWeight: (hovered || isActive)
+                ? FontWeight.bold
+                : FontWeight.w500,
+            shadows: (hovered || isActive)
                 ? [Shadow(color: glowColor, blurRadius: 12)]
                 : null,
           ),
           child: Text(widget.title),
         ),
         onTap: widget.onTap,
+        enabled: widget.onTap != null,
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
     );

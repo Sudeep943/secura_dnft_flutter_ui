@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+
+import '../navigation/app_section.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'check_availability_page.dart';
 import 'create_booking_page.dart';
 import 'view_bookings_page.dart';
+import 'app_shell.dart';
 
 class BookingPage extends StatefulWidget {
-  const BookingPage({super.key});
+  const BookingPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   _BookingPageState createState() => _BookingPageState();
@@ -17,8 +22,106 @@ class _BookingPageState extends State<BookingPage> {
     return MediaQuery.of(context).size.width < 800;
   }
 
+  Widget _buildBookingContent(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 1080),
+          child: Container(
+            padding: EdgeInsets.all(isMobile(context) ? 18 : 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Bookings',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Choose one of the booking actions below.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, color: Colors.black54),
+                ),
+                SizedBox(height: 28),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  crossAxisCount: isMobile(context) ? 1 : 3,
+                  crossAxisSpacing: 20,
+                  mainAxisSpacing: 20,
+                  childAspectRatio: isMobile(context) ? 1.4 : 1.05,
+                  children: [
+                    _BookingActionCard(
+                      title: 'Create New Booking',
+                      icon: Icons.add_box,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CreateBookingPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    _BookingActionCard(
+                      title: 'View Bookings',
+                      icon: Icons.list_alt,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ViewBookingsPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    _BookingActionCard(
+                      title: 'Check Availability',
+                      icon: Icons.event_available,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CheckAvailabilityPage(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _buildBookingContent(context);
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
@@ -26,115 +129,29 @@ class _BookingPageState extends State<BookingPage> {
         leading: IconButton(
           icon: Icon(Icons.home),
           onPressed: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            openAppShellSection(context, AppSection.dashboard);
           },
         ),
       ),
-      drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
+      drawer: isMobile(context)
+          ? Drawer(
+              child: SideBar(
+                selectedSection: AppSection.bookings,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
+              ),
+            )
+          : null,
       body: BrandBackground(
         child: Row(
           children: [
-            if (!isMobile(context)) SideBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 1080),
-                    child: Container(
-                      padding: EdgeInsets.all(isMobile(context) ? 18 : 28),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Color(0xFF0F8F82),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.10),
-                            blurRadius: 24,
-                            offset: Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Bookings',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF124B45),
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'Choose one of the booking actions below.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          SizedBox(height: 28),
-                          GridView.count(
-                            shrinkWrap: true,
-                            physics: NeverScrollableScrollPhysics(),
-                            padding: EdgeInsets.zero,
-                            crossAxisCount: isMobile(context) ? 1 : 3,
-                            crossAxisSpacing: 20,
-                            mainAxisSpacing: 20,
-                            childAspectRatio: isMobile(context) ? 1.4 : 1.05,
-                            children: [
-                              _BookingActionCard(
-                                title: 'Create New Booking',
-                                icon: Icons.add_box,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => CreateBookingPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              _BookingActionCard(
-                                title: 'View Bookings',
-                                icon: Icons.list_alt,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ViewBookingsPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              _BookingActionCard(
-                                title: 'Check Availability',
-                                icon: Icons.event_available,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          CheckAvailabilityPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+            if (!isMobile(context))
+              SideBar(
+                selectedSection: AppSection.bookings,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
               ),
-            ),
+            Expanded(child: _buildBookingContent(context)),
           ],
         ),
       ),

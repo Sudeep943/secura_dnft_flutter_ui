@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+
 import '../widgets/sidebar.dart';
 import '../widgets/dashboard_card.dart';
 import '../widgets/brand_artwork.dart';
+import '../navigation/app_section.dart';
 import '../services/api_service.dart';
+import 'app_shell.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   _HomePageState createState() => _HomePageState();
@@ -63,8 +68,41 @@ class _HomePageState extends State<HomePage> {
     return months[month - 1];
   }
 
+  Widget _buildDashboardContent(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.all(20),
+      child: loading
+          ? Center(child: CircularProgressIndicator())
+          : GridView.count(
+              crossAxisCount: isMobile(context) ? 2 : 4,
+              crossAxisSpacing: 15,
+              mainAxisSpacing: 15,
+              childAspectRatio: isMobile(context) ? 1.2 : 1.8,
+              children: [
+                DashboardCard("Payments", dashboardData?['payments'] ?? "₹0"),
+                DashboardCard(
+                  "Hall Booking",
+                  formatHallBookings(dashboardData?['upcomingBookings']),
+                ),
+                DashboardCard(
+                  "Skill Classes",
+                  dashboardData?['skillClasses'] ?? "0",
+                ),
+                DashboardCard(
+                  "Worklist",
+                  dashboardData?['pendingWorklistCount']?.toString() ?? "0",
+                ),
+              ],
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _buildDashboardContent(context);
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
@@ -85,50 +123,26 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
 
-      drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
+      drawer: isMobile(context)
+          ? Drawer(
+              child: SideBar(
+                selectedSection: AppSection.dashboard,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
+              ),
+            )
+          : null,
 
       body: BrandBackground(
         child: Row(
           children: [
-            if (!isMobile(context)) SideBar(),
-
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-
-                child: loading
-                    ? Center(child: CircularProgressIndicator())
-                    : GridView.count(
-                        crossAxisCount: isMobile(context) ? 2 : 4,
-                        crossAxisSpacing: 15,
-                        mainAxisSpacing: 15,
-                        childAspectRatio: isMobile(context) ? 1.2 : 1.8,
-
-                        children: [
-                          DashboardCard(
-                            "Payments",
-                            dashboardData?['payments'] ?? "₹0",
-                          ),
-                          DashboardCard(
-                            "Hall Booking",
-                            formatHallBookings(
-                              dashboardData?['upcomingBookings'],
-                            ),
-                          ),
-                          DashboardCard(
-                            "Skill Classes",
-                            dashboardData?['skillClasses'] ?? "0",
-                          ),
-                          DashboardCard(
-                            "Worklist",
-                            dashboardData?['pendingWorklistCount']
-                                    ?.toString() ??
-                                "0",
-                          ),
-                        ],
-                      ),
+            if (!isMobile(context))
+              SideBar(
+                selectedSection: AppSection.dashboard,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
               ),
-            ),
+            Expanded(child: _buildDashboardContent(context)),
           ],
         ),
       ),

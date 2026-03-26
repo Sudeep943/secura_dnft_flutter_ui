@@ -5,12 +5,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
+import '../navigation/app_section.dart';
 import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
+import 'app_shell.dart';
 
 class ProfileManagementPage extends StatefulWidget {
-  const ProfileManagementPage({super.key});
+  const ProfileManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   State<ProfileManagementPage> createState() => _ProfileManagementPageState();
@@ -1010,9 +1014,107 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
+  Widget _buildProfileManagementContent(bool mobile) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(mobile ? 16 : 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 1080),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_selectedSection == null)
+                Container(
+                  padding: EdgeInsets.all(mobile ? 18 : 28),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.10),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        _sectionTitle(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF124B45),
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        _sectionSubtitle(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 15, color: Colors.black54),
+                      ),
+                      SizedBox(height: 28),
+                      GridView.count(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        crossAxisCount: mobile ? 1 : 3,
+                        crossAxisSpacing: 20,
+                        mainAxisSpacing: 20,
+                        childAspectRatio: mobile ? 2.2 : 1.18,
+                        children: [
+                          _ProfileActionCard(
+                            title: 'Create Profile',
+                            icon: Icons.person_add_alt_1,
+                            selected: false,
+                            onTap: () => _openSection(
+                              _ProfileManagementSection.createProfile,
+                            ),
+                          ),
+                          _ProfileActionCard(
+                            title: 'Update Profile',
+                            icon: Icons.manage_accounts,
+                            selected: false,
+                            onTap: () => _openSection(
+                              _ProfileManagementSection.updateProfile,
+                            ),
+                          ),
+                          _ProfileActionCard(
+                            title: 'Update Password',
+                            icon: Icons.password,
+                            selected: false,
+                            onTap: () => _openSection(
+                              _ProfileManagementSection.updatePassword,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              if (_selectedSection != null)
+                _ProfileSectionCard(
+                  title: _sectionTitle(),
+                  subtitle: _sectionSubtitle(),
+                  onBack: _closeSection,
+                  child: _buildSelectedSectionContent(mobile),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = isMobile(context);
+
+    if (widget.embedded) {
+      return _buildProfileManagementContent(mobile);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -1021,115 +1123,29 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         leading: IconButton(
           icon: Icon(Icons.home),
           onPressed: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            openAppShellSection(context, AppSection.dashboard);
           },
         ),
       ),
-      drawer: mobile ? Drawer(child: SideBar()) : null,
+      drawer: mobile
+          ? Drawer(
+              child: SideBar(
+                selectedSection: AppSection.profileManagement,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
+              ),
+            )
+          : null,
       body: BrandBackground(
         child: Row(
           children: [
-            if (!mobile) SideBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(mobile ? 16 : 24),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 1080),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_selectedSection == null)
-                          Container(
-                            padding: EdgeInsets.all(mobile ? 18 : 28),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: Color(0xFF0F8F82),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.10),
-                                  blurRadius: 24,
-                                  offset: Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  _sectionTitle(),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF124B45),
-                                  ),
-                                ),
-                                SizedBox(height: 6),
-                                Text(
-                                  _sectionSubtitle(),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                                SizedBox(height: 28),
-                                GridView.count(
-                                  shrinkWrap: true,
-                                  physics: NeverScrollableScrollPhysics(),
-                                  crossAxisCount: mobile ? 1 : 3,
-                                  crossAxisSpacing: 20,
-                                  mainAxisSpacing: 20,
-                                  childAspectRatio: mobile ? 2.2 : 1.18,
-                                  children: [
-                                    _ProfileActionCard(
-                                      title: 'Create Profile',
-                                      icon: Icons.person_add_alt_1,
-                                      selected: false,
-                                      onTap: () => _openSection(
-                                        _ProfileManagementSection.createProfile,
-                                      ),
-                                    ),
-                                    _ProfileActionCard(
-                                      title: 'Update Profile',
-                                      icon: Icons.manage_accounts,
-                                      selected: false,
-                                      onTap: () => _openSection(
-                                        _ProfileManagementSection.updateProfile,
-                                      ),
-                                    ),
-                                    _ProfileActionCard(
-                                      title: 'Update Password',
-                                      icon: Icons.password,
-                                      selected: false,
-                                      onTap: () => _openSection(
-                                        _ProfileManagementSection
-                                            .updatePassword,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (_selectedSection != null)
-                          _ProfileSectionCard(
-                            title: _sectionTitle(),
-                            subtitle: _sectionSubtitle(),
-                            onBack: _closeSection,
-                            child: _buildSelectedSectionContent(mobile),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+            if (!mobile)
+              SideBar(
+                selectedSection: AppSection.profileManagement,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
               ),
-            ),
+            Expanded(child: _buildProfileManagementContent(mobile)),
           ],
         ),
       ),

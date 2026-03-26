@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+
+import '../navigation/app_section.dart';
 import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
-import 'home_page.dart';
+import 'app_shell.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,7 +28,9 @@ class _LoginPageState extends State<LoginPage> {
     if (token != null) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomePage()),
+        MaterialPageRoute(
+          builder: (_) => AppShell(initialSection: AppSection.dashboard),
+        ),
       );
     } else {
       ScaffoldMessenger.of(

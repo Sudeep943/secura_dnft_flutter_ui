@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../navigation/app_section.dart';
 import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
+import 'app_shell.dart';
 
 class CheckAvailabilityPage extends StatefulWidget {
   const CheckAvailabilityPage({super.key});
@@ -219,15 +221,28 @@ class _CheckAvailabilityPageState extends State<CheckAvailabilityPage> {
         leading: IconButton(
           icon: Icon(Icons.home),
           onPressed: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            openAppShellSection(context, AppSection.dashboard);
           },
         ),
       ),
-      drawer: isMobile(context) ? Drawer(child: SideBar()) : null,
+      drawer: isMobile(context)
+          ? Drawer(
+              child: SideBar(
+                selectedSection: AppSection.bookings,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
+              ),
+            )
+          : null,
       body: BrandBackground(
         child: Row(
           children: [
-            if (!isMobile(context)) SideBar(),
+            if (!isMobile(context))
+              SideBar(
+                selectedSection: AppSection.bookings,
+                onSectionSelected: (section) =>
+                    openAppShellSection(context, section),
+              ),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {

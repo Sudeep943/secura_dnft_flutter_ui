@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../navigation/app_section.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
+import 'app_shell.dart';
 
 class MeetingAndNoticeManagementPage extends StatelessWidget {
-  const MeetingAndNoticeManagementPage({super.key});
+  const MeetingAndNoticeManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.meetingAndNotice,
       title: 'Meeting And Notice Management',
       subtitle:
           'Choose one of the meeting, notice, event, or poll actions below.',
@@ -28,11 +34,15 @@ class MeetingAndNoticeManagementPage extends StatelessWidget {
 }
 
 class TicketManagementPage extends StatelessWidget {
-  const TicketManagementPage({super.key});
+  const TicketManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.ticketManagement,
       title: 'Ticket Management',
       subtitle: 'Choose one of the ticket management actions below.',
       items: const [
@@ -45,11 +55,15 @@ class TicketManagementPage extends StatelessWidget {
 }
 
 class SecurityManagementPage extends StatelessWidget {
-  const SecurityManagementPage({super.key});
+  const SecurityManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.security,
       title: 'Security',
       subtitle:
           'Choose one of the security and guard coordination actions below.',
@@ -67,11 +81,15 @@ class SecurityManagementPage extends StatelessWidget {
 }
 
 class GroupManagementPage extends StatelessWidget {
-  const GroupManagementPage({super.key});
+  const GroupManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.groupManagement,
       title: 'Group Management',
       subtitle: 'Choose one of the group and community actions below.',
       items: const [
@@ -83,11 +101,15 @@ class GroupManagementPage extends StatelessWidget {
 }
 
 class StaffManagementPage extends StatelessWidget {
-  const StaffManagementPage({super.key});
+  const StaffManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.staffManagement,
       title: 'Staff Management',
       subtitle: 'Choose one of the staff operations below.',
       items: const [
@@ -101,11 +123,15 @@ class StaffManagementPage extends StatelessWidget {
 }
 
 class VendorManagementPage extends StatelessWidget {
-  const VendorManagementPage({super.key});
+  const VendorManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.vendorManagement,
       title: 'Vendor Management',
       subtitle: 'Choose one of the vendor actions below.',
       items: const [
@@ -118,11 +144,15 @@ class VendorManagementPage extends StatelessWidget {
 }
 
 class RoleAndAccessPage extends StatelessWidget {
-  const RoleAndAccessPage({super.key});
+  const RoleAndAccessPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.roleAndAccess,
       title: 'Role And Access',
       subtitle: 'Choose one of the role and access control actions below.',
       items: const [
@@ -135,11 +165,15 @@ class RoleAndAccessPage extends StatelessWidget {
 }
 
 class ReportsManagementPage extends StatelessWidget {
-  const ReportsManagementPage({super.key});
+  const ReportsManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.reports,
       title: 'Reports',
       subtitle: 'Choose one of the report categories below.',
       items: const [
@@ -152,11 +186,15 @@ class ReportsManagementPage extends StatelessWidget {
 }
 
 class OthersManagementPage extends StatelessWidget {
-  const OthersManagementPage({super.key});
+  const OthersManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.others,
       title: 'Others',
       subtitle: 'Choose one of the additional service categories below.',
       items: const [
@@ -169,11 +207,15 @@ class OthersManagementPage extends StatelessWidget {
 }
 
 class FinanceManagementPage extends StatelessWidget {
-  const FinanceManagementPage({super.key});
+  const FinanceManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.finance,
       title: 'Finance',
       subtitle: 'Choose one of the finance actions below.',
       items: const [
@@ -189,11 +231,15 @@ class FinanceManagementPage extends StatelessWidget {
 
 class _ModuleHubPage extends StatelessWidget {
   const _ModuleHubPage({
+    required this.embedded,
+    required this.section,
     required this.title,
     required this.subtitle,
     required this.items,
   });
 
+  final bool embedded;
+  final AppSection section;
   final String title;
   final String subtitle;
   final List<_ModuleHubItem> items;
@@ -202,9 +248,73 @@ class _ModuleHubPage extends StatelessWidget {
     return MediaQuery.of(context).size.width < 800;
   }
 
+  Widget _buildContent(BuildContext context, bool mobile) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 1080),
+          child: Container(
+            padding: EdgeInsets.all(mobile ? 18 : 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, color: Colors.black54),
+                ),
+                SizedBox(height: 28),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  crossAxisCount: mobile ? 1 : 3,
+                  crossAxisSpacing: 20,
+                  mainAxisSpacing: 20,
+                  childAspectRatio: mobile ? 1.4 : 1.05,
+                  children: [
+                    for (final item in items)
+                      _ModuleActionCard(title: item.title, icon: item.icon),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = _isMobile(context);
+
+    if (embedded) {
+      return _buildContent(context, mobile);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -213,83 +323,29 @@ class _ModuleHubPage extends StatelessWidget {
         leading: IconButton(
           icon: Icon(Icons.home),
           onPressed: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            openAppShellSection(context, AppSection.dashboard);
           },
         ),
       ),
-      drawer: mobile ? Drawer(child: SideBar()) : null,
+      drawer: mobile
+          ? Drawer(
+              child: SideBar(
+                selectedSection: section,
+                onSectionSelected: (selectedSection) =>
+                    openAppShellSection(context, selectedSection),
+              ),
+            )
+          : null,
       body: BrandBackground(
         child: Row(
           children: [
-            if (!mobile) SideBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 1080),
-                    child: Container(
-                      padding: EdgeInsets.all(mobile ? 18 : 28),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Color(0xFF0F8F82),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.10),
-                            blurRadius: 24,
-                            offset: Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF124B45),
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            subtitle,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          SizedBox(height: 28),
-                          GridView.count(
-                            shrinkWrap: true,
-                            physics: NeverScrollableScrollPhysics(),
-                            padding: EdgeInsets.zero,
-                            crossAxisCount: mobile ? 1 : 3,
-                            crossAxisSpacing: 20,
-                            mainAxisSpacing: 20,
-                            childAspectRatio: mobile ? 1.4 : 1.05,
-                            children: [
-                              for (final item in items)
-                                _ModuleActionCard(
-                                  title: item.title,
-                                  icon: item.icon,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+            if (!mobile)
+              SideBar(
+                selectedSection: section,
+                onSectionSelected: (selectedSection) =>
+                    openAppShellSection(context, selectedSection),
               ),
-            ),
+            Expanded(child: _buildContent(context, mobile)),
           ],
         ),
       ),

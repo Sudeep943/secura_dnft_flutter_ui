@@ -155,6 +155,22 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Widget _buildSectionTitle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Text(
+        _selectedSection.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = _isMobile(context);
@@ -163,6 +179,8 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F8F82),
+        titleSpacing: 12,
+        title: _buildSectionTitle(),
         actions: [_buildNotificationButton(), _buildWorklistButton()],
       ),
       drawer: mobile

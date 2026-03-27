@@ -22,7 +22,7 @@ extension AppSectionX on AppSection {
       case AppSection.bookings:
         return 'Bookings';
       case AppSection.profileManagement:
-        return 'Profile Management';
+        return 'Account Management';
       case AppSection.meetingAndNotice:
         return 'Meeting And Notice Management';
       case AppSection.ticketManagement:

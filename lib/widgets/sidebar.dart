@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
 
-class SideBar extends StatelessWidget {
+class SideBar extends StatefulWidget {
   const SideBar({
     super.key,
     required this.selectedSection,
@@ -16,6 +15,14 @@ class SideBar extends StatelessWidget {
   final AppSection selectedSection;
   final ValueChanged<AppSection> onSectionSelected;
 
+  @override
+  State<SideBar> createState() => _SideBarState();
+}
+
+class _SideBarState extends State<SideBar> {
+  String? _cachedProfileSource;
+  MemoryImage? _cachedProfileImage;
+
   Widget item(
     String title,
     IconData icon, {
@@ -23,30 +30,40 @@ class SideBar extends StatelessWidget {
     VoidCallback? onTap,
   }) {
     final effectiveOnTap =
-        onTap ?? (section == null ? null : () => onSectionSelected(section));
+        onTap ??
+        (section == null ? null : () => widget.onSectionSelected(section));
 
     return _SidebarItem(
       title: title,
       icon: icon,
-      selected: section != null && selectedSection == section,
+      selected: section != null && widget.selectedSection == section,
       onTap: effectiveOnTap,
     );
   }
 
-  Uint8List? _profileImageBytes() {
+  void _syncProfileImage() {
     final profilePic = ApiService.dashboardProfilePic;
     if (profilePic == null || profilePic.trim().isEmpty) {
-      return null;
+      _cachedProfileSource = null;
+      _cachedProfileImage = null;
+      return;
     }
 
     final encodedValue = profilePic.contains(',')
         ? profilePic.split(',').last
         : profilePic;
 
+    if (_cachedProfileSource == encodedValue) {
+      return;
+    }
+
     try {
-      return base64Decode(encodedValue);
+      final bytes = base64Decode(encodedValue);
+      _cachedProfileSource = encodedValue;
+      _cachedProfileImage = MemoryImage(bytes);
     } catch (_) {
-      return null;
+      _cachedProfileSource = encodedValue;
+      _cachedProfileImage = null;
     }
   }
 
@@ -110,7 +127,7 @@ class SideBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profileImageBytes = _profileImageBytes();
+    _syncProfileImage();
     final displayName = _displayName();
     final flatLabel = _flatLabel();
 
@@ -118,39 +135,31 @@ class SideBar extends StatelessWidget {
       width: 240,
       color: Color(0xFF0F8F82),
       child: ListView(
+        padding: EdgeInsets.only(top: 0, bottom: 16),
         children: [
-          SizedBox(height: 10),
-
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18),
-            child: Text(
-              selectedSection.title,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-
-          SizedBox(height: 18),
+          SizedBox(height: 8),
 
           Center(
             child: Container(
-              width: 104,
-              height: 104,
+              width: 188,
+              height: 188,
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  width: 4,
+                ),
               ),
               clipBehavior: Clip.antiAlias,
-              child: profileImageBytes == null
-                  ? Icon(Icons.person, size: 48)
-                  : Image.memory(
-                      profileImageBytes,
+              child: _cachedProfileImage == null
+                  ? Icon(Icons.person, size: 84)
+                  : Image(
+                      image: _cachedProfileImage!,
                       fit: BoxFit.cover,
-                      width: 104,
-                      height: 104,
+                      width: 188,
+                      height: 188,
+                      gaplessPlayback: true,
                     ),
             ),
           ),
@@ -187,12 +196,12 @@ class SideBar extends StatelessWidget {
             Icons.dashboard_outlined,
             section: AppSection.dashboard,
           ),
-          item("Bookings", Icons.event_available, section: AppSection.bookings),
           item(
-            "Profile Management",
+            "Account Management",
             Icons.person_add,
             section: AppSection.profileManagement,
           ),
+          item("Bookings", Icons.event_available, section: AppSection.bookings),
           item(
             "Meeting And Notice",
             Icons.event_note,
@@ -210,19 +219,9 @@ class SideBar extends StatelessWidget {
             section: AppSection.groupManagement,
           ),
           item(
-            "Staff Management",
-            Icons.badge,
-            section: AppSection.staffManagement,
-          ),
-          item(
             "Vendor Management",
             Icons.storefront,
             section: AppSection.vendorManagement,
-          ),
-          item(
-            "Role And Access",
-            Icons.lock_person,
-            section: AppSection.roleAndAccess,
           ),
           item("Reports", Icons.assessment, section: AppSection.reports),
           item("Others", Icons.more_horiz, section: AppSection.others),
@@ -230,7 +229,6 @@ class SideBar extends StatelessWidget {
           item("View Classes", Icons.list),
           item("Admin Section", Icons.admin_panel_settings),
           item("Finance", Icons.account_balance, section: AppSection.finance),
-          item("Worklist", Icons.work),
         ],
       ),
     );

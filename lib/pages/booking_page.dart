@@ -20,6 +20,10 @@ class BookingPage extends StatefulWidget {
 class _BookingPageState extends State<BookingPage> {
   _BookingView _selectedView = _BookingView.menu;
 
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+  static const Color _accentColor = Color(0xFFE0DA84);
+
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
   }
@@ -36,7 +40,69 @@ class _BookingPageState extends State<BookingPage> {
     });
   }
 
+  List<_BookingActionItem> _bookingActions(bool embedded) {
+    return [
+      _BookingActionItem(
+        title: 'Create New Booking',
+        subtitle:
+            'Reserve a hall, set the event details, and continue to payment.',
+        icon: Icons.add_box_rounded,
+        accentColor: _accentColor,
+        onTap: () {
+          if (embedded) {
+            _showEmbeddedView(_BookingView.createBooking);
+            return;
+          }
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CreateBookingPage()),
+          );
+        },
+      ),
+      _BookingActionItem(
+        title: 'View Bookings',
+        subtitle:
+            'Track approvals, payment references, and booking status updates.',
+        icon: Icons.list_alt_rounded,
+        accentColor: const Color(0xFFDDF4F1),
+        onTap: () {
+          if (embedded) {
+            _showEmbeddedView(_BookingView.viewBookings);
+            return;
+          }
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ViewBookingsPage()),
+          );
+        },
+      ),
+      _BookingActionItem(
+        title: 'Check Availability',
+        subtitle: 'Verify hall schedules before raising a new booking request.',
+        icon: Icons.event_available_rounded,
+        accentColor: const Color(0xFFE9F7EE),
+        onTap: () {
+          if (embedded) {
+            _showEmbeddedView(_BookingView.checkAvailability);
+            return;
+          }
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CheckAvailabilityPage(),
+            ),
+          );
+        },
+      ),
+    ];
+  }
+
   Widget _buildBookingContent(BuildContext context, {required bool embedded}) {
+    final bookingActions = _bookingActions(embedded);
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(24),
       child: Center(
@@ -46,35 +112,98 @@ class _BookingPageState extends State<BookingPage> {
             padding: EdgeInsets.all(isMobile(context) ? 18 : 28),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: _brandColor, width: 1.4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
-                  blurRadius: 24,
-                  offset: Offset(0, 10),
+                  color: const Color.fromRGBO(18, 75, 69, 0.08),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
                 ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Bookings',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF124B45),
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    runSpacing: 16,
+                    spacing: 16,
+                    children: [
+                      SizedBox(
+                        width: isMobile(context) ? double.infinity : 520,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Bookings',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Choose one of the booking actions below and manage reservations with a single, focused workflow.',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.14),
+                          ),
+                        ),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Booking Desk',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              '3 Active Actions',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 6),
-                Text(
-                  'Choose one of the booking actions below.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
-                ),
-                SizedBox(height: 28),
+                const SizedBox(height: 26),
                 GridView.count(
                   shrinkWrap: true,
                   physics: NeverScrollableScrollPhysics(),
@@ -82,60 +211,10 @@ class _BookingPageState extends State<BookingPage> {
                   crossAxisCount: isMobile(context) ? 1 : 3,
                   crossAxisSpacing: 20,
                   mainAxisSpacing: 20,
-                  childAspectRatio: isMobile(context) ? 1.4 : 1.05,
-                  children: [
-                    _BookingActionCard(
-                      title: 'Create New Booking',
-                      icon: Icons.add_box,
-                      onTap: () {
-                        if (embedded) {
-                          _showEmbeddedView(_BookingView.createBooking);
-                          return;
-                        }
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CreateBookingPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _BookingActionCard(
-                      title: 'View Bookings',
-                      icon: Icons.list_alt,
-                      onTap: () {
-                        if (embedded) {
-                          _showEmbeddedView(_BookingView.viewBookings);
-                          return;
-                        }
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ViewBookingsPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _BookingActionCard(
-                      title: 'Check Availability',
-                      icon: Icons.event_available,
-                      onTap: () {
-                        if (embedded) {
-                          _showEmbeddedView(_BookingView.checkAvailability);
-                          return;
-                        }
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CheckAvailabilityPage(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                  childAspectRatio: isMobile(context) ? 1.45 : 0.96,
+                  children: bookingActions
+                      .map((action) => _BookingActionCard(action: action))
+                      .toList(),
                 ),
               ],
             ),
@@ -286,15 +365,9 @@ class _EmbeddedBookingHeader extends StatelessWidget {
 }
 
 class _BookingActionCard extends StatefulWidget {
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
+  const _BookingActionCard({required this.action});
 
-  _BookingActionCard({
-    required this.title,
-    required this.icon,
-    required this.onTap,
-  });
+  final _BookingActionItem action;
 
   @override
   __BookingActionCardState createState() => __BookingActionCardState();
@@ -310,31 +383,81 @@ class __BookingActionCardState extends State<_BookingActionCard> {
       onExit: (_) => setState(() => hovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.action.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(20),
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: hovered ? Color(0xFFE0DA84) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: hovered ? const Color(0xFFF8F4C6) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: hovered
+                  ? const Color(0xFFE0DA84)
+                  : const Color(0xFFE6EFED),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: Offset(0, 4),
+                color: const Color.fromRGBO(17, 59, 52, 0.07),
+                blurRadius: hovered ? 24 : 16,
+                offset: Offset(0, hovered ? 12 : 8),
               ),
             ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(widget.icon, size: 50, color: Color(0xFF0F8F82)),
-              SizedBox(height: 15),
+              Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: widget.action.accentColor,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(
+                      widget.action.icon,
+                      size: 32,
+                      color: const Color(0xFF0F8F82),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
               Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                widget.action.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 22,
+                  color: _BookingPageState._brandTextColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                widget.action.subtitle,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  height: 1.45,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: const [
+                  Text(
+                    'Open',
+                    style: TextStyle(
+                      color: Color(0xFF0F8F82),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: Color(0xFF0F8F82),
+                    size: 18,
+                  ),
+                ],
               ),
             ],
           ),
@@ -342,4 +465,20 @@ class __BookingActionCardState extends State<_BookingActionCard> {
       ),
     );
   }
+}
+
+class _BookingActionItem {
+  const _BookingActionItem({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accentColor;
+  final VoidCallback onTap;
 }

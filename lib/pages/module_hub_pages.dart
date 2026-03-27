@@ -244,6 +244,9 @@ class _ModuleHubPage extends StatelessWidget {
   final String subtitle;
   final List<_ModuleHubItem> items;
 
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
   bool _isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
   }
@@ -258,47 +261,116 @@ class _ModuleHubPage extends StatelessWidget {
             padding: EdgeInsets.all(mobile ? 18 : 28),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: _brandColor, width: 1.4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
-                  blurRadius: 24,
-                  offset: Offset(0, 10),
+                  color: const Color.fromRGBO(18, 75, 69, 0.08),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
                 ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF124B45),
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    runSpacing: 16,
+                    spacing: 16,
+                    children: [
+                      SizedBox(
+                        width: mobile ? double.infinity : 520,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.14),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${items.length} Active Actions',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
-                ),
-                SizedBox(height: 28),
-                GridView.count(
+                const SizedBox(height: 26),
+                GridView.builder(
                   shrinkWrap: true,
                   physics: NeverScrollableScrollPhysics(),
                   padding: EdgeInsets.zero,
-                  crossAxisCount: mobile ? 1 : 3,
-                  crossAxisSpacing: 20,
-                  mainAxisSpacing: 20,
-                  childAspectRatio: mobile ? 1.4 : 1.05,
-                  children: [
-                    for (final item in items)
-                      _ModuleActionCard(title: item.title, icon: item.icon),
-                  ],
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: mobile ? 1 : 3,
+                    crossAxisSpacing: 20,
+                    mainAxisSpacing: 20,
+                    mainAxisExtent: mobile ? 170 : 240,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return _ModuleActionCard(
+                      title: item.title,
+                      icon: item.icon,
+                    );
+                  },
                 ),
               ],
             ),
@@ -379,29 +451,77 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
           );
         },
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(20),
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: hovered ? Color(0xFFE0DA84) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: hovered ? const Color(0xFFF8F4C6) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: hovered
+                  ? const Color(0xFFE0DA84)
+                  : const Color(0xFFE6EFED),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: Offset(0, 4),
+                color: const Color.fromRGBO(17, 59, 52, 0.07),
+                blurRadius: hovered ? 24 : 16,
+                offset: Offset(0, hovered ? 12 : 8),
               ),
             ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(widget.icon, size: 50, color: Color(0xFF0F8F82)),
-              SizedBox(height: 15),
-              Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5FBF9),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 32,
+                  color: _ModuleHubPage._brandColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 20,
+                        color: _ModuleHubPage._brandTextColor,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Row(
+                      children: [
+                        Text(
+                          'Open',
+                          style: TextStyle(
+                            color: _ModuleHubPage._brandColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          color: _ModuleHubPage._brandColor,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

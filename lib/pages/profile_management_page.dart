@@ -31,6 +31,20 @@ class _ProfileManagementDraft {
 }
 
 class _ProfileManagementPageState extends State<ProfileManagementPage> {
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+  static const List<String> _createProfileTypeOptions = [
+    'Owner',
+    'Tenant',
+    'Staff',
+  ];
+  static const List<String> _createStaffPositionOptions = [
+    'Electrician',
+    'Plumber',
+    'Estate Manager',
+    'Accountant',
+  ];
+
   final _createProfileFormKey = GlobalKey<FormState>();
   final _updateProfileFormKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
@@ -99,7 +113,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _restoreDrafts();
     _attachCreateDraftListeners();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_selectedSection == _ProfileManagementSection.updateProfile) {
+      if (_selectedSection == _ProfileManagementSection.updateProfile ||
+          _selectedSection == _ProfileManagementSection.viewProfile) {
         _loadProfileForUpdate();
       }
     });
@@ -223,21 +238,23 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _ProfileManagementDraft.selectedSection = section;
     });
 
-    if (section == _ProfileManagementSection.updateProfile) {
+    if (section == _ProfileManagementSection.updateProfile ||
+        section == _ProfileManagementSection.viewProfile) {
       _loadProfileForUpdate();
     }
   }
 
   void _closeSection() {
-    final closingUpdateSection =
-        _selectedSection == _ProfileManagementSection.updateProfile;
+    final closingProfileSection =
+        _selectedSection == _ProfileManagementSection.updateProfile ||
+        _selectedSection == _ProfileManagementSection.viewProfile;
 
     setState(() {
       _selectedSection = null;
       _ProfileManagementDraft.selectedSection = null;
     });
 
-    if (closingUpdateSection) {
+    if (closingProfileSection) {
       _clearUpdateProfileForm();
     }
   }
@@ -791,8 +808,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         'pin': _pinController.text.trim(),
         'addressType': _addressType,
       },
-      'profileType': _profileType,
-      'profilePosition': _profilePosition,
+      'profileType': _profileType?.toUpperCase(),
+      'profilePosition': _profilePosition?.toUpperCase(),
       'gender': _gender,
     };
 
@@ -817,7 +834,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         .toString();
     final isSuccess = messageCode.startsWith('SUCC');
 
-    _showStatusModal(
+    await _showStatusModal(
       title: isSuccess ? 'Profile Created' : 'Profile Creation Failed',
       message: message,
       isSuccess: isSuccess,
@@ -826,6 +843,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
 
     if (isSuccess) {
       _resetCreateProfileForm();
+      _closeSection();
     }
   }
 
@@ -865,12 +883,14 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     switch (_selectedSection) {
       case _ProfileManagementSection.createProfile:
         return 'Create Profile';
+      case _ProfileManagementSection.viewProfile:
+        return 'View Profile';
       case _ProfileManagementSection.updateProfile:
         return 'Update Profile';
       case _ProfileManagementSection.updatePassword:
         return 'Update Password';
       case null:
-        return 'Profile Management';
+        return 'Account Management';
     }
   }
 
@@ -878,13 +898,21 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     switch (_selectedSection) {
       case _ProfileManagementSection.createProfile:
         return 'Fill in the required details and submit a new resident profile.';
+      case _ProfileManagementSection.viewProfile:
+        return 'Review the profile fetched from the logged-in header, including profile picture, access details, contact information, and address.';
       case _ProfileManagementSection.updateProfile:
         return 'Fetch the existing profile, edit allowed fields, update the profile picture, and submit changes.';
       case _ProfileManagementSection.updatePassword:
         return 'Update account credentials from the password management form.';
       case null:
-        return 'Choose one of the profile management actions below.';
+        return 'Choose one of the account management actions below.';
     }
+  }
+
+  void _showAccountActionMessage(String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$title is ready for the next step.')),
+    );
   }
 
   Widget _buildSelectedSectionContent(bool mobile) {
@@ -916,6 +944,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           onProfileTypeChanged: (value) {
             setState(() {
               _profileType = value;
+              if (value != 'Staff') {
+                _profilePosition = null;
+                _ProfileManagementDraft.createProfilePosition = null;
+              }
               _ProfileManagementDraft.createProfileType = value;
             });
           },
@@ -942,6 +974,14 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           emailValidator: _emailValidator,
           submitting: _creatingProfile,
           onSubmit: _submitCreateProfile,
+          mobile: mobile,
+        );
+      case _ProfileManagementSection.viewProfile:
+        return _ViewProfileTab(
+          profile: _loadedProfile,
+          loading: _loadingProfile,
+          profileImageBytes: _effectiveProfileImageBytes,
+          onRefresh: _loadProfileForUpdate,
           mobile: mobile,
         );
       case _ProfileManagementSection.updateProfile:
@@ -1028,68 +1068,184 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                   padding: EdgeInsets.all(mobile ? 18 : 28),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Color(0xFF0F8F82), width: 1.5),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: _brandColor, width: 1.4),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.10),
-                        blurRadius: 24,
-                        offset: Offset(0, 10),
+                        color: const Color.fromRGBO(18, 75, 69, 0.08),
+                        blurRadius: 30,
+                        offset: const Offset(0, 14),
                       ),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        _sectionTitle(),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF124B45),
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          runSpacing: 16,
+                          spacing: 16,
+                          children: [
+                            SizedBox(
+                              width: mobile ? double.infinity : 520,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _sectionTitle(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _sectionSubtitle(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.14),
+                                ),
+                              ),
+                              child: const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Account Desk',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    '9 Active Actions',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: 6),
-                      Text(
-                        _sectionSubtitle(),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15, color: Colors.black54),
-                      ),
-                      SizedBox(height: 28),
-                      GridView.count(
+                      SizedBox(height: 26),
+                      GridView.builder(
                         shrinkWrap: true,
                         physics: NeverScrollableScrollPhysics(),
-                        crossAxisCount: mobile ? 1 : 3,
-                        crossAxisSpacing: 20,
-                        mainAxisSpacing: 20,
-                        childAspectRatio: mobile ? 2.2 : 1.18,
-                        children: [
-                          _ProfileActionCard(
-                            title: 'Create Profile',
-                            icon: Icons.person_add_alt_1,
-                            selected: false,
-                            onTap: () => _openSection(
-                              _ProfileManagementSection.createProfile,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: mobile ? 1 : 3,
+                          crossAxisSpacing: 20,
+                          mainAxisSpacing: 20,
+                          mainAxisExtent: mobile ? 170 : 240,
+                        ),
+                        itemCount: 9,
+                        itemBuilder: (context, index) {
+                          final items = [
+                            _ProfileActionCard(
+                              title: 'Create Profile',
+                              icon: Icons.person_add_alt_1,
+                              selected: false,
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.createProfile,
+                              ),
                             ),
-                          ),
-                          _ProfileActionCard(
-                            title: 'Update Profile',
-                            icon: Icons.manage_accounts,
-                            selected: false,
-                            onTap: () => _openSection(
-                              _ProfileManagementSection.updateProfile,
+                            _ProfileActionCard(
+                              title: 'Update Profile',
+                              icon: Icons.manage_accounts,
+                              selected: false,
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.updateProfile,
+                              ),
                             ),
-                          ),
-                          _ProfileActionCard(
-                            title: 'Update Password',
-                            icon: Icons.password,
-                            selected: false,
-                            onTap: () => _openSection(
-                              _ProfileManagementSection.updatePassword,
+                            _ProfileActionCard(
+                              title: 'Update Password',
+                              icon: Icons.password,
+                              selected: false,
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.updatePassword,
+                              ),
                             ),
-                          ),
-                        ],
+                            _ProfileActionCard(
+                              title: 'View Profile Details',
+                              icon: Icons.badge_outlined,
+                              selected: false,
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.viewProfile,
+                              ),
+                            ),
+                            _ProfileActionCard(
+                              title: 'Tenant Management',
+                              icon: Icons.apartment_outlined,
+                              selected: false,
+                              onTap: () => _showAccountActionMessage(
+                                'Tenant Management',
+                              ),
+                            ),
+                            _ProfileActionCard(
+                              title: 'Owner Management',
+                              icon: Icons.home_work_outlined,
+                              selected: false,
+                              onTap: () =>
+                                  _showAccountActionMessage('Owner Management'),
+                            ),
+                            _ProfileActionCard(
+                              title: 'Staff Management',
+                              icon: Icons.groups_outlined,
+                              selected: false,
+                              onTap: () =>
+                                  _showAccountActionMessage('Staff Management'),
+                            ),
+                            _ProfileActionCard(
+                              title: 'Role And Access',
+                              icon: Icons.lock_person_outlined,
+                              selected: false,
+                              onTap: () => openAppShellSection(
+                                context,
+                                AppSection.roleAndAccess,
+                              ),
+                            ),
+                            _ProfileActionCard(
+                              title: 'Flat Management',
+                              icon: Icons.door_front_door_outlined,
+                              selected: false,
+                              onTap: () =>
+                                  _showAccountActionMessage('Flat Management'),
+                            ),
+                          ];
+
+                          return items[index];
+                        },
                       ),
                     ],
                   ),
@@ -1119,7 +1275,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
-        title: Text('Profile Management'),
+        title: Text('Account Management'),
       ),
       drawer: mobile
           ? Drawer(
@@ -1147,7 +1303,12 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   }
 }
 
-enum _ProfileManagementSection { createProfile, updateProfile, updatePassword }
+enum _ProfileManagementSection {
+  createProfile,
+  viewProfile,
+  updateProfile,
+  updatePassword,
+}
 
 class _ProfileImageEditorDialog extends StatefulWidget {
   const _ProfileImageEditorDialog({required this.imageBytes});
@@ -1582,32 +1743,80 @@ class _ProfileActionCardState extends State<_ProfileActionCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(20),
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: active ? Color(0xFFE0DA84) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: active ? const Color(0xFFF8F4C6) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: widget.selected ? Color(0xFF0F8F82) : Color(0xFFE4ECEA),
+              color: widget.selected
+                  ? _ProfileManagementPageState._brandColor
+                  : active
+                  ? const Color(0xFFE0DA84)
+                  : const Color(0xFFE6EFED),
               width: widget.selected ? 2 : 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 8,
-                offset: Offset(0, 4),
+                color: const Color.fromRGBO(17, 59, 52, 0.07),
+                blurRadius: active ? 24 : 16,
+                offset: Offset(0, active ? 12 : 8),
               ),
             ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(widget.icon, size: 50, color: Color(0xFF0F8F82)),
-              SizedBox(height: 15),
-              Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5FBF9),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 32,
+                  color: _ProfileManagementPageState._brandColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 20,
+                        color: _ProfileManagementPageState._brandTextColor,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Row(
+                      children: [
+                        Text(
+                          'Open',
+                          style: TextStyle(
+                            color: _ProfileManagementPageState._brandColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          color: _ProfileManagementPageState._brandColor,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1701,7 +1910,7 @@ class _CreateProfileTab extends StatelessWidget {
               border: Border.all(color: Color(0xFFD6ECE7)),
             ),
             child: Text(
-              'Mandatory fields: First Name, Last Name, Mobile Number, Email ID, Profile Type, Profile Position, and Gender.',
+              'Mandatory fields: First Name, Last Name, Mobile Number, Email ID, Profile Type, and Gender. Profile Position is mandatory only when Profile Type is Staff.',
               style: TextStyle(
                 color: Color(0xFF124B45),
                 fontWeight: FontWeight.w600,
@@ -1743,25 +1952,31 @@ class _CreateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Profile Flat No',
+                label: 'Flat No.',
                 controller: profileFlatNoController,
               ),
               _ProfileDropdownField(
                 label: 'Profile Type *',
                 value: profileType,
-                items: const ['OWNER', 'TENANT', 'FAMILY', 'STAFF'],
+                items: _ProfileManagementPageState._createProfileTypeOptions,
                 onChanged: onProfileTypeChanged,
                 validator: (value) => value == null || value.isEmpty
                     ? 'Profile Type is required'
                     : null,
               ),
               _ProfileDropdownField(
-                label: 'Profile Position *',
+                label: profileType == 'Staff'
+                    ? 'Profile Position *'
+                    : 'Profile Position',
                 value: profilePosition,
-                items: const ['MEMBER', 'OWNER', 'TENANT', 'COMMITTEE'],
-                onChanged: onProfilePositionChanged,
-                validator: (value) => value == null || value.isEmpty
-                    ? 'Profile Position is required'
+                items: _ProfileManagementPageState._createStaffPositionOptions,
+                enabled: profileType == 'Staff',
+                onChanged: profileType == 'Staff'
+                    ? onProfilePositionChanged
+                    : null,
+                validator: (value) =>
+                    profileType == 'Staff' && (value == null || value.isEmpty)
+                    ? 'Profile Position is required for Staff'
                     : null,
               ),
             ],
@@ -1778,12 +1993,6 @@ class _CreateProfileTab extends StatelessWidget {
                 validator: (value) => value == null || value.isEmpty
                     ? 'Gender is required'
                     : null,
-              ),
-              _ProfileDropdownField(
-                label: 'Address Type',
-                value: addressType,
-                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
-                onChanged: onAddressTypeChanged,
               ),
             ],
           ),
@@ -1852,18 +2061,24 @@ class _CreateProfileTab extends StatelessWidget {
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
+              _ProfileDropdownField(
+                label: 'Address Type',
+                value: addressType,
+                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
+                onChanged: onAddressTypeChanged,
+              ),
               _ProfileInputField(
                 label: 'Landmark',
                 controller: landmarkController,
               ),
               _ProfileInputField(label: 'City', controller: cityController),
-              _ProfileInputField(label: 'State', controller: stateController),
             ],
           ),
           SizedBox(height: 16),
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
+              _ProfileInputField(label: 'State', controller: stateController),
               _ProfileInputField(
                 label: 'Post Office',
                 controller: postOfficeController,
@@ -1872,6 +2087,12 @@ class _CreateProfileTab extends StatelessWidget {
                 label: 'Police Station',
                 controller: policeStationController,
               ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
               _ProfileInputField(
                 label: 'Pin',
                 controller: pinController,
@@ -2167,7 +2388,7 @@ class _UpdateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Profile Flat No',
+                label: 'Flat No.',
                 controller: profileFlatNoController,
               ),
               _ProfileDropdownField(
@@ -2204,13 +2425,8 @@ class _UpdateProfileTab extends StatelessWidget {
                 label: 'Gender',
                 value: gender,
                 items: const ['MALE', 'FEMALE', 'OTHER'],
-                onChanged: onGenderChanged,
-              ),
-              _ProfileDropdownField(
-                label: 'Address Type',
-                value: addressType,
-                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
-                onChanged: onAddressTypeChanged,
+                enabled: false,
+                onChanged: null,
               ),
             ],
           ),
@@ -2279,18 +2495,24 @@ class _UpdateProfileTab extends StatelessWidget {
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
+              _ProfileDropdownField(
+                label: 'Address Type',
+                value: addressType,
+                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
+                onChanged: onAddressTypeChanged,
+              ),
               _ProfileInputField(
                 label: 'Landmark',
                 controller: landmarkController,
               ),
               _ProfileInputField(label: 'City', controller: cityController),
-              _ProfileInputField(label: 'State', controller: stateController),
             ],
           ),
           SizedBox(height: 16),
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
+              _ProfileInputField(label: 'State', controller: stateController),
               _ProfileInputField(
                 label: 'Post Office',
                 controller: postOfficeController,
@@ -2299,6 +2521,12 @@ class _UpdateProfileTab extends StatelessWidget {
                 label: 'Police Station',
                 controller: policeStationController,
               ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
               _ProfileInputField(
                 label: 'Pin',
                 controller: pinController,
@@ -2326,6 +2554,596 @@ class _UpdateProfileTab extends StatelessWidget {
                 backgroundColor: Color(0xFF0F8F82),
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewProfileTab extends StatelessWidget {
+  const _ViewProfileTab({
+    required this.profile,
+    required this.loading,
+    required this.profileImageBytes,
+    required this.onRefresh,
+    required this.mobile,
+  });
+
+  final Map<String, dynamic>? profile;
+  final bool loading;
+  final Uint8List? profileImageBytes;
+  final Future<void> Function() onRefresh;
+  final bool mobile;
+
+  String _textValue(dynamic value, {String fallback = 'Not available'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  Map<String, dynamic> _mapValue(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (profile == null && loading) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 36),
+          child: CircularProgressIndicator(color: Color(0xFF0F8F82)),
+        ),
+      );
+    }
+
+    if (profile == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Color(0xFFF4FBFA),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Color(0xFFD5EBE7)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No profile has been fetched yet.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Use the logged-in header to load the resident profile and show the response on screen.',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 18),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: loading ? null : onRefresh,
+              icon: Icon(Icons.refresh),
+              label: Text('Fetch Profile'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final profileName = _mapValue(profile!['prflName']);
+    final header = _mapValue(profile!['genericHeader']);
+    final contactDetails = _mapValue(profile!['contactDetails']);
+    final address = _mapValue(profile!['prflOthrAdrss']);
+    final fullName = [
+      _textValue(profileName['firstName'], fallback: ''),
+      _textValue(profileName['middleName'], fallback: ''),
+      _textValue(profileName['lastName'], fallback: ''),
+    ].where((part) => part.isNotEmpty).join(' ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (loading) ...[
+          LinearProgressIndicator(color: Color(0xFF0F8F82)),
+          SizedBox(height: 18),
+        ],
+        Container(
+          padding: EdgeInsets.all(mobile ? 18 : 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF0F8F82), Color(0xFF1D6D64)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0xFF124B45).withValues(alpha: 0.18),
+                blurRadius: 26,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: mobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ProfileOverviewAvatar(
+                      name: fullName.isEmpty ? 'Resident Profile' : fullName,
+                      imageBytes: profileImageBytes,
+                    ),
+                    SizedBox(height: 18),
+                    _ProfileOverviewText(fullName: fullName, profile: profile!),
+                  ],
+                )
+              : Row(
+                  children: [
+                    _ProfileOverviewAvatar(
+                      name: fullName.isEmpty ? 'Resident Profile' : fullName,
+                      imageBytes: profileImageBytes,
+                    ),
+                    SizedBox(width: 24),
+                    Expanded(
+                      child: _ProfileOverviewText(
+                        fullName: fullName,
+                        profile: profile!,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+        SizedBox(height: 18),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: loading ? null : onRefresh,
+            icon: Icon(Icons.refresh),
+            label: Text('Refresh Profile'),
+          ),
+        ),
+        SizedBox(height: 18),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            _ProfileInfoChip(
+              icon: Icons.badge_outlined,
+              label: 'Profile ID',
+              value: _textValue(profile!['prflId']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.home_work_outlined,
+              label: 'Flat No',
+              value: _textValue(profile!['prflFlatNo']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.person_outline,
+              label: 'Type',
+              value: _textValue(profile!['prflType']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.work_outline,
+              label: 'Position',
+              value: _textValue(profile!['prflPosition']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.verified_user_outlined,
+              label: 'Status',
+              value: _textValue(profile!['prflStus']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.wc_outlined,
+              label: 'Gender',
+              value: _textValue(profile!['gender']),
+            ),
+          ],
+        ),
+        SizedBox(height: 22),
+        _ProfileViewSection(
+          title: 'Contact Details',
+          icon: Icons.call_outlined,
+          child: _ProfileSummaryGrid(
+            mobile: mobile,
+            children: [
+              _ProfileSummaryTile(
+                label: 'Mobile Number',
+                value: _textValue(contactDetails['mobileNumber']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Email ID',
+                value: _textValue(contactDetails['emailId']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Landline Number',
+                value: _textValue(contactDetails['landlinenumber']),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18),
+        _ProfileViewSection(
+          title: 'Address',
+          icon: Icons.location_on_outlined,
+          child: _ProfileSummaryGrid(
+            mobile: mobile,
+            children: [
+              _ProfileSummaryTile(
+                label: 'Address Line 1',
+                value: _textValue(address['addressLine1']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Address Line 2',
+                value: _textValue(address['addressLine2']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Address Line 3',
+                value: _textValue(address['addressLine3']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Address Line 4',
+                value: _textValue(address['addressLine4']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Address Type',
+                value: _textValue(address['addressType']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Landmark',
+                value: _textValue(address['landmark']),
+              ),
+              _ProfileSummaryTile(
+                label: 'City',
+                value: _textValue(address['city']),
+              ),
+              _ProfileSummaryTile(
+                label: 'State',
+                value: _textValue(address['state']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Post Office',
+                value: _textValue(address['postOffice']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Police Station',
+                value: _textValue(address['policeStation']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Pin',
+                value: _textValue(address['pin']),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18),
+        _ProfileViewSection(
+          title: 'Access Context',
+          icon: Icons.admin_panel_settings_outlined,
+          child: _ProfileSummaryGrid(
+            mobile: mobile,
+            children: [
+              _ProfileSummaryTile(
+                label: 'User ID',
+                value: _textValue(header['userId']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Apartment Name',
+                value: _textValue(profile!['apartmentName']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Role',
+                value: _textValue(header['role']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Access',
+                value: _textValue(header['access']),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18),
+        _ProfileViewSection(
+          title: 'Audit Trail',
+          icon: Icons.history_toggle_off,
+          child: _ProfileSummaryGrid(
+            mobile: mobile,
+            children: [
+              _ProfileSummaryTile(
+                label: 'Created On',
+                value: _textValue(profile!['creatTs']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Created By',
+                value: _textValue(profile!['creatUsrName']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Last Updated By',
+                value: _textValue(profile!['lstUpdtUsrName']),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileOverviewAvatar extends StatelessWidget {
+  const _ProfileOverviewAvatar({required this.name, this.imageBytes});
+
+  final String name;
+  final Uint8List? imageBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0].toUpperCase())
+        .join();
+
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.45),
+          width: 3,
+        ),
+        image: imageBytes == null
+            ? null
+            : DecorationImage(
+                image: MemoryImage(imageBytes!),
+                fit: BoxFit.cover,
+              ),
+      ),
+      child: imageBytes == null
+          ? Center(
+              child: Text(
+                initials.isEmpty ? 'RP' : initials,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+class _ProfileOverviewText extends StatelessWidget {
+  const _ProfileOverviewText({required this.fullName, required this.profile});
+
+  final String fullName;
+  final Map<String, dynamic> profile;
+
+  String _textValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? 'Not available' : text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          fullName.isEmpty ? 'Resident Profile' : fullName,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+          ),
+        ),
+        SizedBox(height: 10),
+        Text(
+          '${_textValue(profile['prflType'])} • ${_textValue(profile['prflPosition'])} • ${_textValue(profile['prflStus'])}',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.88),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileInfoChip extends StatelessWidget {
+  const _ProfileInfoChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(minWidth: 160),
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Color(0xFFD7ECE8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Color(0xFF0F8F82), size: 20),
+          SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileViewSection extends StatelessWidget {
+  const _ProfileViewSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Color(0xFFDDEDEA)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF124B45).withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Color(0xFFF2FBF8),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: Color(0xFF0F8F82)),
+              ),
+              SizedBox(width: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF124B45),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileSummaryGrid extends StatelessWidget {
+  const _ProfileSummaryGrid({required this.children, required this.mobile});
+
+  final List<Widget> children;
+  final bool mobile;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: mobile ? 1 : 2,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        mainAxisExtent: 92,
+      ),
+      itemCount: children.length,
+      itemBuilder: (context, index) => children[index],
+    );
+  }
+}
+
+class _ProfileSummaryTile extends StatelessWidget {
+  const _ProfileSummaryTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Color(0xFFF8FCFB),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Color(0xFFE1F0EC)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Color(0xFF124B45),
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

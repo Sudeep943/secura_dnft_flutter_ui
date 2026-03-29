@@ -26,23 +26,29 @@ class _ProfileManagementDraft {
   static final Map<String, String> createProfile = {};
   static String? createProfileType;
   static String? createProfilePosition;
+  static String? createProfileKind;
   static String? createGender;
+  static bool createHasOtherAddress = false;
   static String createAddressType = 'RESIDENTIAL';
+  static String createPrimaryAddressType = 'RESIDENTIAL';
 }
 
 class _ProfileManagementPageState extends State<ProfileManagementPage> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
   static const List<String> _createProfileTypeOptions = [
-    'Owner',
-    'Tenant',
-    'Staff',
+    'OWNER',
+    'TENANT',
+    'STAFF',
   ];
   static const List<String> _createStaffPositionOptions = [
     'Electrician',
     'Plumber',
-    'Estate Manager',
-    'Accountant',
+    'Estate Manger',
+  ];
+  static const List<String> _profileKindOptions = [
+    'Indivisual',
+    'Organization',
   ];
 
   final _createProfileFormKey = GlobalKey<FormState>();
@@ -51,6 +57,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _middleNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _profileFlatNoController = TextEditingController();
+  final _profileDobController = TextEditingController();
   final _mobileNumberController = TextEditingController();
   final _emailIdController = TextEditingController();
   final _landlineNumberController = TextEditingController();
@@ -64,11 +71,22 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _postOfficeController = TextEditingController();
   final _policeStationController = TextEditingController();
   final _pinController = TextEditingController();
+  final _primaryAddressLine1Controller = TextEditingController();
+  final _primaryAddressLine2Controller = TextEditingController();
+  final _primaryAddressLine3Controller = TextEditingController();
+  final _primaryAddressLine4Controller = TextEditingController();
+  final _primaryLandmarkController = TextEditingController();
+  final _primaryCityController = TextEditingController();
+  final _primaryStateController = TextEditingController();
+  final _primaryPostOfficeController = TextEditingController();
+  final _primaryPoliceStationController = TextEditingController();
+  final _primaryPinController = TextEditingController();
 
   final _updateFirstNameController = TextEditingController();
   final _updateMiddleNameController = TextEditingController();
   final _updateLastNameController = TextEditingController();
   final _updateProfileIdController = TextEditingController();
+  final _updateApartmentNameController = TextEditingController();
   final _updateProfileDobController = TextEditingController();
   final _updateProfileFlatNoController = TextEditingController();
   final _updateMobileNumberController = TextEditingController();
@@ -84,17 +102,33 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _updatePostOfficeController = TextEditingController();
   final _updatePoliceStationController = TextEditingController();
   final _updatePinController = TextEditingController();
+  final _updatePrimaryAddressLine1Controller = TextEditingController();
+  final _updatePrimaryAddressLine2Controller = TextEditingController();
+  final _updatePrimaryAddressLine3Controller = TextEditingController();
+  final _updatePrimaryAddressLine4Controller = TextEditingController();
+  final _updatePrimaryLandmarkController = TextEditingController();
+  final _updatePrimaryCityController = TextEditingController();
+  final _updatePrimaryStateController = TextEditingController();
+  final _updatePrimaryPostOfficeController = TextEditingController();
+  final _updatePrimaryPoliceStationController = TextEditingController();
+  final _updatePrimaryPinController = TextEditingController();
 
   _ProfileManagementSection? _selectedSection;
   String? _profileType;
   String? _profilePosition;
+  String? _profileKind;
   String? _gender;
+  bool _createHasOtherAddress = false;
   String _addressType = 'RESIDENTIAL';
+  String _primaryAddressType = 'RESIDENTIAL';
   String? _updateGender;
+  bool _updateDeleteOtherAddress = false;
   String _updateAddressType = 'RESIDENTIAL';
+  String _updatePrimaryAddressType = 'RESIDENTIAL';
   String? _updateProfileType;
   String? _updateProfilePosition;
   String? _updateProfileStatus;
+  String? _updateRole;
   bool _creatingProfile = false;
   bool _loadingProfile = false;
   bool _updatingProfile = false;
@@ -126,6 +160,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _middleNameController.dispose();
     _lastNameController.dispose();
     _profileFlatNoController.dispose();
+    _profileDobController.dispose();
     _mobileNumberController.dispose();
     _emailIdController.dispose();
     _landlineNumberController.dispose();
@@ -139,10 +174,21 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _postOfficeController.dispose();
     _policeStationController.dispose();
     _pinController.dispose();
+    _primaryAddressLine1Controller.dispose();
+    _primaryAddressLine2Controller.dispose();
+    _primaryAddressLine3Controller.dispose();
+    _primaryAddressLine4Controller.dispose();
+    _primaryLandmarkController.dispose();
+    _primaryCityController.dispose();
+    _primaryStateController.dispose();
+    _primaryPostOfficeController.dispose();
+    _primaryPoliceStationController.dispose();
+    _primaryPinController.dispose();
     _updateFirstNameController.dispose();
     _updateMiddleNameController.dispose();
     _updateLastNameController.dispose();
     _updateProfileIdController.dispose();
+    _updateApartmentNameController.dispose();
     _updateProfileDobController.dispose();
     _updateProfileFlatNoController.dispose();
     _updateMobileNumberController.dispose();
@@ -158,6 +204,16 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updatePostOfficeController.dispose();
     _updatePoliceStationController.dispose();
     _updatePinController.dispose();
+    _updatePrimaryAddressLine1Controller.dispose();
+    _updatePrimaryAddressLine2Controller.dispose();
+    _updatePrimaryAddressLine3Controller.dispose();
+    _updatePrimaryAddressLine4Controller.dispose();
+    _updatePrimaryLandmarkController.dispose();
+    _updatePrimaryCityController.dispose();
+    _updatePrimaryStateController.dispose();
+    _updatePrimaryPostOfficeController.dispose();
+    _updatePrimaryPoliceStationController.dispose();
+    _updatePrimaryPinController.dispose();
     super.dispose();
   }
 
@@ -172,6 +228,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         _ProfileManagementDraft.createProfile['lastName'] ?? '';
     _profileFlatNoController.text =
         _ProfileManagementDraft.createProfile['profileFlatNo'] ?? '';
+    _profileDobController.text =
+        _ProfileManagementDraft.createProfile['profileDob'] ?? '';
     _mobileNumberController.text =
         _ProfileManagementDraft.createProfile['mobileNumber'] ?? '';
     _emailIdController.text =
@@ -196,11 +254,34 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _policeStationController.text =
         _ProfileManagementDraft.createProfile['policeStation'] ?? '';
     _pinController.text = _ProfileManagementDraft.createProfile['pin'] ?? '';
+    _primaryAddressLine1Controller.text =
+        _ProfileManagementDraft.createProfile['primaryAddressLine1'] ?? '';
+    _primaryAddressLine2Controller.text =
+        _ProfileManagementDraft.createProfile['primaryAddressLine2'] ?? '';
+    _primaryAddressLine3Controller.text =
+        _ProfileManagementDraft.createProfile['primaryAddressLine3'] ?? '';
+    _primaryAddressLine4Controller.text =
+        _ProfileManagementDraft.createProfile['primaryAddressLine4'] ?? '';
+    _primaryLandmarkController.text =
+        _ProfileManagementDraft.createProfile['primaryLandmark'] ?? '';
+    _primaryCityController.text =
+        _ProfileManagementDraft.createProfile['primaryCity'] ?? '';
+    _primaryStateController.text =
+        _ProfileManagementDraft.createProfile['primaryState'] ?? '';
+    _primaryPostOfficeController.text =
+        _ProfileManagementDraft.createProfile['primaryPostOffice'] ?? '';
+    _primaryPoliceStationController.text =
+        _ProfileManagementDraft.createProfile['primaryPoliceStation'] ?? '';
+    _primaryPinController.text =
+        _ProfileManagementDraft.createProfile['primaryPin'] ?? '';
 
     _profileType = _ProfileManagementDraft.createProfileType;
     _profilePosition = _ProfileManagementDraft.createProfilePosition;
+    _profileKind = _ProfileManagementDraft.createProfileKind;
     _gender = _ProfileManagementDraft.createGender;
+    _createHasOtherAddress = _ProfileManagementDraft.createHasOtherAddress;
     _addressType = _ProfileManagementDraft.createAddressType;
+    _primaryAddressType = _ProfileManagementDraft.createPrimaryAddressType;
   }
 
   void _attachCreateDraftListeners() {
@@ -208,6 +289,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _bindCreateDraftController(_middleNameController, 'middleName');
     _bindCreateDraftController(_lastNameController, 'lastName');
     _bindCreateDraftController(_profileFlatNoController, 'profileFlatNo');
+    _bindCreateDraftController(_profileDobController, 'profileDob');
     _bindCreateDraftController(_mobileNumberController, 'mobileNumber');
     _bindCreateDraftController(_emailIdController, 'emailId');
     _bindCreateDraftController(_landlineNumberController, 'landlineNumber');
@@ -221,6 +303,34 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _bindCreateDraftController(_postOfficeController, 'postOffice');
     _bindCreateDraftController(_policeStationController, 'policeStation');
     _bindCreateDraftController(_pinController, 'pin');
+    _bindCreateDraftController(
+      _primaryAddressLine1Controller,
+      'primaryAddressLine1',
+    );
+    _bindCreateDraftController(
+      _primaryAddressLine2Controller,
+      'primaryAddressLine2',
+    );
+    _bindCreateDraftController(
+      _primaryAddressLine3Controller,
+      'primaryAddressLine3',
+    );
+    _bindCreateDraftController(
+      _primaryAddressLine4Controller,
+      'primaryAddressLine4',
+    );
+    _bindCreateDraftController(_primaryLandmarkController, 'primaryLandmark');
+    _bindCreateDraftController(_primaryCityController, 'primaryCity');
+    _bindCreateDraftController(_primaryStateController, 'primaryState');
+    _bindCreateDraftController(
+      _primaryPostOfficeController,
+      'primaryPostOffice',
+    );
+    _bindCreateDraftController(
+      _primaryPoliceStationController,
+      'primaryPoliceStation',
+    );
+    _bindCreateDraftController(_primaryPinController, 'primaryPin');
   }
 
   void _bindCreateDraftController(
@@ -372,6 +482,129 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     return raw;
   }
 
+  bool _hasAddressValues({
+    required TextEditingController line1Controller,
+    required TextEditingController line2Controller,
+    required TextEditingController line3Controller,
+    required TextEditingController line4Controller,
+    required TextEditingController landmarkController,
+    required TextEditingController cityController,
+    required TextEditingController stateController,
+    required TextEditingController postOfficeController,
+    required TextEditingController policeStationController,
+    required TextEditingController pinController,
+  }) {
+    final controllers = [
+      line1Controller,
+      line2Controller,
+      line3Controller,
+      line4Controller,
+      landmarkController,
+      cityController,
+      stateController,
+      postOfficeController,
+      policeStationController,
+      pinController,
+    ];
+
+    return controllers.any((controller) => controller.text.trim().isNotEmpty);
+  }
+
+  bool _hasAddressMap(Map<String, dynamic> address) {
+    const keys = [
+      'addressLine1',
+      'addressLine2',
+      'addressLine3',
+      'addressLine4',
+      'landmark',
+      'city',
+      'state',
+      'postOffice',
+      'policeStation',
+      'pin',
+      'addressType',
+    ];
+
+    return keys.any((key) => _stringValue(address[key]).isNotEmpty);
+  }
+
+  String? _formatDateForRequest(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    try {
+      final parsed = DateTime.parse(trimmed);
+      return parsed.toIso8601String();
+    } catch (_) {
+      return trimmed.contains('T') ? trimmed : '${trimmed}T00:00:00';
+    }
+  }
+
+  Map<String, dynamic> _buildHeaderRequest() {
+    return {
+      'userId': _readHeaderValue(['userId']),
+      'apartmentId': _readHeaderValue(['apartmentId']),
+      'role': _readHeaderValue(['role']),
+      'access': _readHeaderValue(['access']),
+      'flatNo': _readHeaderValue(['flatNo']),
+    };
+  }
+
+  Map<String, dynamic> _buildAddressRequest({
+    required TextEditingController line1Controller,
+    required TextEditingController line2Controller,
+    required TextEditingController line3Controller,
+    required TextEditingController line4Controller,
+    required TextEditingController landmarkController,
+    required TextEditingController cityController,
+    required TextEditingController stateController,
+    required TextEditingController postOfficeController,
+    required TextEditingController policeStationController,
+    required TextEditingController pinController,
+    required String addressType,
+  }) {
+    return {
+      'addressLine1': _nullableControllerValue(line1Controller) ?? '',
+      'addressLine2': _nullableControllerValue(line2Controller) ?? '',
+      'addressLine3': _nullableControllerValue(line3Controller) ?? '',
+      'addressLine4': _nullableControllerValue(line4Controller) ?? '',
+      'landmark': _nullableControllerValue(landmarkController) ?? '',
+      'city': _nullableControllerValue(cityController) ?? '',
+      'state': _nullableControllerValue(stateController) ?? '',
+      'postOffice': _nullableControllerValue(postOfficeController) ?? '',
+      'policeStation': _nullableControllerValue(policeStationController) ?? '',
+      'pin': _nullableControllerValue(pinController) ?? '',
+      'addressType': addressType,
+    };
+  }
+
+  void _populateAddressControllers({
+    required Map<String, dynamic> address,
+    required TextEditingController line1Controller,
+    required TextEditingController line2Controller,
+    required TextEditingController line3Controller,
+    required TextEditingController line4Controller,
+    required TextEditingController landmarkController,
+    required TextEditingController cityController,
+    required TextEditingController stateController,
+    required TextEditingController postOfficeController,
+    required TextEditingController policeStationController,
+    required TextEditingController pinController,
+  }) {
+    _setControllerValue(line1Controller, address['addressLine1']);
+    _setControllerValue(line2Controller, address['addressLine2']);
+    _setControllerValue(line3Controller, address['addressLine3']);
+    _setControllerValue(line4Controller, address['addressLine4']);
+    _setControllerValue(landmarkController, address['landmark']);
+    _setControllerValue(cityController, address['city']);
+    _setControllerValue(stateController, address['state']);
+    _setControllerValue(postOfficeController, address['postOffice']);
+    _setControllerValue(policeStationController, address['policeStation']);
+    _setControllerValue(pinController, address['pin']);
+  }
+
   bool _isSuccessResponse(
     Map<String, dynamic> response, {
     required List<String> idKeys,
@@ -388,17 +621,6 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
 
     return false;
-  }
-
-  bool get _canEditRestrictedProfileFields {
-    final loadedProfile = _loadedProfile;
-    if (loadedProfile == null) return false;
-
-    final responseHeader = _mapValue(loadedProfile['genericHeader']);
-    final userId = _stringValue(responseHeader['userId']);
-    final profileId = _stringValue(loadedProfile['prflId']);
-
-    return userId.isNotEmpty && profileId.isNotEmpty && userId != profileId;
   }
 
   String? get _effectiveProfileImageBase64 {
@@ -435,13 +657,29 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final profileName = _mapValue(response['prflName']);
     final contactDetails = _mapValue(response['contactDetails']);
     final otherAddress = _mapValue(response['prflOthrAdrss']);
+    final primaryAddress = _mapValue(
+      response['primaryAddress'] ??
+          response['profilePrimaryPostalAdrss'] ??
+          response['prflPrimaryPostalAdrss'],
+    );
+    final effectivePrimaryAddress = primaryAddress.isNotEmpty
+        ? primaryAddress
+        : otherAddress;
+    final flatList = response['prflFlatNo'];
+    final flatValue = flatList is List
+        ? flatList.where((value) => _stringValue(value).isNotEmpty).join(', ')
+        : response['prflFlatNo'];
 
     _setControllerValue(_updateFirstNameController, profileName['firstName']);
     _setControllerValue(_updateMiddleNameController, profileName['middleName']);
     _setControllerValue(_updateLastNameController, profileName['lastName']);
     _setControllerValue(_updateProfileIdController, response['prflId']);
+    _setControllerValue(
+      _updateApartmentNameController,
+      response['apartmentName'],
+    );
     _updateProfileDobController.text = _formatDate(response['prflDob']);
-    _setControllerValue(_updateProfileFlatNoController, response['prflFlatNo']);
+    _setControllerValue(_updateProfileFlatNoController, flatValue);
     _setControllerValue(
       _updateMobileNumberController,
       contactDetails['mobileNumber'],
@@ -451,46 +689,53 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _updateLandlineNumberController,
       contactDetails['landlinenumber'],
     );
-    _setControllerValue(
-      _updateAddressLine1Controller,
-      otherAddress['addressLine1'],
+    _populateAddressControllers(
+      address: otherAddress,
+      line1Controller: _updateAddressLine1Controller,
+      line2Controller: _updateAddressLine2Controller,
+      line3Controller: _updateAddressLine3Controller,
+      line4Controller: _updateAddressLine4Controller,
+      landmarkController: _updateLandmarkController,
+      cityController: _updateCityController,
+      stateController: _updateStateController,
+      postOfficeController: _updatePostOfficeController,
+      policeStationController: _updatePoliceStationController,
+      pinController: _updatePinController,
     );
-    _setControllerValue(
-      _updateAddressLine2Controller,
-      otherAddress['addressLine2'],
+    _populateAddressControllers(
+      address: effectivePrimaryAddress,
+      line1Controller: _updatePrimaryAddressLine1Controller,
+      line2Controller: _updatePrimaryAddressLine2Controller,
+      line3Controller: _updatePrimaryAddressLine3Controller,
+      line4Controller: _updatePrimaryAddressLine4Controller,
+      landmarkController: _updatePrimaryLandmarkController,
+      cityController: _updatePrimaryCityController,
+      stateController: _updatePrimaryStateController,
+      postOfficeController: _updatePrimaryPostOfficeController,
+      policeStationController: _updatePrimaryPoliceStationController,
+      pinController: _updatePrimaryPinController,
     );
-    _setControllerValue(
-      _updateAddressLine3Controller,
-      otherAddress['addressLine3'],
-    );
-    _setControllerValue(
-      _updateAddressLine4Controller,
-      otherAddress['addressLine4'],
-    );
-    _setControllerValue(_updateLandmarkController, otherAddress['landmark']);
-    _setControllerValue(_updateCityController, otherAddress['city']);
-    _setControllerValue(_updateStateController, otherAddress['state']);
-    _setControllerValue(
-      _updatePostOfficeController,
-      otherAddress['postOffice'],
-    );
-    _setControllerValue(
-      _updatePoliceStationController,
-      otherAddress['policeStation'],
-    );
-    _setControllerValue(_updatePinController, otherAddress['pin']);
 
     setState(() {
       _loadedProfile = response;
       _updateGender = _nullableValue(_stringValue(response['gender']));
+      _updateDeleteOtherAddress = false;
       _updateAddressType =
           _nullableValue(_stringValue(otherAddress['addressType'])) ??
+          'RESIDENTIAL';
+      _updatePrimaryAddressType =
+          _nullableValue(
+            _stringValue(effectivePrimaryAddress['addressType']),
+          ) ??
           'RESIDENTIAL';
       _updateProfileType = _nullableValue(_stringValue(response['prflType']));
       _updateProfilePosition = _nullableValue(
         _stringValue(response['prflPosition']),
       );
       _updateProfileStatus = _nullableValue(_stringValue(response['prflStus']));
+      _updateRole =
+          _nullableValue(_stringValue(response['role'])) ??
+          _nullableValue(_readHeaderValue(['role']));
       _currentProfilePicBase64 = _nullableValue(
         _stringValue(response['profilePic']),
       );
@@ -505,6 +750,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updateMiddleNameController.clear();
     _updateLastNameController.clear();
     _updateProfileIdController.clear();
+    _updateApartmentNameController.clear();
     _updateProfileDobController.clear();
     _updateProfileFlatNoController.clear();
     _updateMobileNumberController.clear();
@@ -520,13 +766,26 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updatePostOfficeController.clear();
     _updatePoliceStationController.clear();
     _updatePinController.clear();
+    _updatePrimaryAddressLine1Controller.clear();
+    _updatePrimaryAddressLine2Controller.clear();
+    _updatePrimaryAddressLine3Controller.clear();
+    _updatePrimaryAddressLine4Controller.clear();
+    _updatePrimaryLandmarkController.clear();
+    _updatePrimaryCityController.clear();
+    _updatePrimaryStateController.clear();
+    _updatePrimaryPostOfficeController.clear();
+    _updatePrimaryPoliceStationController.clear();
+    _updatePrimaryPinController.clear();
     setState(() {
       _loadedProfile = null;
       _updateGender = null;
+      _updateDeleteOtherAddress = false;
       _updateAddressType = 'RESIDENTIAL';
+      _updatePrimaryAddressType = 'RESIDENTIAL';
       _updateProfileType = null;
       _updateProfilePosition = null;
       _updateProfileStatus = null;
+      _updateRole = null;
       _currentProfilePicBase64 = null;
       _selectedProfileImageBase64 = null;
       _selectedProfileImageBytes = null;
@@ -630,8 +889,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final form = _updateProfileFormKey.currentState;
     if (form == null || !form.validate()) return;
 
-    final header = ApiService.userHeader;
-    if (header == null) {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
       await _showStatusModal(
         title: 'Profile Update Failed',
         message: 'Unable to find login header details for this request.',
@@ -655,7 +914,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     });
 
     final requestBody = {
-      'header': Map<String, dynamic>.from(header),
+      'header': header,
       'profileId': profileId,
       'profileName': {
         'firstName': _updateFirstNameController.text.trim(),
@@ -670,30 +929,53 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           _updateLandlineNumberController,
         ),
       },
-      'profileOthrAdrss': {
-        'addressLine1':
-            _nullableControllerValue(_updateAddressLine1Controller) ?? '',
-        'addressLine2':
-            _nullableControllerValue(_updateAddressLine2Controller) ?? '',
-        'addressLine3':
-            _nullableControllerValue(_updateAddressLine3Controller) ?? '',
-        'addressLine4':
-            _nullableControllerValue(_updateAddressLine4Controller) ?? '',
-        'landmark': _nullableControllerValue(_updateLandmarkController) ?? '',
-        'city': _nullableControllerValue(_updateCityController) ?? '',
-        'state': _nullableControllerValue(_updateStateController) ?? '',
-        'postOffice':
-            _nullableControllerValue(_updatePostOfficeController) ?? '',
-        'policeStation':
-            _nullableControllerValue(_updatePoliceStationController) ?? '',
-        'pin': _nullableControllerValue(_updatePinController) ?? '',
-        'addressType': _updateAddressType,
-      },
+      'profileOthrAdrss': _updateDeleteOtherAddress
+          ? null
+          : (_hasAddressValues(
+                  line1Controller: _updateAddressLine1Controller,
+                  line2Controller: _updateAddressLine2Controller,
+                  line3Controller: _updateAddressLine3Controller,
+                  line4Controller: _updateAddressLine4Controller,
+                  landmarkController: _updateLandmarkController,
+                  cityController: _updateCityController,
+                  stateController: _updateStateController,
+                  postOfficeController: _updatePostOfficeController,
+                  policeStationController: _updatePoliceStationController,
+                  pinController: _updatePinController,
+                )
+                ? _buildAddressRequest(
+                    line1Controller: _updateAddressLine1Controller,
+                    line2Controller: _updateAddressLine2Controller,
+                    line3Controller: _updateAddressLine3Controller,
+                    line4Controller: _updateAddressLine4Controller,
+                    landmarkController: _updateLandmarkController,
+                    cityController: _updateCityController,
+                    stateController: _updateStateController,
+                    postOfficeController: _updatePostOfficeController,
+                    policeStationController: _updatePoliceStationController,
+                    pinController: _updatePinController,
+                    addressType: _updateAddressType,
+                  )
+                : null),
+      'profilePrimaryPostalAdrss': _buildAddressRequest(
+        line1Controller: _updatePrimaryAddressLine1Controller,
+        line2Controller: _updatePrimaryAddressLine2Controller,
+        line3Controller: _updatePrimaryAddressLine3Controller,
+        line4Controller: _updatePrimaryAddressLine4Controller,
+        landmarkController: _updatePrimaryLandmarkController,
+        cityController: _updatePrimaryCityController,
+        stateController: _updatePrimaryStateController,
+        postOfficeController: _updatePrimaryPostOfficeController,
+        policeStationController: _updatePrimaryPoliceStationController,
+        pinController: _updatePrimaryPinController,
+        addressType: _updatePrimaryAddressType,
+      ),
       'profileType': _updateProfileType,
       'profilePosition': _updateProfilePosition,
       'profilePic': _effectiveProfileImageBase64,
       'password': ApiService.loginPassword ?? '',
       'profileStatus': _updateProfileStatus,
+      'role': _updateRole,
     };
 
     final response = await ApiService.updateProfile(requestBody);
@@ -768,8 +1050,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final form = _createProfileFormKey.currentState;
     if (form == null || !form.validate()) return;
 
-    final header = ApiService.userHeader;
-    if (header == null) {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
       _showStatusModal(
         title: 'Profile Creation Failed',
         message: 'Unable to find login header details for this request.',
@@ -790,27 +1072,44 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         'lastName': _lastNameController.text.trim(),
       },
       'profileFlatNo': _profileFlatNoController.text.trim(),
+      'profileDob': _formatDateForRequest(_profileDobController.text) ?? '',
       'contact': {
         'mobileNumber': _mobileNumberController.text.trim(),
         'emailId': _emailIdController.text.trim(),
         'landlinenumber': _landlineNumberController.text.trim(),
       },
-      'profileOthrAdrss': {
-        'addressLine1': _addressLine1Controller.text.trim(),
-        'addressLine2': _addressLine2Controller.text.trim(),
-        'addressLine3': _addressLine3Controller.text.trim(),
-        'addressLine4': _addressLine4Controller.text.trim(),
-        'landmark': _landmarkController.text.trim(),
-        'city': _cityController.text.trim(),
-        'state': _stateController.text.trim(),
-        'postOffice': _postOfficeController.text.trim(),
-        'policeStation': _policeStationController.text.trim(),
-        'pin': _pinController.text.trim(),
-        'addressType': _addressType,
-      },
-      'profileType': _profileType?.toUpperCase(),
-      'profilePosition': _profilePosition?.toUpperCase(),
+      'profileOthrAdrss': _createHasOtherAddress
+          ? _buildAddressRequest(
+              line1Controller: _addressLine1Controller,
+              line2Controller: _addressLine2Controller,
+              line3Controller: _addressLine3Controller,
+              line4Controller: _addressLine4Controller,
+              landmarkController: _landmarkController,
+              cityController: _cityController,
+              stateController: _stateController,
+              postOfficeController: _postOfficeController,
+              policeStationController: _policeStationController,
+              pinController: _pinController,
+              addressType: _addressType,
+            )
+          : null,
+      'profilePrimaryPostalAdrss': _buildAddressRequest(
+        line1Controller: _primaryAddressLine1Controller,
+        line2Controller: _primaryAddressLine2Controller,
+        line3Controller: _primaryAddressLine3Controller,
+        line4Controller: _primaryAddressLine4Controller,
+        landmarkController: _primaryLandmarkController,
+        cityController: _primaryCityController,
+        stateController: _primaryStateController,
+        postOfficeController: _primaryPostOfficeController,
+        policeStationController: _primaryPoliceStationController,
+        pinController: _primaryPinController,
+        addressType: _primaryAddressType,
+      ),
+      'profileType': _profileType,
+      'profilePosition': _profileType == 'STAFF' ? _profilePosition : null,
       'gender': _gender,
+      'profileKind': _profileKind,
     };
 
     final response = await ApiService.createProfile(requestBody);
@@ -853,6 +1152,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _middleNameController.clear();
     _lastNameController.clear();
     _profileFlatNoController.clear();
+    _profileDobController.clear();
     _mobileNumberController.clear();
     _emailIdController.clear();
     _landlineNumberController.clear();
@@ -866,17 +1166,33 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _postOfficeController.clear();
     _policeStationController.clear();
     _pinController.clear();
+    _primaryAddressLine1Controller.clear();
+    _primaryAddressLine2Controller.clear();
+    _primaryAddressLine3Controller.clear();
+    _primaryAddressLine4Controller.clear();
+    _primaryLandmarkController.clear();
+    _primaryCityController.clear();
+    _primaryStateController.clear();
+    _primaryPostOfficeController.clear();
+    _primaryPoliceStationController.clear();
+    _primaryPinController.clear();
     setState(() {
       _profileType = null;
       _profilePosition = null;
+      _profileKind = null;
       _gender = null;
+      _createHasOtherAddress = false;
       _addressType = 'RESIDENTIAL';
+      _primaryAddressType = 'RESIDENTIAL';
     });
     _ProfileManagementDraft.createProfile.clear();
     _ProfileManagementDraft.createProfileType = null;
     _ProfileManagementDraft.createProfilePosition = null;
+    _ProfileManagementDraft.createProfileKind = null;
     _ProfileManagementDraft.createGender = null;
+    _ProfileManagementDraft.createHasOtherAddress = false;
     _ProfileManagementDraft.createAddressType = 'RESIDENTIAL';
+    _ProfileManagementDraft.createPrimaryAddressType = 'RESIDENTIAL';
   }
 
   String _sectionTitle() {
@@ -924,6 +1240,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           middleNameController: _middleNameController,
           lastNameController: _lastNameController,
           profileFlatNoController: _profileFlatNoController,
+          profileDobController: _profileDobController,
           mobileNumberController: _mobileNumberController,
           emailIdController: _emailIdController,
           landlineNumberController: _landlineNumberController,
@@ -937,14 +1254,27 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           postOfficeController: _postOfficeController,
           policeStationController: _policeStationController,
           pinController: _pinController,
+          primaryAddressLine1Controller: _primaryAddressLine1Controller,
+          primaryAddressLine2Controller: _primaryAddressLine2Controller,
+          primaryAddressLine3Controller: _primaryAddressLine3Controller,
+          primaryAddressLine4Controller: _primaryAddressLine4Controller,
+          primaryLandmarkController: _primaryLandmarkController,
+          primaryCityController: _primaryCityController,
+          primaryStateController: _primaryStateController,
+          primaryPostOfficeController: _primaryPostOfficeController,
+          primaryPoliceStationController: _primaryPoliceStationController,
+          primaryPinController: _primaryPinController,
           profileType: _profileType,
           profilePosition: _profilePosition,
+          profileKind: _profileKind,
           gender: _gender,
+          hasOtherAddress: _createHasOtherAddress,
           addressType: _addressType,
+          primaryAddressType: _primaryAddressType,
           onProfileTypeChanged: (value) {
             setState(() {
               _profileType = value;
-              if (value != 'Staff') {
+              if (value != 'STAFF') {
                 _profilePosition = null;
                 _ProfileManagementDraft.createProfilePosition = null;
               }
@@ -957,16 +1287,49 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
               _ProfileManagementDraft.createProfilePosition = value;
             });
           },
+          onProfileKindChanged: (value) {
+            setState(() {
+              _profileKind = value;
+              _ProfileManagementDraft.createProfileKind = value;
+            });
+          },
           onGenderChanged: (value) {
             setState(() {
               _gender = value;
               _ProfileManagementDraft.createGender = value;
             });
           },
+          onHasOtherAddressChanged: (value) {
+            setState(() {
+              _createHasOtherAddress = value;
+              _ProfileManagementDraft.createHasOtherAddress = value;
+              if (!value) {
+                _addressLine1Controller.clear();
+                _addressLine2Controller.clear();
+                _addressLine3Controller.clear();
+                _addressLine4Controller.clear();
+                _landmarkController.clear();
+                _cityController.clear();
+                _stateController.clear();
+                _postOfficeController.clear();
+                _policeStationController.clear();
+                _pinController.clear();
+                _addressType = 'RESIDENTIAL';
+                _ProfileManagementDraft.createAddressType = 'RESIDENTIAL';
+              }
+            });
+          },
           onAddressTypeChanged: (value) {
             setState(() {
               _addressType = value ?? 'RESIDENTIAL';
               _ProfileManagementDraft.createAddressType = _addressType;
+            });
+          },
+          onPrimaryAddressTypeChanged: (value) {
+            setState(() {
+              _primaryAddressType = value ?? 'RESIDENTIAL';
+              _ProfileManagementDraft.createPrimaryAddressType =
+                  _primaryAddressType;
             });
           },
           requiredValidator: _requiredValidator,
@@ -991,6 +1354,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           middleNameController: _updateMiddleNameController,
           lastNameController: _updateLastNameController,
           profileIdController: _updateProfileIdController,
+          apartmentNameController: _updateApartmentNameController,
           profileDobController: _updateProfileDobController,
           profileFlatNoController: _updateProfileFlatNoController,
           mobileNumberController: _updateMobileNumberController,
@@ -1006,39 +1370,55 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           postOfficeController: _updatePostOfficeController,
           policeStationController: _updatePoliceStationController,
           pinController: _updatePinController,
+          primaryAddressLine1Controller: _updatePrimaryAddressLine1Controller,
+          primaryAddressLine2Controller: _updatePrimaryAddressLine2Controller,
+          primaryAddressLine3Controller: _updatePrimaryAddressLine3Controller,
+          primaryAddressLine4Controller: _updatePrimaryAddressLine4Controller,
+          primaryLandmarkController: _updatePrimaryLandmarkController,
+          primaryCityController: _updatePrimaryCityController,
+          primaryStateController: _updatePrimaryStateController,
+          primaryPostOfficeController: _updatePrimaryPostOfficeController,
+          primaryPoliceStationController: _updatePrimaryPoliceStationController,
+          primaryPinController: _updatePrimaryPinController,
           gender: _updateGender,
           addressType: _updateAddressType,
+          primaryAddressType: _updatePrimaryAddressType,
           profileType: _updateProfileType,
           profilePosition: _updateProfilePosition,
           profileStatus: _updateProfileStatus,
+          role: _updateRole,
           loading: _loadingProfile,
           submitting: _updatingProfile,
           hasLoadedProfile: _loadedProfile != null,
-          canEditRestrictedFields: _canEditRestrictedProfileFields,
+          deleteOtherAddress: _updateDeleteOtherAddress,
+          hasOtherAddress:
+              _hasAddressMap(_mapValue(_loadedProfile?['prflOthrAdrss'])) ||
+              _hasAddressValues(
+                line1Controller: _updateAddressLine1Controller,
+                line2Controller: _updateAddressLine2Controller,
+                line3Controller: _updateAddressLine3Controller,
+                line4Controller: _updateAddressLine4Controller,
+                landmarkController: _updateLandmarkController,
+                cityController: _updateCityController,
+                stateController: _updateStateController,
+                postOfficeController: _updatePostOfficeController,
+                policeStationController: _updatePoliceStationController,
+                pinController: _updatePinController,
+              ),
           profileImageBytes: _effectiveProfileImageBytes,
-          onGenderChanged: (value) {
-            setState(() {
-              _updateGender = value;
-            });
-          },
           onAddressTypeChanged: (value) {
             setState(() {
               _updateAddressType = value ?? 'RESIDENTIAL';
             });
           },
-          onProfileTypeChanged: (value) {
+          onDeleteOtherAddressChanged: (value) {
             setState(() {
-              _updateProfileType = value;
+              _updateDeleteOtherAddress = value;
             });
           },
-          onProfilePositionChanged: (value) {
+          onPrimaryAddressTypeChanged: (value) {
             setState(() {
-              _updateProfilePosition = value;
-            });
-          },
-          onProfileStatusChanged: (value) {
-            setState(() {
-              _updateProfileStatus = value;
+              _updatePrimaryAddressType = value ?? 'RESIDENTIAL';
             });
           },
           requiredValidator: _requiredValidator,
@@ -1833,6 +2213,7 @@ class _CreateProfileTab extends StatelessWidget {
     required this.middleNameController,
     required this.lastNameController,
     required this.profileFlatNoController,
+    required this.profileDobController,
     required this.mobileNumberController,
     required this.emailIdController,
     required this.landlineNumberController,
@@ -1846,14 +2227,30 @@ class _CreateProfileTab extends StatelessWidget {
     required this.postOfficeController,
     required this.policeStationController,
     required this.pinController,
+    required this.primaryAddressLine1Controller,
+    required this.primaryAddressLine2Controller,
+    required this.primaryAddressLine3Controller,
+    required this.primaryAddressLine4Controller,
+    required this.primaryLandmarkController,
+    required this.primaryCityController,
+    required this.primaryStateController,
+    required this.primaryPostOfficeController,
+    required this.primaryPoliceStationController,
+    required this.primaryPinController,
     required this.profileType,
     required this.profilePosition,
+    required this.profileKind,
     required this.gender,
+    required this.hasOtherAddress,
     required this.addressType,
+    required this.primaryAddressType,
     required this.onProfileTypeChanged,
     required this.onProfilePositionChanged,
+    required this.onProfileKindChanged,
     required this.onGenderChanged,
+    required this.onHasOtherAddressChanged,
     required this.onAddressTypeChanged,
+    required this.onPrimaryAddressTypeChanged,
     required this.requiredValidator,
     required this.mobileValidator,
     required this.emailValidator,
@@ -1867,6 +2264,7 @@ class _CreateProfileTab extends StatelessWidget {
   final TextEditingController middleNameController;
   final TextEditingController lastNameController;
   final TextEditingController profileFlatNoController;
+  final TextEditingController profileDobController;
   final TextEditingController mobileNumberController;
   final TextEditingController emailIdController;
   final TextEditingController landlineNumberController;
@@ -1880,14 +2278,30 @@ class _CreateProfileTab extends StatelessWidget {
   final TextEditingController postOfficeController;
   final TextEditingController policeStationController;
   final TextEditingController pinController;
+  final TextEditingController primaryAddressLine1Controller;
+  final TextEditingController primaryAddressLine2Controller;
+  final TextEditingController primaryAddressLine3Controller;
+  final TextEditingController primaryAddressLine4Controller;
+  final TextEditingController primaryLandmarkController;
+  final TextEditingController primaryCityController;
+  final TextEditingController primaryStateController;
+  final TextEditingController primaryPostOfficeController;
+  final TextEditingController primaryPoliceStationController;
+  final TextEditingController primaryPinController;
   final String? profileType;
   final String? profilePosition;
+  final String? profileKind;
   final String? gender;
+  final bool hasOtherAddress;
   final String addressType;
+  final String primaryAddressType;
   final ValueChanged<String?> onProfileTypeChanged;
   final ValueChanged<String?> onProfilePositionChanged;
+  final ValueChanged<String?> onProfileKindChanged;
   final ValueChanged<String?> onGenderChanged;
+  final ValueChanged<bool> onHasOtherAddressChanged;
   final ValueChanged<String?> onAddressTypeChanged;
+  final ValueChanged<String?> onPrimaryAddressTypeChanged;
   final String? Function(String?, String) requiredValidator;
   final String? Function(String?) mobileValidator;
   final String? Function(String?) emailValidator;
@@ -1910,7 +2324,7 @@ class _CreateProfileTab extends StatelessWidget {
               border: Border.all(color: Color(0xFFD6ECE7)),
             ),
             child: Text(
-              'Mandatory fields: First Name, Last Name, Mobile Number, Email ID, Profile Type, and Gender. Profile Position is mandatory only when Profile Type is Staff.',
+              'Mandatory fields: First Name, Last Name, Profile DOB, Mobile Number, Email ID, Profile Type, Gender, Profile Kind, and the starred primary address fields. Profile Position is mandatory only for STAFF.',
               style: TextStyle(
                 color: Color(0xFF124B45),
                 fontWeight: FontWeight.w600,
@@ -1955,6 +2369,12 @@ class _CreateProfileTab extends StatelessWidget {
                 label: 'Flat No.',
                 controller: profileFlatNoController,
               ),
+              _ProfileInputField(
+                label: 'Profile DOB *',
+                controller: profileDobController,
+                hintText: 'YYYY-MM-DD',
+                validator: (value) => requiredValidator(value, 'Profile DOB'),
+              ),
               _ProfileDropdownField(
                 label: 'Profile Type *',
                 value: profileType,
@@ -1965,18 +2385,18 @@ class _CreateProfileTab extends StatelessWidget {
                     : null,
               ),
               _ProfileDropdownField(
-                label: profileType == 'Staff'
+                label: profileType == 'STAFF'
                     ? 'Profile Position *'
                     : 'Profile Position',
                 value: profilePosition,
                 items: _ProfileManagementPageState._createStaffPositionOptions,
-                enabled: profileType == 'Staff',
-                onChanged: profileType == 'Staff'
+                enabled: profileType == 'STAFF',
+                onChanged: profileType == 'STAFF'
                     ? onProfilePositionChanged
                     : null,
                 validator: (value) =>
-                    profileType == 'Staff' && (value == null || value.isEmpty)
-                    ? 'Profile Position is required for Staff'
+                    profileType == 'STAFF' && (value == null || value.isEmpty)
+                    ? 'Profile Position is required for STAFF'
                     : null,
               ),
             ],
@@ -1985,6 +2405,15 @@ class _CreateProfileTab extends StatelessWidget {
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
+              _ProfileDropdownField(
+                label: 'Profile Kind *',
+                value: profileKind,
+                items: _ProfileManagementPageState._profileKindOptions,
+                onChanged: onProfileKindChanged,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Profile Kind is required'
+                    : null,
+              ),
               _ProfileDropdownField(
                 label: 'Gender *',
                 value: gender,
@@ -2026,7 +2455,7 @@ class _CreateProfileTab extends StatelessWidget {
           ),
           SizedBox(height: 18),
           Text(
-            'Other Address',
+            'Primary Postal Address',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           SizedBox(height: 12),
@@ -2034,12 +2463,119 @@ class _CreateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Address Line 1',
-                controller: addressLine1Controller,
+                label: 'Address Line 1 *',
+                controller: primaryAddressLine1Controller,
+                validator: (value) =>
+                    requiredValidator(value, 'Address Line 1'),
               ),
               _ProfileInputField(
-                label: 'Address Line 2',
+                label: 'Address Line 2 *',
+                controller: primaryAddressLine2Controller,
+                validator: (value) =>
+                    requiredValidator(value, 'Address Line 2'),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Address Line 3',
+                controller: primaryAddressLine3Controller,
+              ),
+              _ProfileInputField(
+                label: 'Address Line 4',
+                controller: primaryAddressLine4Controller,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileDropdownField(
+                label: 'Address Type *',
+                value: primaryAddressType,
+                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
+                onChanged: onPrimaryAddressTypeChanged,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Address Type is required'
+                    : null,
+              ),
+              _ProfileInputField(
+                label: 'Landmark',
+                controller: primaryLandmarkController,
+              ),
+              _ProfileInputField(
+                label: 'City',
+                controller: primaryCityController,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'State *',
+                controller: primaryStateController,
+                validator: (value) => requiredValidator(value, 'State'),
+              ),
+              _ProfileInputField(
+                label: 'Post Office',
+                controller: primaryPostOfficeController,
+              ),
+              _ProfileInputField(
+                label: 'Police Station',
+                controller: primaryPoliceStationController,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Pin *',
+                controller: primaryPinController,
+                keyboardType: TextInputType.number,
+                validator: (value) => requiredValidator(value, 'Pin'),
+              ),
+            ],
+          ),
+          SizedBox(height: 18),
+          Text(
+            'Other Address',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 12),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: hasOtherAddress,
+            onChanged: (value) => onHasOtherAddressChanged(value ?? false),
+            title: const Text('Have Any Other Address'),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          SizedBox(height: 8),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: hasOtherAddress ? 'Address Line 1 *' : 'Address Line 1',
+                controller: addressLine1Controller,
+                readOnly: !hasOtherAddress,
+                validator: (value) => hasOtherAddress
+                    ? requiredValidator(value, 'Address Line 1')
+                    : null,
+              ),
+              _ProfileInputField(
+                label: hasOtherAddress ? 'Address Line 2 *' : 'Address Line 2',
                 controller: addressLine2Controller,
+                readOnly: !hasOtherAddress,
+                validator: (value) => hasOtherAddress
+                    ? requiredValidator(value, 'Address Line 2')
+                    : null,
               ),
             ],
           ),
@@ -2050,10 +2586,12 @@ class _CreateProfileTab extends StatelessWidget {
               _ProfileInputField(
                 label: 'Address Line 3',
                 controller: addressLine3Controller,
+                readOnly: !hasOtherAddress,
               ),
               _ProfileInputField(
                 label: 'Address Line 4',
                 controller: addressLine4Controller,
+                readOnly: !hasOtherAddress,
               ),
             ],
           ),
@@ -2062,30 +2600,48 @@ class _CreateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileDropdownField(
-                label: 'Address Type',
+                label: hasOtherAddress ? 'Address Type *' : 'Address Type',
                 value: addressType,
                 items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
-                onChanged: onAddressTypeChanged,
+                enabled: hasOtherAddress,
+                onChanged: hasOtherAddress ? onAddressTypeChanged : null,
+                validator: (value) =>
+                    hasOtherAddress && (value == null || value.isEmpty)
+                    ? 'Address Type is required'
+                    : null,
               ),
               _ProfileInputField(
                 label: 'Landmark',
                 controller: landmarkController,
+                readOnly: !hasOtherAddress,
               ),
-              _ProfileInputField(label: 'City', controller: cityController),
+              _ProfileInputField(
+                label: 'City',
+                controller: cityController,
+                readOnly: !hasOtherAddress,
+              ),
             ],
           ),
           SizedBox(height: 16),
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
-              _ProfileInputField(label: 'State', controller: stateController),
+              _ProfileInputField(
+                label: hasOtherAddress ? 'State *' : 'State',
+                controller: stateController,
+                readOnly: !hasOtherAddress,
+                validator: (value) =>
+                    hasOtherAddress ? requiredValidator(value, 'State') : null,
+              ),
               _ProfileInputField(
                 label: 'Post Office',
                 controller: postOfficeController,
+                readOnly: !hasOtherAddress,
               ),
               _ProfileInputField(
                 label: 'Police Station',
                 controller: policeStationController,
+                readOnly: !hasOtherAddress,
               ),
             ],
           ),
@@ -2094,9 +2650,12 @@ class _CreateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Pin',
+                label: hasOtherAddress ? 'Pin *' : 'Pin',
                 controller: pinController,
                 keyboardType: TextInputType.number,
+                readOnly: !hasOtherAddress,
+                validator: (value) =>
+                    hasOtherAddress ? requiredValidator(value, 'Pin') : null,
               ),
             ],
           ),
@@ -2135,6 +2694,7 @@ class _UpdateProfileTab extends StatelessWidget {
     required this.middleNameController,
     required this.lastNameController,
     required this.profileIdController,
+    required this.apartmentNameController,
     required this.profileDobController,
     required this.profileFlatNoController,
     required this.mobileNumberController,
@@ -2150,21 +2710,32 @@ class _UpdateProfileTab extends StatelessWidget {
     required this.postOfficeController,
     required this.policeStationController,
     required this.pinController,
+    required this.primaryAddressLine1Controller,
+    required this.primaryAddressLine2Controller,
+    required this.primaryAddressLine3Controller,
+    required this.primaryAddressLine4Controller,
+    required this.primaryLandmarkController,
+    required this.primaryCityController,
+    required this.primaryStateController,
+    required this.primaryPostOfficeController,
+    required this.primaryPoliceStationController,
+    required this.primaryPinController,
     required this.gender,
     required this.addressType,
+    required this.primaryAddressType,
     required this.profileType,
     required this.profilePosition,
     required this.profileStatus,
+    required this.role,
     required this.loading,
     required this.submitting,
     required this.hasLoadedProfile,
-    required this.canEditRestrictedFields,
+    required this.deleteOtherAddress,
+    required this.hasOtherAddress,
     required this.profileImageBytes,
-    required this.onGenderChanged,
     required this.onAddressTypeChanged,
-    required this.onProfileTypeChanged,
-    required this.onProfilePositionChanged,
-    required this.onProfileStatusChanged,
+    required this.onDeleteOtherAddressChanged,
+    required this.onPrimaryAddressTypeChanged,
     required this.requiredValidator,
     required this.mobileValidator,
     required this.emailValidator,
@@ -2179,6 +2750,7 @@ class _UpdateProfileTab extends StatelessWidget {
   final TextEditingController middleNameController;
   final TextEditingController lastNameController;
   final TextEditingController profileIdController;
+  final TextEditingController apartmentNameController;
   final TextEditingController profileDobController;
   final TextEditingController profileFlatNoController;
   final TextEditingController mobileNumberController;
@@ -2194,21 +2766,32 @@ class _UpdateProfileTab extends StatelessWidget {
   final TextEditingController postOfficeController;
   final TextEditingController policeStationController;
   final TextEditingController pinController;
+  final TextEditingController primaryAddressLine1Controller;
+  final TextEditingController primaryAddressLine2Controller;
+  final TextEditingController primaryAddressLine3Controller;
+  final TextEditingController primaryAddressLine4Controller;
+  final TextEditingController primaryLandmarkController;
+  final TextEditingController primaryCityController;
+  final TextEditingController primaryStateController;
+  final TextEditingController primaryPostOfficeController;
+  final TextEditingController primaryPoliceStationController;
+  final TextEditingController primaryPinController;
   final String? gender;
   final String addressType;
+  final String primaryAddressType;
   final String? profileType;
   final String? profilePosition;
   final String? profileStatus;
+  final String? role;
   final bool loading;
   final bool submitting;
   final bool hasLoadedProfile;
-  final bool canEditRestrictedFields;
+  final bool deleteOtherAddress;
+  final bool hasOtherAddress;
   final Uint8List? profileImageBytes;
-  final ValueChanged<String?> onGenderChanged;
   final ValueChanged<String?> onAddressTypeChanged;
-  final ValueChanged<String?> onProfileTypeChanged;
-  final ValueChanged<String?> onProfilePositionChanged;
-  final ValueChanged<String?> onProfileStatusChanged;
+  final ValueChanged<bool> onDeleteOtherAddressChanged;
+  final ValueChanged<String?> onPrimaryAddressTypeChanged;
   final String? Function(String?, String) requiredValidator;
   final String? Function(String?) mobileValidator;
   final String? Function(String?) emailValidator;
@@ -2307,9 +2890,7 @@ class _UpdateProfileTab extends StatelessWidget {
                 SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    canEditRestrictedFields
-                        ? 'Profile ID and DOB stay read-only. Status, type, and position are editable because the response user ID does not match the profile ID.'
-                        : 'Profile ID, DOB, status, type, and position are locked for this profile. Use the avatar edit button to upload a new profile picture.',
+                    'Apartment name, gender, DOB, flat number, position, status, and type are shown as read-only. Use the avatar edit button to upload a new profile picture.',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF124B45),
@@ -2327,6 +2908,74 @@ class _UpdateProfileTab extends StatelessWidget {
               icon: Icon(Icons.refresh),
               label: Text('Refresh Profile'),
             ),
+          ),
+          SizedBox(height: 18),
+          Text(
+            'Profile Details',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 12),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Apartment Name',
+                controller: apartmentNameController,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Profile ID',
+                controller: profileIdController,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Date of Birth',
+                controller: profileDobController,
+                readOnly: true,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Flat No.',
+                controller: profileFlatNoController,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Profile Type',
+                initialValue: profileType,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Profile Position',
+                initialValue: profilePosition,
+                readOnly: true,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Gender',
+                initialValue: gender,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Profile Status',
+                initialValue: profileStatus,
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Role',
+                initialValue: role,
+                readOnly: true,
+              ),
+            ],
           ),
           SizedBox(height: 18),
           Text(
@@ -2355,87 +3004,101 @@ class _UpdateProfileTab extends StatelessWidget {
           ),
           SizedBox(height: 18),
           Text(
-            'Profile Details',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 12),
-          _ResponsiveFieldRow(
-            mobile: mobile,
-            children: [
-              _ProfileInputField(
-                label: 'Profile ID',
-                controller: profileIdController,
-                readOnly: true,
-              ),
-              _ProfileInputField(
-                label: 'Date of Birth',
-                controller: profileDobController,
-                readOnly: true,
-              ),
-              _ProfileDropdownField(
-                label: 'Profile Status',
-                value: profileStatus,
-                items: const ['ACTIVE', 'INACTIVE', 'BLOCKED'],
-                enabled: canEditRestrictedFields,
-                onChanged: canEditRestrictedFields
-                    ? onProfileStatusChanged
-                    : null,
-              ),
-            ],
-          ),
-          SizedBox(height: 16),
-          _ResponsiveFieldRow(
-            mobile: mobile,
-            children: [
-              _ProfileInputField(
-                label: 'Flat No.',
-                controller: profileFlatNoController,
-              ),
-              _ProfileDropdownField(
-                label: 'Profile Type',
-                value: profileType,
-                items: const ['OWNER', 'TENANT', 'FAMILY', 'STAFF'],
-                enabled: canEditRestrictedFields,
-                onChanged: canEditRestrictedFields
-                    ? onProfileTypeChanged
-                    : null,
-              ),
-              _ProfileDropdownField(
-                label: 'Profile Position',
-                value: profilePosition,
-                items: const [
-                  'MEMBER',
-                  'OWNER',
-                  'TENANT',
-                  'SECRETARY',
-                  'COMMITTEE',
-                ],
-                enabled: canEditRestrictedFields,
-                onChanged: canEditRestrictedFields
-                    ? onProfilePositionChanged
-                    : null,
-              ),
-            ],
-          ),
-          SizedBox(height: 16),
-          _ResponsiveFieldRow(
-            mobile: mobile,
-            children: [
-              _ProfileDropdownField(
-                label: 'Gender',
-                value: gender,
-                items: const ['MALE', 'FEMALE', 'OTHER'],
-                enabled: false,
-                onChanged: null,
-              ),
-            ],
-          ),
-          SizedBox(height: 18),
-          Text(
             'Contact',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           SizedBox(height: 12),
+          Text(
+            'Primary Postal Address',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 12),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Address Line 1 *',
+                controller: primaryAddressLine1Controller,
+                validator: (value) =>
+                    requiredValidator(value, 'Address Line 1'),
+              ),
+              _ProfileInputField(
+                label: 'Address Line 2 *',
+                controller: primaryAddressLine2Controller,
+                validator: (value) =>
+                    requiredValidator(value, 'Address Line 2'),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Address Line 3',
+                controller: primaryAddressLine3Controller,
+              ),
+              _ProfileInputField(
+                label: 'Address Line 4',
+                controller: primaryAddressLine4Controller,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileDropdownField(
+                label: 'Address Type *',
+                value: primaryAddressType,
+                items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
+                onChanged: onPrimaryAddressTypeChanged,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Address Type is required'
+                    : null,
+              ),
+              _ProfileInputField(
+                label: 'Landmark',
+                controller: primaryLandmarkController,
+              ),
+              _ProfileInputField(
+                label: 'City',
+                controller: primaryCityController,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'State *',
+                controller: primaryStateController,
+                validator: (value) => requiredValidator(value, 'State'),
+              ),
+              _ProfileInputField(
+                label: 'Post Office',
+                controller: primaryPostOfficeController,
+              ),
+              _ProfileInputField(
+                label: 'Police Station',
+                controller: primaryPoliceStationController,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Pin *',
+                controller: primaryPinController,
+                keyboardType: TextInputType.number,
+                validator: (value) => requiredValidator(value, 'Pin'),
+              ),
+            ],
+          ),
+          SizedBox(height: 24),
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
@@ -2464,16 +3127,46 @@ class _UpdateProfileTab extends StatelessWidget {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           SizedBox(height: 12),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: deleteOtherAddress,
+            onChanged: hasOtherAddress
+                ? (value) => onDeleteOtherAddressChanged(value ?? false)
+                : null,
+            title: const Text('Delete Other Address'),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          if (!hasOtherAddress) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'No Other Address Available',
+                style: TextStyle(color: Colors.black54),
+              ),
+            ),
+          ],
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Address Line 1',
+                label: hasOtherAddress && !deleteOtherAddress
+                    ? 'Address Line 1 *'
+                    : 'Address Line 1',
                 controller: addressLine1Controller,
+                readOnly: deleteOtherAddress,
+                validator: (value) => hasOtherAddress && !deleteOtherAddress
+                    ? requiredValidator(value, 'Address Line 1')
+                    : null,
               ),
               _ProfileInputField(
-                label: 'Address Line 2',
+                label: hasOtherAddress && !deleteOtherAddress
+                    ? 'Address Line 2 *'
+                    : 'Address Line 2',
                 controller: addressLine2Controller,
+                readOnly: deleteOtherAddress,
+                validator: (value) => hasOtherAddress && !deleteOtherAddress
+                    ? requiredValidator(value, 'Address Line 2')
+                    : null,
               ),
             ],
           ),
@@ -2484,10 +3177,12 @@ class _UpdateProfileTab extends StatelessWidget {
               _ProfileInputField(
                 label: 'Address Line 3',
                 controller: addressLine3Controller,
+                readOnly: deleteOtherAddress,
               ),
               _ProfileInputField(
                 label: 'Address Line 4',
                 controller: addressLine4Controller,
+                readOnly: deleteOtherAddress,
               ),
             ],
           ),
@@ -2496,30 +3191,55 @@ class _UpdateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileDropdownField(
-                label: 'Address Type',
+                label: hasOtherAddress && !deleteOtherAddress
+                    ? 'Address Type *'
+                    : 'Address Type',
                 value: addressType,
                 items: const ['RESIDENTIAL', 'OFFICE', 'OTHER'],
-                onChanged: onAddressTypeChanged,
+                enabled: !deleteOtherAddress,
+                onChanged: deleteOtherAddress ? null : onAddressTypeChanged,
+                validator: (value) =>
+                    hasOtherAddress &&
+                        !deleteOtherAddress &&
+                        (value == null || value.isEmpty)
+                    ? 'Address Type is required'
+                    : null,
               ),
               _ProfileInputField(
                 label: 'Landmark',
                 controller: landmarkController,
+                readOnly: deleteOtherAddress,
               ),
-              _ProfileInputField(label: 'City', controller: cityController),
+              _ProfileInputField(
+                label: 'City',
+                controller: cityController,
+                readOnly: deleteOtherAddress,
+              ),
             ],
           ),
           SizedBox(height: 16),
           _ResponsiveFieldRow(
             mobile: mobile,
             children: [
-              _ProfileInputField(label: 'State', controller: stateController),
+              _ProfileInputField(
+                label: hasOtherAddress && !deleteOtherAddress
+                    ? 'State *'
+                    : 'State',
+                controller: stateController,
+                readOnly: deleteOtherAddress,
+                validator: (value) => hasOtherAddress && !deleteOtherAddress
+                    ? requiredValidator(value, 'State')
+                    : null,
+              ),
               _ProfileInputField(
                 label: 'Post Office',
                 controller: postOfficeController,
+                readOnly: deleteOtherAddress,
               ),
               _ProfileInputField(
                 label: 'Police Station',
                 controller: policeStationController,
+                readOnly: deleteOtherAddress,
               ),
             ],
           ),
@@ -2528,9 +3248,13 @@ class _UpdateProfileTab extends StatelessWidget {
             mobile: mobile,
             children: [
               _ProfileInputField(
-                label: 'Pin',
+                label: hasOtherAddress && !deleteOtherAddress ? 'Pin *' : 'Pin',
                 controller: pinController,
                 keyboardType: TextInputType.number,
+                readOnly: deleteOtherAddress,
+                validator: (value) => hasOtherAddress && !deleteOtherAddress
+                    ? requiredValidator(value, 'Pin')
+                    : null,
               ),
             ],
           ),
@@ -2594,6 +3318,58 @@ class _ViewProfileTab extends StatelessWidget {
     return <String, dynamic>{};
   }
 
+  String _formatDisplayDob(dynamic value) {
+    final raw = _textValue(value);
+    if (raw == '-') {
+      return raw;
+    }
+
+    final sanitized = raw.trim();
+    if (sanitized.isEmpty) {
+      return '-';
+    }
+
+    final parsed = DateTime.tryParse(sanitized);
+    if (parsed == null) {
+      return sanitized;
+    }
+
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
+
+    return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
+  }
+
+  bool _hasAddressData(Map<String, dynamic> address) {
+    const keys = [
+      'addressLine1',
+      'addressLine2',
+      'addressLine3',
+      'addressLine4',
+      'landmark',
+      'city',
+      'state',
+      'postOffice',
+      'policeStation',
+      'pin',
+      'addressType',
+    ];
+
+    return keys.any((key) => _textValue(address[key], fallback: '').isNotEmpty);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (profile == null && loading) {
@@ -2649,9 +3425,21 @@ class _ViewProfileTab extends StatelessWidget {
     }
 
     final profileName = _mapValue(profile!['prflName']);
-    final header = _mapValue(profile!['genericHeader']);
     final contactDetails = _mapValue(profile!['contactDetails']);
     final address = _mapValue(profile!['prflOthrAdrss']);
+    final primaryAddress = _mapValue(
+      profile!['primaryAddress'] ??
+          profile!['profilePrimaryPostalAdrss'] ??
+          profile!['prflPrimaryPostalAdrss'],
+    );
+    final effectivePrimaryAddress = primaryAddress.isNotEmpty
+        ? primaryAddress
+        : address;
+    final flatValue = profile!['prflFlatNo'] is List
+        ? (profile!['prflFlatNo'] as List)
+              .where((value) => _textValue(value, fallback: '').isNotEmpty)
+              .join(', ')
+        : _textValue(profile!['prflFlatNo']);
     final fullName = [
       _textValue(profileName['firstName'], fallback: ''),
       _textValue(profileName['middleName'], fallback: ''),
@@ -2732,7 +3520,7 @@ class _ViewProfileTab extends StatelessWidget {
             _ProfileInfoChip(
               icon: Icons.home_work_outlined,
               label: 'Flat No',
-              value: _textValue(profile!['prflFlatNo']),
+              value: flatValue,
             ),
             _ProfileInfoChip(
               icon: Icons.person_outline,
@@ -2753,6 +3541,16 @@ class _ViewProfileTab extends StatelessWidget {
               icon: Icons.wc_outlined,
               label: 'Gender',
               value: _textValue(profile!['gender']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.cake_outlined,
+              label: 'DOB',
+              value: _formatDisplayDob(profile!['prflDob']),
+            ),
+            _ProfileInfoChip(
+              icon: Icons.apartment_outlined,
+              label: 'Apartment Name',
+              value: _textValue(profile!['apartmentName']),
             ),
           ],
         ),
@@ -2780,105 +3578,116 @@ class _ViewProfileTab extends StatelessWidget {
         ),
         SizedBox(height: 18),
         _ProfileViewSection(
-          title: 'Address',
-          icon: Icons.location_on_outlined,
+          title: 'Primary Postal Address',
+          icon: Icons.markunread_mailbox_outlined,
           child: _ProfileSummaryGrid(
             mobile: mobile,
             children: [
               _ProfileSummaryTile(
                 label: 'Address Line 1',
-                value: _textValue(address['addressLine1']),
+                value: _textValue(effectivePrimaryAddress['addressLine1']),
               ),
               _ProfileSummaryTile(
                 label: 'Address Line 2',
-                value: _textValue(address['addressLine2']),
+                value: _textValue(effectivePrimaryAddress['addressLine2']),
               ),
               _ProfileSummaryTile(
                 label: 'Address Line 3',
-                value: _textValue(address['addressLine3']),
+                value: _textValue(effectivePrimaryAddress['addressLine3']),
               ),
               _ProfileSummaryTile(
                 label: 'Address Line 4',
-                value: _textValue(address['addressLine4']),
+                value: _textValue(effectivePrimaryAddress['addressLine4']),
               ),
               _ProfileSummaryTile(
                 label: 'Address Type',
-                value: _textValue(address['addressType']),
+                value: _textValue(effectivePrimaryAddress['addressType']),
               ),
               _ProfileSummaryTile(
                 label: 'Landmark',
-                value: _textValue(address['landmark']),
+                value: _textValue(effectivePrimaryAddress['landmark']),
               ),
               _ProfileSummaryTile(
                 label: 'City',
-                value: _textValue(address['city']),
+                value: _textValue(effectivePrimaryAddress['city']),
               ),
               _ProfileSummaryTile(
                 label: 'State',
-                value: _textValue(address['state']),
+                value: _textValue(effectivePrimaryAddress['state']),
               ),
               _ProfileSummaryTile(
                 label: 'Post Office',
-                value: _textValue(address['postOffice']),
+                value: _textValue(effectivePrimaryAddress['postOffice']),
               ),
               _ProfileSummaryTile(
                 label: 'Police Station',
-                value: _textValue(address['policeStation']),
+                value: _textValue(effectivePrimaryAddress['policeStation']),
               ),
               _ProfileSummaryTile(
                 label: 'Pin',
-                value: _textValue(address['pin']),
+                value: _textValue(effectivePrimaryAddress['pin']),
               ),
             ],
           ),
         ),
         SizedBox(height: 18),
         _ProfileViewSection(
-          title: 'Access Context',
-          icon: Icons.admin_panel_settings_outlined,
-          child: _ProfileSummaryGrid(
-            mobile: mobile,
-            children: [
-              _ProfileSummaryTile(
-                label: 'User ID',
-                value: _textValue(header['userId']),
-              ),
-              _ProfileSummaryTile(
-                label: 'Apartment Name',
-                value: _textValue(profile!['apartmentName']),
-              ),
-              _ProfileSummaryTile(
-                label: 'Role',
-                value: _textValue(header['role']),
-              ),
-              _ProfileSummaryTile(
-                label: 'Access',
-                value: _textValue(header['access']),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18),
-        _ProfileViewSection(
-          title: 'Audit Trail',
-          icon: Icons.history_toggle_off,
-          child: _ProfileSummaryGrid(
-            mobile: mobile,
-            children: [
-              _ProfileSummaryTile(
-                label: 'Created On',
-                value: _textValue(profile!['creatTs']),
-              ),
-              _ProfileSummaryTile(
-                label: 'Created By',
-                value: _textValue(profile!['creatUsrName']),
-              ),
-              _ProfileSummaryTile(
-                label: 'Last Updated By',
-                value: _textValue(profile!['lstUpdtUsrName']),
-              ),
-            ],
-          ),
+          title: 'Other Address',
+          icon: Icons.location_on_outlined,
+          child: _hasAddressData(address)
+              ? _ProfileSummaryGrid(
+                  mobile: mobile,
+                  children: [
+                    _ProfileSummaryTile(
+                      label: 'Address Line 1',
+                      value: _textValue(address['addressLine1']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Address Line 2',
+                      value: _textValue(address['addressLine2']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Address Line 3',
+                      value: _textValue(address['addressLine3']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Address Line 4',
+                      value: _textValue(address['addressLine4']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Address Type',
+                      value: _textValue(address['addressType']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Landmark',
+                      value: _textValue(address['landmark']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'City',
+                      value: _textValue(address['city']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'State',
+                      value: _textValue(address['state']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Post Office',
+                      value: _textValue(address['postOffice']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Police Station',
+                      value: _textValue(address['policeStation']),
+                    ),
+                    _ProfileSummaryTile(
+                      label: 'Pin',
+                      value: _textValue(address['pin']),
+                    ),
+                  ],
+                )
+              : Text(
+                  'No Other Address Available',
+                  style: TextStyle(color: Colors.black54),
+                ),
         ),
       ],
     );
@@ -3261,6 +4070,7 @@ class _ProfileInputField extends StatelessWidget {
     required this.label,
     this.controller,
     this.initialValue,
+    this.hintText,
     this.obscureText = false,
     this.readOnly = false,
     this.validator,
@@ -3270,6 +4080,7 @@ class _ProfileInputField extends StatelessWidget {
   final String label;
   final TextEditingController? controller;
   final String? initialValue;
+  final String? hintText;
   final bool obscureText;
   final bool readOnly;
   final String? Function(String?)? validator;
@@ -3287,6 +4098,7 @@ class _ProfileInputField extends StatelessWidget {
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
         filled: true,
         fillColor: readOnly ? Color(0xFFF1F4F3) : Color(0xFFF9FCFB),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
@@ -3328,7 +4140,7 @@ class _ProfileDropdownField extends StatelessWidget {
     ];
 
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: resolvedItems.map((item) {
         return DropdownMenuItem<String>(value: item, child: Text(item));
       }).toList(),
@@ -3337,7 +4149,9 @@ class _ProfileDropdownField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: enabled ? Color(0xFFF9FCFB) : Color(0xFFF1F4F3),
+        fillColor: enabled && onChanged != null
+            ? Color(0xFFF9FCFB)
+            : Color(0xFFF1F4F3),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),

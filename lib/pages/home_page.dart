@@ -46,27 +46,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _displayName() {
-    final header = ApiService.userHeader;
-    if (header == null) return 'Resident';
-
-    final values = [
-      header['name'],
-      header['fullName'],
-      header['userName'],
-      [header['firstName'], header['lastName']]
-          .where((value) => value != null && value.toString().trim().isNotEmpty)
-          .join(' '),
-      header['userId'],
-    ];
-
-    for (final value in values) {
-      final text = value?.toString().trim() ?? '';
-      if (text.isNotEmpty) {
-        return text;
-      }
-    }
-
-    return 'Resident';
+    return ApiService.getDisplayName();
   }
 
   String _flatNumber() {

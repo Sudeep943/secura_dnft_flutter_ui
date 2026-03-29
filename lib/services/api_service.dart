@@ -13,6 +13,165 @@ class ApiService {
   static String? loginPassword;
   static Map<String, dynamic>? userHeader;
   static String? dashboardProfilePic;
+  static Map<String, dynamic>? profileData;
+
+  static void clearSession() {
+    token = null;
+    loginPassword = null;
+    userHeader = null;
+    dashboardProfilePic = null;
+    profileData = null;
+  }
+
+  static String? get currentUserId {
+    final userId = userHeader?['userId']?.toString().trim();
+    return userId != null && userId.isNotEmpty ? userId : null;
+  }
+
+  static String getDisplayName() {
+    final profileName = _composeProfileName(profileData?['prflName']);
+    if (profileName != null) {
+      return profileName;
+    }
+
+    final header = userHeader;
+    if (header == null) {
+      return 'Resident';
+    }
+
+    final candidates = [
+      header['profileName'],
+      header['name'],
+      header['fullName'],
+      header['userName'],
+      header['username'],
+      _composeProfileName(header['prflName']),
+      [header['firstName'], header['middleName'], header['lastName']]
+          .where((value) => value != null && value.toString().trim().isNotEmpty)
+          .join(' '),
+      header['userId'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    return 'Resident';
+  }
+
+  static String? _composeProfileName(dynamic rawName) {
+    if (rawName is Map) {
+      final parts = [
+        rawName['firstName'],
+        rawName['middleName'],
+        rawName['lastName'],
+      ].where((value) => value != null && value.toString().trim().isNotEmpty);
+      final value = parts.join(' ').trim();
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    final value = rawName?.toString().trim();
+    if (value != null && value.isNotEmpty) {
+      return value;
+    }
+
+    return null;
+  }
+
+  static Map<String, dynamic> _normalizeSessionHeader({
+    Map<String, dynamic>? loginHeader,
+    Map<String, dynamic>? profile,
+  }) {
+    final profileHeader = profile?['genericHeader'] is Map<String, dynamic>
+        ? profile!['genericHeader'] as Map<String, dynamic>
+        : (profile?['genericHeader'] is Map
+              ? Map<String, dynamic>.from(profile?['genericHeader'] as Map)
+              : <String, dynamic>{});
+
+    final flatList = profile?['prflFlatNo'];
+    final firstFlat = flatList is List && flatList.isNotEmpty
+        ? flatList.first?.toString()
+        : null;
+    final profileName = _composeProfileName(profile?['prflName']);
+
+    return {
+      'access':
+          profileHeader['access'] ??
+          loginHeader?['access'] ??
+          profile?['prflAccess'],
+      'apartmentId':
+          profileHeader['apartmentId'] ??
+          loginHeader?['apartmentId'] ??
+          profile?['aprmntId'],
+      'apartmentName':
+          profile?['apartmentName'] ??
+          loginHeader?['apartmentName'] ??
+          profileHeader['apartmentName'],
+      'flatNo': profileHeader['flatNo'] ?? loginHeader?['flatNo'] ?? firstFlat,
+      'position':
+          loginHeader?['position'] ??
+          profileHeader['position'] ??
+          profile?['prflPosition'],
+      'profileName': profileName ?? loginHeader?['profileName'],
+      'profilepic':
+          profile?['profilePic'] ??
+          loginHeader?['profilepic'] ??
+          profileHeader['profilepic'],
+      'role':
+          profileHeader['role'] ?? loginHeader?['role'] ?? profile?['prflType'],
+      'userId':
+          loginHeader?['userId'] ??
+          profile?['prflId'] ??
+          profileHeader['userId'],
+      'prflName': profile?['prflName'],
+    };
+  }
+
+  static Map<String, dynamic>? _buildGenericHeader() {
+    final header = userHeader;
+    if (header == null) {
+      return null;
+    }
+
+    return {
+      'userId': header['userId'],
+      'apartmentId': header['apartmentId'],
+      'role': header['role'],
+      'access': header['access'],
+      'flatNo': header['flatNo'],
+    };
+  }
+
+  static void _storeLoginSession({
+    required Map<String, dynamic> responseData,
+    required String password,
+  }) {
+    token = responseData['token']?.toString();
+    loginPassword = password;
+
+    final header = responseData['header'];
+    userHeader = header is Map<String, dynamic>
+        ? _normalizeSessionHeader(loginHeader: header)
+        : (header is Map
+              ? _normalizeSessionHeader(
+                  loginHeader: Map<String, dynamic>.from(header),
+                )
+              : userHeader);
+  }
+
+  static void _storeProfile(Map<String, dynamic> profile) {
+    profileData = profile;
+    dashboardProfilePic = profile['profilePic']?.toString();
+    userHeader = _normalizeSessionHeader(
+      loginHeader: userHeader,
+      profile: profile,
+    );
+  }
 
   static String? getLoggedInFlatNo() {
     final header = userHeader;
@@ -41,22 +200,84 @@ class ApiService {
     return null;
   }
 
-  static Future<String?> login(String username, String password) async {
+  static Future<Map<String, dynamic>?> login({
+    required String username,
+    required String password,
+    String? otp,
+  }) async {
+    final requestBody = <String, dynamic>{
+      'username': username,
+      'password': password,
+    };
+    if (otp != null && otp.trim().isNotEmpty) {
+      requestBody['otp'] = otp.trim();
+    }
+
     final response = await http.post(
       Uri.parse("$_baseUrl/auth/login"),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({"username": username, "password": password}),
+      body: jsonEncode(requestBody),
     );
 
-    if (response.statusCode == 200 && response.body.isNotEmpty) {
-      final data = jsonDecode(response.body);
-      token = data['token'];
-      loginPassword = password;
-      userHeader = data['header'];
-      return token;
+    if (response.body.isEmpty) {
+      return null;
     }
 
-    return null;
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    final responseData = Map<String, dynamic>.from(data);
+    final messageCode = responseData['messageCode']?.toString() ?? '';
+    if (response.statusCode == 200 && messageCode.startsWith('SUCC')) {
+      _storeLoginSession(responseData: responseData, password: password);
+    }
+
+    return responseData;
+  }
+
+  static Future<Map<String, dynamic>?> fetchAndStoreProfile({
+    String? profileId,
+  }) async {
+    final response = await getProfile(profileId: profileId);
+    if (response == null) {
+      return null;
+    }
+
+    final messageCode = response['messageCode']?.toString() ?? '';
+    if (messageCode.startsWith('SUCC')) {
+      _storeProfile(response);
+    }
+
+    return response;
+  }
+
+  static Future<Map<String, dynamic>?> updatePassword({
+    required String profileId,
+    required String newPassword,
+    required bool otpVerified,
+  }) async {
+    final response = await http.post(
+      Uri.parse("$_baseUrl/auth/updatePassword"),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'profileId': profileId,
+        'newPassword': newPassword,
+        'otpVerified': otpVerified,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
   }
 
   static Future<Map<String, dynamic>?> getDashboardData() async {
@@ -217,6 +438,9 @@ class ApiService {
   static Future<Map<String, dynamic>?> getProfile({String? profileId}) async {
     if (token == null || userHeader == null) return null;
 
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
     final resolvedProfileId = (profileId != null && profileId.trim().isNotEmpty)
         ? profileId.trim()
         : userHeader?['userId']?.toString().trim();
@@ -232,7 +456,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'genericHeader': userHeader,
+        'genericHeader': genericHeader,
         'profileID': resolvedProfileId,
       }),
     );

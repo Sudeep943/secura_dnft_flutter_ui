@@ -68,52 +68,7 @@ class _SideBarState extends State<SideBar> {
   }
 
   String _displayName() {
-    final header = ApiService.userHeader;
-    if (header == null) {
-      return 'Resident';
-    }
-
-    const firstNameKeys = ['firstName', 'fname'];
-    const lastNameKeys = ['lastName', 'lname'];
-    const fullNameKeys = ['name', 'fullName', 'userName', 'username'];
-
-    for (final key in fullNameKeys) {
-      final value = header[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) {
-        return value;
-      }
-    }
-
-    String? firstName;
-    String? lastName;
-
-    for (final key in firstNameKeys) {
-      final value = header[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) {
-        firstName = value;
-        break;
-      }
-    }
-
-    for (final key in lastNameKeys) {
-      final value = header[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) {
-        lastName = value;
-        break;
-      }
-    }
-
-    final composedName = [
-      firstName,
-      lastName,
-    ].whereType<String>().where((value) => value.isNotEmpty).join(' ').trim();
-    if (composedName.isNotEmpty) {
-      return composedName;
-    }
-
-    return header['userId']?.toString().trim().isNotEmpty == true
-        ? header['userId'].toString().trim()
-        : 'Resident';
+    return ApiService.getDisplayName();
   }
 
   String _flatLabel() {

@@ -99,23 +99,21 @@ class _SideBarState extends State<SideBar> {
               width: 188,
               height: 188,
               decoration: BoxDecoration(
-                color: Colors.white,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: Colors.white.withValues(alpha: 0.55),
                   width: 4,
                 ),
+                image: _cachedProfileImage == null
+                    ? null
+                    : DecorationImage(
+                        image: _cachedProfileImage!,
+                        fit: BoxFit.cover,
+                      ),
               ),
-              clipBehavior: Clip.antiAlias,
               child: _cachedProfileImage == null
                   ? Icon(Icons.person, size: 84)
-                  : Image(
-                      image: _cachedProfileImage!,
-                      fit: BoxFit.cover,
-                      width: 188,
-                      height: 188,
-                      gaplessPlayback: true,
-                    ),
+                  : null,
             ),
           ),
 

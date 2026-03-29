@@ -14,16 +14,99 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
   final username = TextEditingController();
   final password = TextEditingController();
+  final _passwordFocusNode = FocusNode();
 
   bool loading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
     username.dispose();
     password.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  Widget _buildDialogHeader(String title) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      decoration: const BoxDecoration(
+        color: _brandColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
+        ),
+      ),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _buildDialogInputDecoration({
+    required String labelText,
+    String? errorText,
+    String? counterText,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      labelStyle: const TextStyle(color: _brandTextColor),
+      errorText: errorText,
+      counterText: counterText,
+      suffixIcon: suffixIcon,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _brandColor.withValues(alpha: 0.45)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: _brandColor, width: 2),
+      ),
+      errorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: Colors.redAccent),
+      ),
+      focusedErrorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: Colors.redAccent, width: 2),
+      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  ButtonStyle _filledDialogButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: _brandColor,
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+
+  ButtonStyle _textDialogButtonStyle() {
+    return TextButton.styleFrom(
+      foregroundColor: _brandColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    );
+  }
+
+  void _submitIfReady() {
+    if (!loading) {
+      login();
+    }
   }
 
   Future<void> _showMessageDialog({
@@ -57,7 +140,8 @@ class _LoginPageState extends State<LoginPage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('OTP Verification'),
+            titlePadding: EdgeInsets.zero,
+            title: _buildDialogHeader('OTP Verification'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,9 +157,21 @@ class _LoginPageState extends State<LoginPage> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(4),
                   ],
-                  decoration: InputDecoration(
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    final otp = otpController.text.trim();
+                    if (otp.length != 4) {
+                      setDialogState(() {
+                        validationMessage = 'Enter a valid 4 digit OTP.';
+                      });
+                      return;
+                    }
+
+                    Navigator.of(dialogContext).pop(otp);
+                  },
+                  cursorColor: _brandColor,
+                  decoration: _buildDialogInputDecoration(
                     labelText: '4 digit OTP',
-                    border: const OutlineInputBorder(),
                     errorText: validationMessage,
                     counterText: '',
                   ),
@@ -84,10 +180,12 @@ class _LoginPageState extends State<LoginPage> {
             ),
             actions: [
               TextButton(
+                style: _textDialogButtonStyle(),
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const Text('Cancel'),
               ),
               FilledButton(
+                style: _filledDialogButtonStyle(),
                 onPressed: () {
                   final otp = otpController.text.trim();
                   if (otp.length != 4) {
@@ -121,7 +219,8 @@ class _LoginPageState extends State<LoginPage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Update Password'),
+            titlePadding: EdgeInsets.zero,
+            title: _buildDialogHeader('Update Password'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -132,9 +231,21 @@ class _LoginPageState extends State<LoginPage> {
                   controller: passwordController,
                   autofocus: true,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    final newPassword = passwordController.text.trim();
+                    if (newPassword.isEmpty) {
+                      setDialogState(() {
+                        validationMessage = 'Password is required.';
+                      });
+                      return;
+                    }
+
+                    Navigator.of(dialogContext).pop(newPassword);
+                  },
+                  cursorColor: _brandColor,
+                  decoration: _buildDialogInputDecoration(
                     labelText: 'New Password',
-                    border: const OutlineInputBorder(),
                     errorText: validationMessage,
                   ),
                 ),
@@ -142,10 +253,12 @@ class _LoginPageState extends State<LoginPage> {
             ),
             actions: [
               TextButton(
+                style: _textDialogButtonStyle(),
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const Text('Cancel'),
               ),
               FilledButton(
+                style: _filledDialogButtonStyle(),
                 onPressed: () {
                   final newPassword = passwordController.text.trim();
                   if (newPassword.isEmpty) {
@@ -348,6 +461,12 @@ class _LoginPageState extends State<LoginPage> {
 
                         TextField(
                           controller: username,
+                          textInputAction: TextInputAction.next,
+                          onSubmitted: (_) {
+                            FocusScope.of(
+                              context,
+                            ).requestFocus(_passwordFocusNode);
+                          },
                           decoration: const InputDecoration(
                             labelText: "Username / Phone",
                             border: OutlineInputBorder(),
@@ -358,10 +477,28 @@ class _LoginPageState extends State<LoginPage> {
 
                         TextField(
                           controller: password,
-                          obscureText: true,
-                          decoration: const InputDecoration(
+                          focusNode: _passwordFocusNode,
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _submitIfReady(),
+                          decoration: InputDecoration(
                             labelText: "Password",
-                            border: OutlineInputBorder(),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                              tooltip: _obscurePassword
+                                  ? 'Show password'
+                                  : 'Hide password',
+                            ),
                           ),
                         ),
 
@@ -372,10 +509,10 @@ class _LoginPageState extends State<LoginPage> {
                           height: 50,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F8F82),
+                              backgroundColor: _brandColor,
                               foregroundColor: Colors.white,
                             ),
-                            onPressed: loading ? null : login,
+                            onPressed: loading ? null : _submitIfReady,
                             child: loading
                                 ? const CircularProgressIndicator(
                                     color: Colors.white,

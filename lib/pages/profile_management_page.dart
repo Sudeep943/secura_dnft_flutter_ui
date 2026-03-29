@@ -657,11 +657,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final profileName = _mapValue(response['prflName']);
     final contactDetails = _mapValue(response['contactDetails']);
     final otherAddress = _mapValue(response['prflOthrAdrss']);
-    final primaryAddress = _mapValue(
-      response['primaryAddress'] ??
-          response['profilePrimaryPostalAdrss'] ??
-          response['prflPrimaryPostalAdrss'],
-    );
+    final primaryAddress = _mapValue(response['primaryAddress']);
     final effectivePrimaryAddress = primaryAddress.isNotEmpty
         ? primaryAddress
         : otherAddress;
@@ -957,7 +953,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                     addressType: _updateAddressType,
                   )
                 : null),
-      'profilePrimaryPostalAdrss': _buildAddressRequest(
+      'primaryPostalAddress': _buildAddressRequest(
         line1Controller: _updatePrimaryAddressLine1Controller,
         line2Controller: _updatePrimaryAddressLine2Controller,
         line3Controller: _updatePrimaryAddressLine3Controller,
@@ -3352,6 +3348,40 @@ class _ViewProfileTab extends StatelessWidget {
     return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
   }
 
+  String _formatDisplayTimestamp(dynamic value) {
+    final raw = _textValue(value);
+    if (raw == 'Not available') {
+      return raw;
+    }
+
+    final sanitized = raw.trim();
+    if (sanitized.isEmpty) {
+      return 'Not available';
+    }
+
+    final parsed = DateTime.tryParse(sanitized);
+    if (parsed == null) {
+      return sanitized;
+    }
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
+  }
+
   bool _hasAddressData(Map<String, dynamic> address) {
     const keys = [
       'addressLine1',
@@ -3427,11 +3457,7 @@ class _ViewProfileTab extends StatelessWidget {
     final profileName = _mapValue(profile!['prflName']);
     final contactDetails = _mapValue(profile!['contactDetails']);
     final address = _mapValue(profile!['prflOthrAdrss']);
-    final primaryAddress = _mapValue(
-      profile!['primaryAddress'] ??
-          profile!['profilePrimaryPostalAdrss'] ??
-          profile!['prflPrimaryPostalAdrss'],
-    );
+    final primaryAddress = _mapValue(profile!['primaryAddress']);
     final effectivePrimaryAddress = primaryAddress.isNotEmpty
         ? primaryAddress
         : address;
@@ -3572,6 +3598,28 @@ class _ViewProfileTab extends StatelessWidget {
               _ProfileSummaryTile(
                 label: 'Landline Number',
                 value: _textValue(contactDetails['landlinenumber']),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18),
+        _ProfileViewSection(
+          title: 'Audit Details',
+          icon: Icons.history_toggle_off_outlined,
+          child: _ProfileSummaryGrid(
+            mobile: mobile,
+            children: [
+              _ProfileSummaryTile(
+                label: 'Created By',
+                value: _textValue(profile!['creatUsrName']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Created On',
+                value: _formatDisplayTimestamp(profile!['creatTsin']),
+              ),
+              _ProfileSummaryTile(
+                label: 'Last Updated By',
+                value: _textValue(profile!['lstUpdtUsrName']),
               ),
             ],
           ),

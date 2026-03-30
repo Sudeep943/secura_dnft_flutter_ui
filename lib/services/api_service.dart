@@ -318,19 +318,30 @@ class ApiService {
   }
 
   static Future<List<Map<String, dynamic>>?> getAllHalls() async {
-    if (token == null) return null;
+    if (token == null || userHeader == null) return null;
+
+    final apartmentId = userHeader?['apartmentId']?.toString().trim();
+    if (apartmentId == null || apartmentId.isEmpty) {
+      return null;
+    }
 
     final response = await http.get(
-      Uri.parse("$_baseUrl/booking/getAllHalls"),
+      Uri.parse("$_baseUrl/booking/getAllHalls/$apartmentId"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
     );
 
+    if (response.body.isEmpty) {
+      return null;
+    }
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['halls']);
+      if (data is Map && data['halls'] is List) {
+        return List<Map<String, dynamic>>.from(data['halls']);
+      }
     }
 
     return null;
@@ -342,6 +353,11 @@ class ApiService {
   }) async {
     if (token == null || userHeader == null) return null;
 
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
     final response = await http.post(
       Uri.parse("$_baseUrl/booking/checkHallAvailability"),
       headers: {
@@ -349,7 +365,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
-        'genericHeader': userHeader,
+        'genericHeader': genericHeader,
         'hallId': hallId,
         'eventDate': eventDate,
       }),
@@ -362,16 +378,41 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<http.Response> _postBookingEndpoint({
+    required String path,
+    required Map<String, dynamic> requestBody,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final headers = <String, String>{'Content-Type': 'application/json'};
+
+    if (token != null && token!.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    var response = await http.post(
+      uri,
+      headers: headers,
+      body: jsonEncode(requestBody),
+    );
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        headers.containsKey('Authorization')) {
+      response = await http.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+    }
+
+    return response;
+  }
+
   static Future<Map<String, dynamic>?> getBookings() async {
     if (token == null || userHeader == null) return null;
 
-    final response = await http.post(
-      Uri.parse("$_baseUrl/booking/getBookings"),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'genericHeader': userHeader}),
+    final response = await _postBookingEndpoint(
+      path: '/booking/getBookings',
+      requestBody: {'genericHeader': userHeader},
     );
 
     if (response.body.isEmpty) {
@@ -386,13 +427,9 @@ class ApiService {
   }) async {
     if (token == null || userHeader == null) return null;
 
-    final response = await http.post(
-      Uri.parse("$_baseUrl/booking/getBooking"),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'genericHeader': userHeader, 'bookingId': bookingId}),
+    final response = await _postBookingEndpoint(
+      path: '/booking/getBooking',
+      requestBody: {'genericHeader': userHeader, 'bookingId': bookingId},
     );
 
     if (response.body.isEmpty) {
@@ -409,18 +446,14 @@ class ApiService {
   }) async {
     if (token == null || userHeader == null) return null;
 
-    final response = await http.post(
-      Uri.parse("$_baseUrl/booking/updateBooking"),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
+    final response = await _postBookingEndpoint(
+      path: '/booking/updateBooking',
+      requestBody: {
         'genericHeader': userHeader,
         'bookingId': bookingId,
         'reason': reason,
         'status': status,
-      }),
+      },
     );
 
     if (response.body.isEmpty) {

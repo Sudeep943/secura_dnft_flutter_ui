@@ -542,6 +542,58 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
+  DateTime? _parseDateInput(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    try {
+      return DateTime.parse(trimmed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatPickerDate(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  Future<void> _pickCreateProfileDob() async {
+    final initialDate =
+        _parseDateInput(_profileDobController.text) ?? DateTime.now();
+    final now = DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isAfter(now) ? now : initialDate,
+      firstDate: DateTime(1900),
+      lastDate: now,
+      helpText: 'Select Profile DOB',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: _brandColor,
+              secondary: _brandColor,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+
+    if (pickedDate == null) {
+      return;
+    }
+
+    setState(() {
+      _profileDobController.text = _formatPickerDate(pickedDate);
+    });
+  }
+
   Map<String, dynamic> _buildHeaderRequest() {
     return {
       'userId': _readHeaderValue(['userId']),
@@ -1264,6 +1316,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           profilePosition: _profilePosition,
           profileKind: _profileKind,
           gender: _gender,
+          onPickProfileDob: _pickCreateProfileDob,
           hasOtherAddress: _createHasOtherAddress,
           addressType: _addressType,
           primaryAddressType: _primaryAddressType,
@@ -2237,6 +2290,7 @@ class _CreateProfileTab extends StatelessWidget {
     required this.profilePosition,
     required this.profileKind,
     required this.gender,
+    required this.onPickProfileDob,
     required this.hasOtherAddress,
     required this.addressType,
     required this.primaryAddressType,
@@ -2288,6 +2342,7 @@ class _CreateProfileTab extends StatelessWidget {
   final String? profilePosition;
   final String? profileKind;
   final String? gender;
+  final VoidCallback onPickProfileDob;
   final bool hasOtherAddress;
   final String addressType;
   final String primaryAddressType;
@@ -2369,6 +2424,14 @@ class _CreateProfileTab extends StatelessWidget {
                 label: 'Profile DOB *',
                 controller: profileDobController,
                 hintText: 'YYYY-MM-DD',
+                suffixIcon: IconButton(
+                  onPressed: onPickProfileDob,
+                  icon: Icon(
+                    Icons.calendar_month_outlined,
+                    color: _ProfileManagementPageState._brandColor,
+                  ),
+                  tooltip: 'Choose date',
+                ),
                 validator: (value) => requiredValidator(value, 'Profile DOB'),
               ),
               _ProfileDropdownField(
@@ -4119,6 +4182,7 @@ class _ProfileInputField extends StatelessWidget {
     this.controller,
     this.initialValue,
     this.hintText,
+    this.suffixIcon,
     this.obscureText = false,
     this.readOnly = false,
     this.validator,
@@ -4129,6 +4193,7 @@ class _ProfileInputField extends StatelessWidget {
   final TextEditingController? controller;
   final String? initialValue;
   final String? hintText;
+  final Widget? suffixIcon;
   final bool obscureText;
   final bool readOnly;
   final String? Function(String?)? validator;
@@ -4147,6 +4212,7 @@ class _ProfileInputField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
+        suffixIcon: suffixIcon,
         filled: true,
         fillColor: readOnly ? Color(0xFFF1F4F3) : Color(0xFFF9FCFB),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),

@@ -378,6 +378,21 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getUpcomingHallBookings() async {
+    if (userHeader == null) return null;
+
+    final response = await _postBookingEndpoint(
+      path: '/booking/getUpcomingHallBookings',
+      requestBody: {'header': userHeader},
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<http.Response> _postBookingEndpoint({
     required String path,
     required Map<String, dynamic> requestBody,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../navigation/app_section.dart';
+import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'check_availability_page.dart';
@@ -23,9 +24,77 @@ class _BookingPageState extends State<BookingPage> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
   static const Color _accentColor = Color(0xFFE0DA84);
+  int _upcomingBookingsCount = 0;
+  bool _upcomingBookingsLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUpcomingBookingsCount();
+  }
 
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
+  }
+
+  Future<void> _loadUpcomingBookingsCount() async {
+    final response = await ApiService.getUpcomingHallBookings();
+    if (!mounted) {
+      return;
+    }
+
+    final bookingList = response?['bookingList'];
+    final messageCode = response?['messageCode']?.toString() ?? '';
+    final count = messageCode.startsWith('SUCC') && bookingList is List
+        ? bookingList.length
+        : 0;
+
+    setState(() {
+      _upcomingBookingsCount = count;
+      _upcomingBookingsLoading = false;
+    });
+  }
+
+  Widget _buildUpcomingBookingsSummary() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Upcoming Bookings',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _upcomingBookingsLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  '$_upcomingBookingsCount ${_upcomingBookingsCount == 1 ? 'Booking' : 'Bookings'}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+        ],
+      ),
+    );
   }
 
   void _showEmbeddedView(_BookingView view) {
@@ -165,41 +234,7 @@ class _BookingPageState extends State<BookingPage> {
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.14),
-                          ),
-                        ),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Booking Desk',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              '3 Active Actions',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildUpcomingBookingsSummary(),
                     ],
                   ),
                 ),

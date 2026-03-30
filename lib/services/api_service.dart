@@ -1,8 +1,13 @@
 import 'dart:convert';
+
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // static const String _baseUrl = 'http://localhost:8080';
+  //static const String _baseUrl = 'http://localhost:8080';
+  static const String _authEncryptionKeyBase64 =
+      'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
+  static const String _authEncryptionIvBase64 = 'U2VjdXJhSW5pdFZlYzEyMw==';
 
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -200,14 +205,24 @@ class ApiService {
     return null;
   }
 
+  static String _encryptAuthValue(String value) {
+    final key = encrypt.Key(base64Decode(_authEncryptionKeyBase64));
+    final iv = encrypt.IV(base64Decode(_authEncryptionIvBase64));
+    final encrypter = encrypt.Encrypter(
+      encrypt.AES(key, mode: encrypt.AESMode.cbc),
+    );
+    return encrypter.encrypt(value, iv: iv).base64;
+  }
+
   static Future<Map<String, dynamic>?> login({
     required String username,
     required String password,
     String? otp,
   }) async {
+    final encryptedPassword = _encryptAuthValue(password);
     final requestBody = <String, dynamic>{
       'username': username,
-      'password': password,
+      'password': encryptedPassword,
     };
     if (otp != null && otp.trim().isNotEmpty) {
       requestBody['otp'] = otp.trim();
@@ -258,12 +273,13 @@ class ApiService {
     required String newPassword,
     required bool otpVerified,
   }) async {
+    final encryptedPassword = _encryptAuthValue(newPassword);
     final response = await http.post(
       Uri.parse("$_baseUrl/auth/updatePassword"),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'profileId': profileId,
-        'newPassword': newPassword,
+        'newPassword': encryptedPassword,
         'otpVerified': otpVerified,
       }),
     );

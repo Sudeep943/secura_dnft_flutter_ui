@@ -1812,6 +1812,18 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _tenantDocumentStatusIsSuccess = true;
     });
 
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_tenantDocumentStatusMessage == message &&
+          _tenantDocumentStatusProfileId == draft.profileId) {
+        setState(() {
+          _tenantDocumentStatusMessage = null;
+          _tenantDocumentStatusProfileId = null;
+          _tenantDocumentStatusIsSuccess = false;
+        });
+      }
+    });
+
     await _loadTenantManagement(
       showErrorModal: false,
       preserveDocumentStatus: true,

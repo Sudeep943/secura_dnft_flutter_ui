@@ -653,7 +653,7 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
                 : () async {
                     await _submitBookingUpdate(
                       bookingId: bookingId,
-                      status: 'APPROVE',
+                      status: 'APPROVED',
                     );
                   },
           ),

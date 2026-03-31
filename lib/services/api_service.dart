@@ -532,6 +532,30 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getTenant({
+    required String flatId,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/getTenant"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'genericHeader': genericHeader, 'flatId': flatId}),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> updateProfile(
     Map<String, dynamic> requestBody,
   ) async {
@@ -539,6 +563,27 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse("$_baseUrl/profile/updateProfile"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> updateTenantDetails(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/updateTenantDetails"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

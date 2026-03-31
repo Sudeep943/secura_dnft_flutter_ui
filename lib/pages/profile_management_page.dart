@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
@@ -112,6 +113,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _updatePrimaryPostOfficeController = TextEditingController();
   final _updatePrimaryPoliceStationController = TextEditingController();
   final _updatePrimaryPinController = TextEditingController();
+  final _tenantStartDateController = TextEditingController();
+  final _tenantEndDateController = TextEditingController();
 
   _ProfileManagementSection? _selectedSection;
   String? _profileType;
@@ -132,10 +135,21 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   bool _creatingProfile = false;
   bool _loadingProfile = false;
   bool _updatingProfile = false;
+  bool _loadingTenant = false;
+  bool _updatingTenant = false;
   Map<String, dynamic>? _loadedProfile;
+  Map<String, dynamic>? _loadedTenantResponse;
   String? _currentProfilePicBase64;
   String? _selectedProfileImageBase64;
   Uint8List? _selectedProfileImageBytes;
+  List<_TenantProfileData> _tenantProfiles = [];
+  List<_TenantExistingDocument> _tenantExistingDocuments = [];
+  final List<_TenantNewDocumentDraft> _tenantNewDocuments = [];
+  bool _tenantVerified = false;
+  String _tenantStatus = '';
+  String? _tenantDocumentStatusMessage;
+  String? _tenantDocumentStatusProfileId;
+  bool _tenantDocumentStatusIsSuccess = false;
 
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
@@ -150,6 +164,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       if (_selectedSection == _ProfileManagementSection.updateProfile ||
           _selectedSection == _ProfileManagementSection.viewProfile) {
         _loadProfileForUpdate();
+      } else if (_selectedSection ==
+          _ProfileManagementSection.tenantManagement) {
+        _loadTenantManagement();
       }
     });
   }
@@ -214,6 +231,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updatePrimaryPostOfficeController.dispose();
     _updatePrimaryPoliceStationController.dispose();
     _updatePrimaryPinController.dispose();
+    _tenantStartDateController.dispose();
+    _tenantEndDateController.dispose();
+    _disposeTenantDocumentDrafts();
     super.dispose();
   }
 
@@ -351,6 +371,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     if (section == _ProfileManagementSection.updateProfile ||
         section == _ProfileManagementSection.viewProfile) {
       _loadProfileForUpdate();
+    } else if (section == _ProfileManagementSection.tenantManagement) {
+      _loadTenantManagement();
     }
   }
 
@@ -358,6 +380,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final closingProfileSection =
         _selectedSection == _ProfileManagementSection.updateProfile ||
         _selectedSection == _ProfileManagementSection.viewProfile;
+    final closingTenantSection =
+        _selectedSection == _ProfileManagementSection.tenantManagement;
 
     setState(() {
       _selectedSection = null;
@@ -366,6 +390,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
 
     if (closingProfileSection) {
       _clearUpdateProfileForm();
+    }
+
+    if (closingTenantSection) {
+      _clearTenantManagementState();
     }
   }
 
@@ -480,6 +508,368 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
 
     return raw;
+  }
+
+  bool _boolValue(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+
+    final normalized = _stringValue(value).toLowerCase();
+    return normalized == 'true' || normalized == 'y' || normalized == 'yes';
+  }
+
+  dynamic _decodeJsonValue(dynamic value) {
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) {
+        return null;
+      }
+
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          return jsonDecode(trimmed);
+        } catch (_) {
+          return value;
+        }
+      }
+    }
+
+    return value;
+  }
+
+  Map<String, dynamic> _jsonMapValue(dynamic value) {
+    final decoded = _decodeJsonValue(value);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _jsonMapList(dynamic value) {
+    final decoded = _decodeJsonValue(value);
+    if (decoded is List) {
+      return decoded
+          .whereType<dynamic>()
+          .map(
+            (item) => item is Map<String, dynamic>
+                ? item
+                : item is Map
+                ? Map<String, dynamic>.from(item)
+                : <String, dynamic>{},
+          )
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+
+    return <Map<String, dynamic>>[];
+  }
+
+  String _composeDisplayName(Map<String, dynamic> name) {
+    final parts = [
+      _stringValue(name['firstName']),
+      _stringValue(name['middleName']),
+      _stringValue(name['lastName']),
+    ].where((part) => part.isNotEmpty).toList();
+
+    return parts.join(' ').trim();
+  }
+
+  String _formatAddressDisplay(Map<String, dynamic> address) {
+    final parts = [
+      _stringValue(address['addressLine1']),
+      _stringValue(address['addressLine2']),
+      _stringValue(address['addressLine3']),
+      _stringValue(address['addressLine4']),
+      _stringValue(address['landmark']),
+      _stringValue(address['city']),
+      _stringValue(address['state']),
+      _stringValue(address['postOffice']),
+      _stringValue(address['policeStation']),
+      _stringValue(address['pin']),
+    ].where((part) => part.isNotEmpty).toList();
+
+    return parts.isEmpty ? '-' : parts.join(', ');
+  }
+
+  Uint8List? _decodeBase64Bytes(String? value) {
+    final normalized = _nullableValue(value);
+    if (normalized == null) {
+      return null;
+    }
+
+    final encodedValue = normalized.contains(',')
+        ? normalized.split(',').last
+        : normalized;
+
+    try {
+      return base64Decode(encodedValue);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _matchDocumentProfileId(
+    String documentName,
+    List<_TenantProfileData> profiles,
+  ) {
+    final trimmedName = documentName.trim();
+    for (final profile in profiles) {
+      if (trimmedName == profile.profileId ||
+          trimmedName.startsWith('${profile.profileId}_') ||
+          trimmedName.startsWith('${profile.profileId} ')) {
+        return profile.profileId;
+      }
+    }
+
+    final prefix = trimmedName.split('_').first.trim();
+    for (final profile in profiles) {
+      if (profile.profileId == prefix) {
+        return profile.profileId;
+      }
+    }
+
+    return '';
+  }
+
+  void _disposeTenantDocumentDrafts() {
+    for (final draft in _tenantNewDocuments) {
+      draft.dispose();
+    }
+    _tenantNewDocuments.clear();
+  }
+
+  void _clearTenantManagementState() {
+    _tenantStartDateController.clear();
+    _tenantEndDateController.clear();
+    _disposeTenantDocumentDrafts();
+    _loadedTenantResponse = null;
+    _tenantProfiles = [];
+    _tenantExistingDocuments = [];
+    _tenantVerified = false;
+    _tenantStatus = '';
+    _tenantDocumentStatusMessage = null;
+    _tenantDocumentStatusProfileId = null;
+    _tenantDocumentStatusIsSuccess = false;
+    _loadingTenant = false;
+    _updatingTenant = false;
+  }
+
+  Future<void> _pickTenantDate({
+    required TextEditingController controller,
+    required String helpText,
+  }) async {
+    final initialDate = _parseDateInput(controller.text) ?? DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+      helpText: helpText,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: _brandColor,
+              secondary: _brandColor,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+
+    if (pickedDate == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      controller.text = _formatPickerDate(pickedDate);
+    });
+  }
+
+  String _formatTenantDateForRequest(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    if (trimmed.contains('T')) {
+      return trimmed;
+    }
+
+    return '${trimmed}T00:00:00Z';
+  }
+
+  String _fileExtensionFromName(String value) {
+    final trimmed = value.trim();
+    final lastDot = trimmed.lastIndexOf('.');
+    if (lastDot <= 0 || lastDot == trimmed.length - 1) {
+      return '';
+    }
+
+    return trimmed.substring(lastDot + 1).toLowerCase();
+  }
+
+  String _fileNameWithoutExtension(String value) {
+    final trimmed = value.trim();
+    final lastDot = trimmed.lastIndexOf('.');
+    if (lastDot <= 0) {
+      return trimmed;
+    }
+
+    return trimmed.substring(0, lastDot);
+  }
+
+  String _normalizedDocumentBaseName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    return _fileNameWithoutExtension(
+      trimmed,
+    ).replaceAll(RegExp(r'\s+'), '_').trim();
+  }
+
+  String _guessExtensionFromBytes(Uint8List bytes) {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x25 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x44 &&
+        bytes[3] == 0x46) {
+      return 'pdf';
+    }
+
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'jpg';
+    }
+
+    if (bytes.length >= 6 &&
+        bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46) {
+      return 'gif';
+    }
+
+    if (bytes.length >= 2 && bytes[0] == 0x42 && bytes[1] == 0x4D) {
+      return 'bmp';
+    }
+
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'webp';
+    }
+
+    return '';
+  }
+
+  String _tenantRequestDocumentName(_TenantNewDocumentDraft draft) {
+    final baseName = _normalizedDocumentBaseName(
+      draft.documentNameController.text,
+    );
+    final selectedExtension = _fileExtensionFromName(draft.fileName ?? '');
+    final normalizedName = '${draft.profileId}_$baseName';
+    if (selectedExtension.isEmpty) {
+      return normalizedName;
+    }
+
+    return '$normalizedName.$selectedExtension';
+  }
+
+  MimeType _mimeTypeForExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        return MimeType.pdf;
+      case 'png':
+        return MimeType.png;
+      case 'jpg':
+      case 'jpeg':
+        return MimeType.jpeg;
+      case 'txt':
+        return MimeType.text;
+      case 'json':
+        return MimeType.json;
+      case 'xml':
+        return MimeType.xml;
+      case 'yaml':
+      case 'yml':
+        return MimeType.yaml;
+      case 'csv':
+        return MimeType.csv;
+      case 'zip':
+        return MimeType.zip;
+      case 'docx':
+        return MimeType.microsoftWord;
+      case 'xlsx':
+        return MimeType.microsoftExcel;
+      case 'pptx':
+        return MimeType.microsoftPresentation;
+      default:
+        return MimeType.other;
+    }
+  }
+
+  Map<String, dynamic>? _buildTenantUpdateRequest({
+    Iterable<_TenantNewDocumentDraft> additionalDrafts = const [],
+  }) {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
+      return null;
+    }
+
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty || _loadedTenantResponse == null) {
+      return null;
+    }
+
+    final tenant = _jsonMapValue(_loadedTenantResponse?['tenant']);
+
+    return {
+      'header': header,
+      'status': _tenantStatus.isNotEmpty
+          ? _tenantStatus
+          : _stringValue(tenant['status']),
+      'flatId': flatId,
+      'startDate': _formatTenantDateForRequest(_tenantStartDateController.text),
+      'endDate': _formatTenantDateForRequest(_tenantEndDateController.text),
+      'verified': _tenantVerified,
+      'listOfDocuments': [
+        for (final document in _tenantExistingDocuments)
+          {
+            'documentName': document.documentName,
+            'documentCode': document.documentCode,
+          },
+        for (final draft in additionalDrafts)
+          {
+            'documentName': _tenantRequestDocumentName(draft),
+            'documentCode': draft.documentBase64,
+          },
+      ],
+    };
   }
 
   bool _hasAddressValues({
@@ -689,20 +1079,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       return _selectedProfileImageBytes;
     }
 
-    final imageData = _effectiveProfileImageBase64;
-    if (imageData == null) {
-      return null;
-    }
-
-    final encodedValue = imageData.contains(',')
-        ? imageData.split(',').last
-        : imageData;
-
-    try {
-      return base64Decode(encodedValue);
-    } catch (_) {
-      return null;
-    }
+    return _decodeBase64Bytes(_effectiveProfileImageBase64);
   }
 
   void _populateUpdateProfileForm(Map<String, dynamic> response) {
@@ -1194,6 +1571,391 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
+  Future<void> _loadTenantManagement({
+    bool showErrorModal = true,
+    bool preserveDocumentStatus = false,
+  }) async {
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Tenant Fetch Failed',
+          message:
+              'Unable to find the logged-in flat number required to fetch tenant details.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _loadingTenant = true;
+    });
+
+    final response = await ApiService.getTenant(flatId: flatId);
+    if (!mounted) return;
+
+    setState(() {
+      _loadingTenant = false;
+    });
+
+    if (response == null) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Tenant Fetch Failed',
+          message: 'No response was returned from the server.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['tenant']);
+    if (!isSuccess) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Tenant Fetch Failed',
+          message: _stringValue(response['message']).isNotEmpty
+              ? _stringValue(response['message'])
+              : 'Unable to load tenant details for the current flat.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    final tenant = _jsonMapValue(response['tenant']);
+    final profiles = _jsonMapList(response['profile'])
+        .map(
+          (entry) => _TenantProfileData(
+            profileId: _stringValue(entry['prflId']),
+            displayName: _composeDisplayName(_jsonMapValue(entry['prflName'])),
+            profileKind: _stringValue(entry['profileKind']),
+            primaryAddress: _formatAddressDisplay(
+              _jsonMapValue(entry['prflPrimaryPostalAdrss']),
+            ),
+            gender: _stringValue(entry['gender']),
+            phoneNo: _stringValue(entry['prflPhoneNo']),
+            dob: _formatDate(entry['prflDob']),
+            imageBytes: _decodeBase64Bytes(_stringValue(entry['profile_pic'])),
+          ),
+        )
+        .where((profile) => profile.profileId.isNotEmpty)
+        .toList();
+    final documents = _jsonMapList(tenant['document'])
+        .map(
+          (entry) => _TenantExistingDocument(
+            profileId: _matchDocumentProfileId(
+              _stringValue(entry['documentName']),
+              profiles,
+            ),
+            documentName: _stringValue(entry['documentName']),
+            documentCode: _stringValue(entry['documentCode']),
+          ),
+        )
+        .where((document) => document.documentName.isNotEmpty)
+        .toList();
+
+    _disposeTenantDocumentDrafts();
+    _tenantStartDateController.text = _formatDate(tenant['startDate']);
+    _tenantEndDateController.text = _formatDate(tenant['endDate']);
+
+    setState(() {
+      _loadedTenantResponse = response;
+      _tenantProfiles = profiles;
+      _tenantExistingDocuments = documents;
+      _tenantVerified = _boolValue(tenant['verified']);
+      _tenantStatus = _stringValue(tenant['status']);
+      if (!preserveDocumentStatus) {
+        _tenantDocumentStatusMessage = null;
+        _tenantDocumentStatusProfileId = null;
+        _tenantDocumentStatusIsSuccess = false;
+      }
+    });
+  }
+
+  Future<void> _pickTenantDocument(_TenantNewDocumentDraft draft) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf'],
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final selectedFile = result.files.single;
+    final bytes = selectedFile.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'The selected document could not be read.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      draft.documentBase64 = base64Encode(bytes);
+      draft.fileName = selectedFile.name;
+    });
+  }
+
+  void _addTenantDocument(String profileId) {
+    setState(() {
+      _tenantNewDocuments.add(_TenantNewDocumentDraft(profileId: profileId));
+      _tenantDocumentStatusMessage = null;
+      _tenantDocumentStatusProfileId = null;
+      _tenantDocumentStatusIsSuccess = false;
+    });
+  }
+
+  void _removeTenantExistingDocument(_TenantExistingDocument document) {
+    setState(() {
+      _tenantExistingDocuments = _tenantExistingDocuments
+          .where((item) => item != document)
+          .toList();
+      _tenantDocumentStatusMessage = null;
+      _tenantDocumentStatusProfileId = null;
+      _tenantDocumentStatusIsSuccess = false;
+    });
+  }
+
+  void _removeTenantNewDocument(_TenantNewDocumentDraft draft) {
+    setState(() {
+      _tenantNewDocuments.remove(draft);
+      _tenantDocumentStatusMessage = null;
+      _tenantDocumentStatusProfileId = null;
+      _tenantDocumentStatusIsSuccess = false;
+    });
+    draft.dispose();
+  }
+
+  Future<void> _uploadTenantDocument(_TenantNewDocumentDraft draft) async {
+    final documentName = _normalizedDocumentBaseName(
+      draft.documentNameController.text,
+    );
+    if (documentName.isEmpty ||
+        draft.documentBase64 == null ||
+        draft.documentBase64!.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message:
+            'Provide a document name and choose a file before uploading it.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final tenant = _jsonMapValue(_loadedTenantResponse?['tenant']);
+    if (_stringValue(tenant['startDate']).isEmpty &&
+        _tenantStartDateController.text.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'Start date is required before uploading a tenant document.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final requestBody = _buildTenantUpdateRequest(additionalDrafts: [draft]);
+    if (requestBody == null) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'Unable to prepare the tenant update request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      draft.uploading = true;
+    });
+
+    final response = await ApiService.updateTenantDetails(requestBody);
+    if (!mounted) return;
+
+    setState(() {
+      draft.uploading = false;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    final message = _stringValue(response['message']).isNotEmpty
+        ? _stringValue(response['message'])
+        : isSuccess
+        ? 'The document was uploaded successfully.'
+        : 'Unable to upload the document.';
+
+    if (!isSuccess) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: message,
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _tenantDocumentStatusMessage = message;
+      _tenantDocumentStatusProfileId = draft.profileId;
+      _tenantDocumentStatusIsSuccess = true;
+    });
+
+    await _loadTenantManagement(
+      showErrorModal: false,
+      preserveDocumentStatus: true,
+    );
+  }
+
+  Future<void> _downloadTenantDocument(_TenantExistingDocument document) async {
+    final bytes = _decodeBase64Bytes(document.documentCode);
+    if (bytes == null || bytes.isEmpty) {
+      await _showStatusModal(
+        title: 'Download Failed',
+        message: 'The selected document is not available for download.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final inferredExtension = _guessExtensionFromBytes(bytes);
+    final extension = _fileExtensionFromName(document.documentName).isNotEmpty
+        ? _fileExtensionFromName(document.documentName)
+        : inferredExtension;
+    final fileName = _fileNameWithoutExtension(document.documentName).isNotEmpty
+        ? _fileNameWithoutExtension(document.documentName)
+        : 'tenant_document';
+
+    try {
+      await FileSaver.instance.saveFile(
+        name: fileName.isEmpty ? document.documentName : fileName,
+        bytes: bytes,
+        fileExtension: extension,
+        mimeType: _mimeTypeForExtension(extension),
+      );
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${document.documentName} downloaded successfully.'),
+        ),
+      );
+    } catch (_) {
+      await _showStatusModal(
+        title: 'Download Failed',
+        message: 'The document could not be downloaded on this device.',
+        isSuccess: false,
+      );
+    }
+  }
+
+  Future<void> _submitTenantManagement() async {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
+      await _showStatusModal(
+        title: 'Tenant Update Failed',
+        message: 'Unable to find login header details for this request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty || _loadedTenantResponse == null) {
+      await _showStatusModal(
+        title: 'Tenant Update Failed',
+        message: 'Load tenant details before trying to update them.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final tenant = _jsonMapValue(_loadedTenantResponse?['tenant']);
+    if (_stringValue(tenant['startDate']).isEmpty &&
+        _tenantStartDateController.text.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Tenant Update Failed',
+        message: 'Start date is required before submitting tenant details.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    for (final draft in _tenantNewDocuments) {
+      final documentName = draft.documentNameController.text.trim();
+      if (documentName.isEmpty ||
+          draft.documentBase64 == null ||
+          draft.documentBase64!.trim().isEmpty) {
+        await _showStatusModal(
+          title: 'Tenant Update Failed',
+          message:
+              'Each added document must include a document name and an uploaded file before submit.',
+          isSuccess: false,
+        );
+        return;
+      }
+    }
+
+    final requestBody = _buildTenantUpdateRequest(
+      additionalDrafts: _tenantNewDocuments,
+    );
+    if (requestBody == null) {
+      await _showStatusModal(
+        title: 'Tenant Update Failed',
+        message: 'Unable to prepare the tenant update request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _updatingTenant = true;
+    });
+
+    final response = await ApiService.updateTenantDetails(requestBody);
+
+    if (!mounted) return;
+
+    setState(() {
+      _updatingTenant = false;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Tenant Update Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    await _showStatusModal(
+      title: isSuccess ? 'Tenant Updated' : 'Tenant Update Failed',
+      message: _stringValue(response['message']).isNotEmpty
+          ? _stringValue(response['message'])
+          : isSuccess
+          ? 'Tenant details were updated successfully.'
+          : 'Unable to update tenant details.',
+      isSuccess: isSuccess,
+    );
+
+    if (isSuccess) {
+      await _loadTenantManagement(showErrorModal: false);
+    }
+  }
+
   void _resetCreateProfileForm() {
     _createProfileFormKey.currentState?.reset();
     _firstNameController.clear();
@@ -1253,6 +2015,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         return 'Update Profile';
       case _ProfileManagementSection.updatePassword:
         return 'Update Password';
+      case _ProfileManagementSection.tenantManagement:
+        return 'Tenant Management';
       case null:
         return 'Account Management';
     }
@@ -1268,6 +2032,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         return 'Fetch the existing profile, edit allowed fields, update the profile picture, and submit changes.';
       case _ProfileManagementSection.updatePassword:
         return 'Update account credentials from the password management form.';
+      case _ProfileManagementSection.tenantManagement:
+        return 'Fetch tenant details for the logged-in flat, review linked profiles and documents, and submit tenant verification updates.';
       case null:
         return 'Choose one of the account management actions below.';
     }
@@ -1480,6 +2246,44 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         );
       case _ProfileManagementSection.updatePassword:
         return _UpdatePasswordTab(mobile: mobile);
+      case _ProfileManagementSection.tenantManagement:
+        return _TenantManagementTab(
+          response: _loadedTenantResponse,
+          profiles: _tenantProfiles,
+          existingDocuments: _tenantExistingDocuments,
+          newDocuments: _tenantNewDocuments,
+          loading: _loadingTenant,
+          submitting: _updatingTenant,
+          verified: _tenantVerified,
+          tenantStatus: _tenantStatus,
+          startDateController: _tenantStartDateController,
+          endDateController: _tenantEndDateController,
+          onVerifiedChanged: (value) {
+            setState(() {
+              _tenantVerified = value;
+            });
+          },
+          onPickStartDate: () => _pickTenantDate(
+            controller: _tenantStartDateController,
+            helpText: 'Select Start Date',
+          ),
+          onPickEndDate: () => _pickTenantDate(
+            controller: _tenantEndDateController,
+            helpText: 'Select End Date',
+          ),
+          onRefresh: _loadTenantManagement,
+          onSubmit: _submitTenantManagement,
+          onAddDocument: _addTenantDocument,
+          onRemoveExistingDocument: _removeTenantExistingDocument,
+          onRemoveNewDocument: _removeTenantNewDocument,
+          onPickDocument: _pickTenantDocument,
+          onUploadDocument: _uploadTenantDocument,
+          onDownloadDocument: _downloadTenantDocument,
+          documentStatusMessage: _tenantDocumentStatusMessage,
+          documentStatusProfileId: _tenantDocumentStatusProfileId,
+          documentStatusIsSuccess: _tenantDocumentStatusIsSuccess,
+          mobile: mobile,
+        );
     }
   }
 
@@ -1637,8 +2441,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                               title: 'Tenant Management',
                               icon: Icons.apartment_outlined,
                               selected: false,
-                              onTap: () => _showAccountActionMessage(
-                                'Tenant Management',
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.tenantManagement,
                               ),
                             ),
                             _ProfileActionCard(
@@ -1737,6 +2541,7 @@ enum _ProfileManagementSection {
   viewProfile,
   updateProfile,
   updatePassword,
+  tenantManagement,
 }
 
 class _ProfileImageEditorDialog extends StatefulWidget {
@@ -4072,6 +4877,979 @@ class _ProfileSummaryTile extends StatelessWidget {
   }
 }
 
+class _TenantProfileData {
+  const _TenantProfileData({
+    required this.profileId,
+    required this.displayName,
+    required this.profileKind,
+    required this.primaryAddress,
+    required this.gender,
+    required this.phoneNo,
+    required this.dob,
+    this.imageBytes,
+  });
+
+  final String profileId;
+  final String displayName;
+  final String profileKind;
+  final String primaryAddress;
+  final String gender;
+  final String phoneNo;
+  final String dob;
+  final Uint8List? imageBytes;
+}
+
+class _TenantExistingDocument {
+  const _TenantExistingDocument({
+    required this.profileId,
+    required this.documentName,
+    required this.documentCode,
+  });
+
+  final String profileId;
+  final String documentName;
+  final String documentCode;
+}
+
+class _TenantNewDocumentDraft {
+  _TenantNewDocumentDraft({required this.profileId});
+
+  final String profileId;
+  final TextEditingController documentNameController = TextEditingController();
+  String? documentBase64;
+  String? fileName;
+  bool uploading = false;
+
+  void dispose() {
+    documentNameController.dispose();
+  }
+}
+
+class _TenantManagementTab extends StatelessWidget {
+  const _TenantManagementTab({
+    required this.response,
+    required this.profiles,
+    required this.existingDocuments,
+    required this.newDocuments,
+    required this.loading,
+    required this.submitting,
+    required this.verified,
+    required this.tenantStatus,
+    required this.startDateController,
+    required this.endDateController,
+    required this.onVerifiedChanged,
+    required this.onPickStartDate,
+    required this.onPickEndDate,
+    required this.onRefresh,
+    required this.onSubmit,
+    required this.onAddDocument,
+    required this.onRemoveExistingDocument,
+    required this.onRemoveNewDocument,
+    required this.onPickDocument,
+    required this.onUploadDocument,
+    required this.onDownloadDocument,
+    required this.documentStatusMessage,
+    required this.documentStatusProfileId,
+    required this.documentStatusIsSuccess,
+    required this.mobile,
+  });
+
+  final Map<String, dynamic>? response;
+  final List<_TenantProfileData> profiles;
+  final List<_TenantExistingDocument> existingDocuments;
+  final List<_TenantNewDocumentDraft> newDocuments;
+  final bool loading;
+  final bool submitting;
+  final bool verified;
+  final String tenantStatus;
+  final TextEditingController startDateController;
+  final TextEditingController endDateController;
+  final ValueChanged<bool> onVerifiedChanged;
+  final Future<void> Function() onPickStartDate;
+  final Future<void> Function() onPickEndDate;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onSubmit;
+  final ValueChanged<String> onAddDocument;
+  final ValueChanged<_TenantExistingDocument> onRemoveExistingDocument;
+  final ValueChanged<_TenantNewDocumentDraft> onRemoveNewDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onPickDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onUploadDocument;
+  final Future<void> Function(_TenantExistingDocument document)
+  onDownloadDocument;
+  final String? documentStatusMessage;
+  final String? documentStatusProfileId;
+  final bool documentStatusIsSuccess;
+  final bool mobile;
+
+  String _textValue(dynamic value, {String fallback = '-'}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _visibleDocumentName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '-';
+    }
+
+    final underscoreIndex = trimmed.indexOf('_');
+    if (underscoreIndex <= 0 || underscoreIndex == trimmed.length - 1) {
+      return trimmed;
+    }
+
+    return trimmed.substring(underscoreIndex + 1);
+  }
+
+  Map<String, dynamic> _mapValue(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (response == null && loading) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 36),
+          child: CircularProgressIndicator(color: Color(0xFF0F8F82)),
+        ),
+      );
+    }
+
+    if (response == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Color(0xFFF4FBFA),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Color(0xFFD5EBE7)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No tenant data has been fetched yet.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF124B45),
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Use the logged-in header flat number to load tenant profiles and documents.',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 18),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: loading ? null : onRefresh,
+              icon: Icon(Icons.refresh),
+              label: Text('Fetch Tenant Details'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final genericHeader = _mapValue(response!['genericHeader']);
+    final tenant = _mapValue(response!['tenant']);
+    final apartmentName = _textValue(
+      genericHeader['apartmentName'],
+      fallback: _textValue(ApiService.userHeader?['apartmentName']),
+    );
+    final startDateLocked = startDateController.text.trim().isNotEmpty;
+    final endDateLocked = endDateController.text.trim().isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (loading) ...[
+          LinearProgressIndicator(color: Color(0xFF0F8F82)),
+          SizedBox(height: 18),
+        ],
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Color(0xFFFFF7E8),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Color(0xFFFFD89C)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.apartment_outlined, color: Color(0xFF9A5418)),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Tenant details are fetched using the logged-in flat number. Profile fields stay read-only, while verification, missing dates, and documents can be updated before submit.',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF7A3F0D),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: loading || submitting ? null : onRefresh,
+            icon: Icon(Icons.refresh),
+            label: Text('Refresh Tenant Details'),
+          ),
+        ),
+        SizedBox(height: 18),
+        _ResponsiveFieldRow(
+          mobile: mobile,
+          children: [
+            _ProfileInputField(
+              label: 'Apartment Name',
+              initialValue: apartmentName,
+              readOnly: true,
+            ),
+            _ProfileInputField(
+              label: 'Flat No.',
+              initialValue: _textValue(tenant['flatNo']),
+              readOnly: true,
+            ),
+            _ProfileInputField(
+              label: 'Status',
+              initialValue: tenantStatus.isEmpty
+                  ? _textValue(tenant['status'])
+                  : tenantStatus,
+              readOnly: true,
+            ),
+          ],
+        ),
+        SizedBox(height: 16),
+        _ResponsiveFieldRow(
+          mobile: mobile,
+          children: [
+            _ProfileInputField(
+              label: startDateLocked ? 'Start Date' : 'Start Date *',
+              controller: startDateController,
+              readOnly: startDateLocked,
+              hintText: startDateLocked ? null : 'YYYY-MM-DD',
+              suffixIcon: startDateLocked
+                  ? null
+                  : IconButton(
+                      onPressed: onPickStartDate,
+                      icon: Icon(
+                        Icons.calendar_month_outlined,
+                        color: Color(0xFF0F8F82),
+                      ),
+                      tooltip: 'Choose start date',
+                    ),
+            ),
+            _ProfileInputField(
+              label: 'End Date',
+              controller: endDateController,
+              readOnly: endDateLocked,
+              hintText: endDateLocked ? null : 'YYYY-MM-DD',
+              suffixIcon: endDateLocked
+                  ? null
+                  : IconButton(
+                      onPressed: onPickEndDate,
+                      icon: Icon(
+                        Icons.calendar_month_outlined,
+                        color: Color(0xFF0F8F82),
+                      ),
+                      tooltip: 'Choose end date',
+                    ),
+            ),
+          ],
+        ),
+        SizedBox(height: 8),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          activeColor: Color(0xFF0F8F82),
+          checkColor: Colors.white,
+          value: verified,
+          onChanged: submitting
+              ? null
+              : (value) => onVerifiedChanged(value ?? false),
+          title: const Text('Verified'),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: submitting ? null : onSubmit,
+            icon: submitting
+                ? SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(Icons.save_outlined),
+            label: Text(submitting ? 'Submitting...' : 'Submit Tenant Details'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Color(0xFF0F8F82),
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+          ),
+        ),
+        SizedBox(height: 18),
+        Text(
+          'Tenant Profiles',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+        SizedBox(height: 12),
+        if (profiles.isEmpty)
+          Text(
+            'No tenant profiles were returned for this flat.',
+            style: TextStyle(color: Colors.black54),
+          )
+        else
+          _TenantProfilesSlider(
+            profiles: profiles,
+            existingDocuments: existingDocuments,
+            newDocuments: newDocuments,
+            onAddDocument: onAddDocument,
+            onRemoveExistingDocument: onRemoveExistingDocument,
+            onRemoveNewDocument: onRemoveNewDocument,
+            onPickDocument: onPickDocument,
+            onUploadDocument: onUploadDocument,
+            onDownloadDocument: onDownloadDocument,
+            documentStatusMessage: documentStatusMessage,
+            documentStatusProfileId: documentStatusProfileId,
+            documentStatusIsSuccess: documentStatusIsSuccess,
+            mobile: mobile,
+          ),
+      ],
+    );
+  }
+}
+
+class _TenantProfilePanel extends StatelessWidget {
+  const _TenantProfilePanel({
+    required this.profile,
+    required this.existingDocuments,
+    required this.newDocuments,
+    required this.onAddDocument,
+    required this.onRemoveExistingDocument,
+    required this.onRemoveNewDocument,
+    required this.onPickDocument,
+    required this.onUploadDocument,
+    required this.onDownloadDocument,
+    required this.documentStatusMessage,
+    required this.documentStatusProfileId,
+    required this.documentStatusIsSuccess,
+    required this.mobile,
+  });
+
+  final _TenantProfileData profile;
+  final List<_TenantExistingDocument> existingDocuments;
+  final List<_TenantNewDocumentDraft> newDocuments;
+  final VoidCallback onAddDocument;
+  final ValueChanged<_TenantExistingDocument> onRemoveExistingDocument;
+  final ValueChanged<_TenantNewDocumentDraft> onRemoveNewDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onPickDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onUploadDocument;
+  final Future<void> Function(_TenantExistingDocument document)
+  onDownloadDocument;
+  final String? documentStatusMessage;
+  final String? documentStatusProfileId;
+  final bool documentStatusIsSuccess;
+  final bool mobile;
+
+  String _displayValue(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? '-' : trimmed;
+  }
+
+  String _visibleDocumentName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '-';
+    }
+
+    final underscoreIndex = trimmed.indexOf('_');
+    if (underscoreIndex <= 0 || underscoreIndex == trimmed.length - 1) {
+      return trimmed;
+    }
+
+    return trimmed.substring(underscoreIndex + 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Color(0xFFDCEBE8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _TenantProfileAvatar(
+                name: profile.displayName.isEmpty
+                    ? profile.profileId
+                    : profile.displayName,
+                imageBytes: profile.imageBytes,
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profile.displayName.isEmpty
+                          ? 'Tenant Profile'
+                          : profile.displayName,
+                      style: TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Profile ID: ${profile.profileId}',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 18),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Profile Name',
+                initialValue: _displayValue(profile.displayName),
+                readOnly: true,
+                maxLines: 2,
+              ),
+              _ProfileInputField(
+                label: 'Profile Kind',
+                initialValue: _displayValue(profile.profileKind),
+                readOnly: true,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Gender',
+                initialValue: _displayValue(profile.gender),
+                readOnly: true,
+              ),
+              _ProfileInputField(
+                label: 'Phone Number',
+                initialValue: _displayValue(profile.phoneNo),
+                readOnly: true,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Date of Birth',
+                initialValue: _displayValue(profile.dob),
+                readOnly: true,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          _TenantInfoBlock(
+            label: 'Primary Postal Address',
+            value: _displayValue(profile.primaryAddress),
+          ),
+          SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Documents',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: onAddDocument,
+                icon: Icon(Icons.add),
+                label: Text('Add Document'),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          if (documentStatusMessage != null &&
+              documentStatusMessage!.trim().isNotEmpty &&
+              documentStatusProfileId == profile.profileId) ...[
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: documentStatusIsSuccess
+                    ? Color(0xFFEAF7F4)
+                    : Color(0xFFFDECEA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: documentStatusIsSuccess
+                      ? Color(0xFFB8E0D7)
+                      : Color(0xFFF4C7C3),
+                ),
+              ),
+              child: Text(
+                documentStatusMessage!,
+                style: TextStyle(
+                  color: documentStatusIsSuccess
+                      ? Color(0xFF124B45)
+                      : Color(0xFF8B1E1E),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            SizedBox(height: 12),
+          ],
+          if (existingDocuments.isEmpty && newDocuments.isEmpty)
+            Text(
+              'No documents available for this profile.',
+              style: TextStyle(color: Colors.black54),
+            ),
+          for (final document in existingDocuments) ...[
+            _TenantExistingDocumentTile(
+              document: document,
+              visibleName: _visibleDocumentName(document.documentName),
+              onDownload: () => onDownloadDocument(document),
+              onRemove: () => onRemoveExistingDocument(document),
+            ),
+            SizedBox(height: 12),
+          ],
+          for (final draft in newDocuments) ...[
+            _TenantNewDocumentTile(
+              draft: draft,
+              onChooseFile: () => onPickDocument(draft),
+              onUpload: () => onUploadDocument(draft),
+              onRemove: () => onRemoveNewDocument(draft),
+              mobile: mobile,
+            ),
+            SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TenantProfilesSlider extends StatefulWidget {
+  const _TenantProfilesSlider({
+    required this.profiles,
+    required this.existingDocuments,
+    required this.newDocuments,
+    required this.onAddDocument,
+    required this.onRemoveExistingDocument,
+    required this.onRemoveNewDocument,
+    required this.onPickDocument,
+    required this.onUploadDocument,
+    required this.onDownloadDocument,
+    required this.documentStatusMessage,
+    required this.documentStatusProfileId,
+    required this.documentStatusIsSuccess,
+    required this.mobile,
+  });
+
+  final List<_TenantProfileData> profiles;
+  final List<_TenantExistingDocument> existingDocuments;
+  final List<_TenantNewDocumentDraft> newDocuments;
+  final ValueChanged<String> onAddDocument;
+  final ValueChanged<_TenantExistingDocument> onRemoveExistingDocument;
+  final ValueChanged<_TenantNewDocumentDraft> onRemoveNewDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onPickDocument;
+  final Future<void> Function(_TenantNewDocumentDraft draft) onUploadDocument;
+  final Future<void> Function(_TenantExistingDocument document)
+  onDownloadDocument;
+  final String? documentStatusMessage;
+  final String? documentStatusProfileId;
+  final bool documentStatusIsSuccess;
+  final bool mobile;
+
+  @override
+  State<_TenantProfilesSlider> createState() => _TenantProfilesSliderState();
+}
+
+class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
+  int _selectedIndex = 0;
+
+  @override
+  void didUpdateWidget(covariant _TenantProfilesSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_selectedIndex >= widget.profiles.length) {
+      _selectedIndex = widget.profiles.isEmpty ? 0 : widget.profiles.length - 1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedProfile = widget.profiles[_selectedIndex];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var index = 0; index < widget.profiles.length; index++) ...[
+                _TenantSliderTab(
+                  profile: widget.profiles[index],
+                  selected: index == _selectedIndex,
+                  onTap: () {
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                  },
+                ),
+                if (index != widget.profiles.length - 1) SizedBox(width: 12),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(height: 16),
+        _TenantProfilePanel(
+          profile: selectedProfile,
+          existingDocuments: widget.existingDocuments
+              .where(
+                (document) => document.profileId == selectedProfile.profileId,
+              )
+              .toList(),
+          newDocuments: widget.newDocuments
+              .where(
+                (document) => document.profileId == selectedProfile.profileId,
+              )
+              .toList(),
+          onAddDocument: () => widget.onAddDocument(selectedProfile.profileId),
+          onRemoveExistingDocument: widget.onRemoveExistingDocument,
+          onRemoveNewDocument: widget.onRemoveNewDocument,
+          onPickDocument: widget.onPickDocument,
+          onUploadDocument: widget.onUploadDocument,
+          onDownloadDocument: widget.onDownloadDocument,
+          documentStatusMessage: widget.documentStatusMessage,
+          documentStatusProfileId: widget.documentStatusProfileId,
+          documentStatusIsSuccess: widget.documentStatusIsSuccess,
+          mobile: widget.mobile,
+        ),
+      ],
+    );
+  }
+}
+
+class _TenantSliderTab extends StatelessWidget {
+  const _TenantSliderTab({
+    required this.profile,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _TenantProfileData profile;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected ? Color(0xFF0F8F82) : Color(0xFFF6FBFA),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? Color(0xFF0F8F82) : Color(0xFFD8E8E4),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                profile.displayName.isEmpty
+                    ? 'Tenant Profile'
+                    : profile.displayName,
+                style: TextStyle(
+                  color: selected ? Colors.white : Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                profile.profileId,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? Colors.white70 : Color(0xFF5E7D77),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TenantProfileAvatar extends StatelessWidget {
+  const _TenantProfileAvatar({required this.name, this.imageBytes});
+
+  final String name;
+  final Uint8List? imageBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0].toUpperCase())
+        .join();
+
+    return CircleAvatar(
+      radius: 26,
+      backgroundColor: Color(0xFFE7F3F0),
+      backgroundImage: imageBytes == null ? null : MemoryImage(imageBytes!),
+      child: imageBytes == null
+          ? Text(
+              initials.isEmpty ? 'P' : initials,
+              style: TextStyle(
+                color: Color(0xFF0F8F82),
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+class _TenantInfoBlock extends StatelessWidget {
+  const _TenantInfoBlock({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Color(0xFFF8FCFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Color(0xFFDCEBE8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: Color(0xFF124B45),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TenantExistingDocumentTile extends StatelessWidget {
+  const _TenantExistingDocumentTile({
+    required this.document,
+    required this.visibleName,
+    required this.onDownload,
+    required this.onRemove,
+  });
+
+  final _TenantExistingDocument document;
+  final String visibleName;
+  final VoidCallback onDownload;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color(0xFFF9FCFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Color(0xFFDCEBE8)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Document Name',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  visibleName,
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onDownload,
+                icon: Icon(Icons.download_outlined),
+                label: Text('Download'),
+              ),
+              TextButton.icon(
+                onPressed: onRemove,
+                icon: Icon(Icons.delete_outline, color: Color(0xFFB3261E)),
+                label: Text(
+                  'Remove',
+                  style: TextStyle(color: Color(0xFFB3261E)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TenantNewDocumentTile extends StatelessWidget {
+  const _TenantNewDocumentTile({
+    required this.draft,
+    required this.onChooseFile,
+    required this.onUpload,
+    required this.onRemove,
+    required this.mobile,
+  });
+
+  final _TenantNewDocumentDraft draft;
+  final Future<void> Function() onChooseFile;
+  final Future<void> Function() onUpload;
+  final VoidCallback onRemove;
+  final bool mobile;
+
+  @override
+  Widget build(BuildContext context) {
+    final fileName = draft.fileName?.trim() ?? '';
+
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color(0xFFFFFBF3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Color(0xFFFFE0AC)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ResponsiveFieldRow(
+            mobile: mobile,
+            children: [
+              _ProfileInputField(
+                label: 'Document Name',
+                controller: draft.documentNameController,
+                maxLines: 2,
+              ),
+              _TenantInfoBlock(
+                label: 'Upload Document',
+                value: fileName.isEmpty ? 'No file selected' : fileName,
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: draft.uploading ? null : onChooseFile,
+                icon: Icon(Icons.attach_file_outlined),
+                label: Text('Choose Document'),
+              ),
+              SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: draft.uploading ? null : onUpload,
+                icon: Icon(Icons.upload_file_outlined),
+                label: Text(draft.uploading ? 'Uploading...' : 'Upload'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Color(0xFF0F8F82),
+                ),
+              ),
+              SizedBox(width: 12),
+              TextButton.icon(
+                onPressed: draft.uploading ? null : onRemove,
+                icon: Icon(Icons.delete_outline, color: Color(0xFFB3261E)),
+                label: Text(
+                  'Remove',
+                  style: TextStyle(color: Color(0xFFB3261E)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _UpdatePasswordTab extends StatelessWidget {
   const _UpdatePasswordTab({required this.mobile});
 
@@ -4187,6 +5965,7 @@ class _ProfileInputField extends StatelessWidget {
     this.readOnly = false,
     this.validator,
     this.keyboardType,
+    this.maxLines = 1,
   });
 
   final String label;
@@ -4198,19 +5977,21 @@ class _ProfileInputField extends StatelessWidget {
   final bool readOnly;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
       initialValue: initialValue,
-      maxLines: 1,
+      maxLines: maxLines,
       obscureText: obscureText,
       readOnly: readOnly,
       validator: validator,
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
+        alignLabelWithHint: maxLines > 1,
         hintText: hintText,
         suffixIcon: suffixIcon,
         filled: true,

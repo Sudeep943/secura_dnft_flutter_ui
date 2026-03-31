@@ -24,8 +24,9 @@ class _BookingPageState extends State<BookingPage> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
   static const Color _accentColor = Color(0xFFE0DA84);
-  int _upcomingBookingsCount = 0;
-  bool _upcomingBookingsLoading = true;
+  int _approvedBookingsCount = 0;
+  int _pendingApprovalCount = 0;
+  bool _bookingSummaryLoading = true;
 
   @override
   void initState() {
@@ -43,39 +44,54 @@ class _BookingPageState extends State<BookingPage> {
       return;
     }
 
-    final bookingList = response?['bookingList'];
     final messageCode = response?['messageCode']?.toString() ?? '';
-    final count = messageCode.startsWith('SUCC') && bookingList is List
-        ? bookingList.length
+    final approvedBookingList = response?['approvedBookingList'];
+    final pendingBookingList =
+        response?['pendigBookingList'] ?? response?['pendingBookingList'];
+    final approvedCount =
+        messageCode.startsWith('SUCC') && approvedBookingList is List
+        ? approvedBookingList.length
+        : 0;
+    final pendingCount =
+        messageCode.startsWith('SUCC') && pendingBookingList is List
+        ? pendingBookingList.length
         : 0;
 
     setState(() {
-      _upcomingBookingsCount = count;
-      _upcomingBookingsLoading = false;
+      _approvedBookingsCount = approvedCount;
+      _pendingApprovalCount = pendingCount;
+      _bookingSummaryLoading = false;
     });
   }
 
-  Widget _buildUpcomingBookingsSummary() {
+  Widget _buildBookingSummaryCard({
+    required String label,
+    required int count,
+    required Color backgroundColor,
+    required Color borderColor,
+    required Color labelColor,
+    required Color valueColor,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Upcoming Bookings',
+          Text(
+            label,
             style: TextStyle(
-              color: Colors.white70,
+              color: labelColor,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 6),
-          _upcomingBookingsLoading
+          _bookingSummaryLoading
               ? const SizedBox(
                   height: 24,
                   width: 24,
@@ -85,15 +101,40 @@ class _BookingPageState extends State<BookingPage> {
                   ),
                 )
               : Text(
-                  '$_upcomingBookingsCount ${_upcomingBookingsCount == 1 ? 'Booking' : 'Bookings'}',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  '$count ${count == 1 ? 'Booking' : 'Bookings'}',
+                  style: TextStyle(
+                    color: valueColor,
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
         ],
       ),
+    );
+  }
+
+  Widget _buildUpcomingBookingsSummary() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _buildBookingSummaryCard(
+          label: 'Pending For Approval',
+          count: _pendingApprovalCount,
+          backgroundColor: const Color(0xFFFFF1E4),
+          borderColor: const Color(0xFFFFC999),
+          labelColor: const Color(0xFF9A5418),
+          valueColor: const Color(0xFF7A3F0D),
+        ),
+        _buildBookingSummaryCard(
+          label: 'Upcoming Approved Booking',
+          count: _approvedBookingsCount,
+          backgroundColor: Colors.white.withValues(alpha: 0.12),
+          borderColor: Colors.white.withValues(alpha: 0.14),
+          labelColor: Colors.white70,
+          valueColor: Colors.white,
+        ),
+      ],
     );
   }
 

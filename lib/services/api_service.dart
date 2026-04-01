@@ -499,6 +499,44 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<bool?> validateCurrentOwner({
+    required String flatId,
+    required String profileType,
+  }) async {
+    if (token == null) return null;
+
+    final response = await http.get(
+      Uri.parse(
+        '$_baseUrl/profile/validateCurrentOwner/${Uri.encodeComponent(flatId)}/${Uri.encodeComponent(profileType)}',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is bool) {
+      return data;
+    }
+
+    if (data is String) {
+      final value = data.trim().toLowerCase();
+      if (value == 'true') {
+        return true;
+      }
+      if (value == 'false') {
+        return false;
+      }
+    }
+
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> getProfile({String? profileId}) async {
     if (token == null || userHeader == null) return null;
 

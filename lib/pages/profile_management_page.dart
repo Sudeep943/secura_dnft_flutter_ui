@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -29,6 +30,7 @@ class _ProfileManagementDraft {
   static String? createProfilePosition;
   static String? createProfileKind;
   static String? createGender;
+  static _CreateProfileExistingAction? createExistingProfileAction;
   static bool createHasOtherAddress = false;
   static String createAddressType = 'RESIDENTIAL';
   static String createPrimaryAddressType = 'RESIDENTIAL';
@@ -121,6 +123,12 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   String? _profilePosition;
   String? _profileKind;
   String? _gender;
+  Timer? _createProfileValidationDebounce;
+  int _createProfileValidationRequestId = 0;
+  bool _validatingExistingProfile = false;
+  bool _existingProfileTypeFound = false;
+  String? _existingProfileSelectionError;
+  _CreateProfileExistingAction? _existingProfileAction;
   bool _createHasOtherAddress = false;
   String _addressType = 'RESIDENTIAL';
   String _primaryAddressType = 'RESIDENTIAL';
@@ -160,6 +168,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     super.initState();
     _restoreDrafts();
     _attachCreateDraftListeners();
+    _profileFlatNoController.addListener(_scheduleCreateProfileValidation);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_selectedSection == _ProfileManagementSection.updateProfile ||
           _selectedSection == _ProfileManagementSection.viewProfile) {
@@ -233,6 +242,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updatePrimaryPinController.dispose();
     _tenantStartDateController.dispose();
     _tenantEndDateController.dispose();
+    _createProfileValidationDebounce?.cancel();
     _disposeTenantDocumentDrafts();
     super.dispose();
   }
@@ -299,6 +309,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _profilePosition = _ProfileManagementDraft.createProfilePosition;
     _profileKind = _ProfileManagementDraft.createProfileKind;
     _gender = _ProfileManagementDraft.createGender;
+    _existingProfileAction =
+        _ProfileManagementDraft.createExistingProfileAction;
     _createHasOtherAddress = _ProfileManagementDraft.createHasOtherAddress;
     _addressType = _ProfileManagementDraft.createAddressType;
     _primaryAddressType = _ProfileManagementDraft.createPrimaryAddressType;
@@ -984,6 +996,88 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     });
   }
 
+  void _scheduleCreateProfileValidation() {
+    _createProfileValidationDebounce?.cancel();
+
+    final flatId = _profileFlatNoController.text.trim();
+    final profileType = _profileType?.trim() ?? '';
+    if (flatId.isEmpty || profileType.isEmpty) {
+      _resetCreateProfileValidation();
+      return;
+    }
+
+    final requestId = ++_createProfileValidationRequestId;
+    setState(() {
+      _validatingExistingProfile = true;
+      _existingProfileTypeFound = false;
+      _existingProfileSelectionError = null;
+      _existingProfileAction = null;
+      _ProfileManagementDraft.createExistingProfileAction = null;
+    });
+
+    _createProfileValidationDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        _validateCreateProfileExistingOwner(
+          flatId: flatId,
+          profileType: profileType,
+          requestId: requestId,
+        );
+      },
+    );
+  }
+
+  void _resetCreateProfileValidation() {
+    _createProfileValidationRequestId++;
+    if (!_validatingExistingProfile &&
+        !_existingProfileTypeFound &&
+        _existingProfileSelectionError == null &&
+        _existingProfileAction == null) {
+      return;
+    }
+
+    setState(() {
+      _validatingExistingProfile = false;
+      _existingProfileTypeFound = false;
+      _existingProfileSelectionError = null;
+      _existingProfileAction = null;
+      _ProfileManagementDraft.createExistingProfileAction = null;
+    });
+  }
+
+  Future<bool> _validateCreateProfileExistingOwner({
+    required String flatId,
+    required String profileType,
+    int? requestId,
+  }) async {
+    final exists =
+        await ApiService.validateCurrentOwner(
+          flatId: flatId,
+          profileType: profileType,
+        ) ??
+        false;
+
+    if (!mounted) {
+      return exists;
+    }
+
+    if (requestId != null && requestId != _createProfileValidationRequestId) {
+      return exists;
+    }
+
+    setState(() {
+      _validatingExistingProfile = false;
+      _existingProfileTypeFound = exists;
+      _existingProfileSelectionError = null;
+      if (!exists) {
+        _existingProfileAction = null;
+        _ProfileManagementDraft.createExistingProfileAction = null;
+      }
+    });
+
+    return exists;
+  }
+
   Map<String, dynamic> _buildHeaderRequest() {
     return {
       'userId': _readHeaderValue(['userId']),
@@ -1475,6 +1569,29 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     final form = _createProfileFormKey.currentState;
     if (form == null || !form.validate()) return;
 
+    final flatId = _profileFlatNoController.text.trim();
+    final profileType = _profileType?.trim() ?? '';
+    if (flatId.isNotEmpty && profileType.isNotEmpty) {
+      _createProfileValidationDebounce?.cancel();
+      final exists = await _validateCreateProfileExistingOwner(
+        flatId: flatId,
+        profileType: profileType,
+      );
+      if (!mounted) return;
+
+      if (exists && _existingProfileAction == null) {
+        final profileTypeLabel = _profileTypeDisplayLabel(
+          profileType,
+          fallback: 'profile',
+        );
+        setState(() {
+          _existingProfileSelectionError =
+              'Select how to proceed with the existing $profileTypeLabel profile.';
+        });
+        return;
+      }
+    }
+
     final header = _buildHeaderRequest();
     if (header.values.every((value) => _stringValue(value).isEmpty)) {
       _showStatusModal(
@@ -1535,6 +1652,12 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       'profilePosition': _profileType == 'STAFF' ? _profilePosition : null,
       'gender': _gender,
       'profileKind': _profileKind,
+      if (_existingProfileTypeFound && _existingProfileAction != null)
+        'addToExistingProfileType':
+            _existingProfileAction ==
+                _CreateProfileExistingAction.createNewDeleteExisting
+            ? 'N'
+            : 'Y',
     };
 
     final response = await ApiService.createProfile(requestBody);
@@ -2003,6 +2126,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _profilePosition = null;
       _profileKind = null;
       _gender = null;
+      _validatingExistingProfile = false;
+      _existingProfileTypeFound = false;
+      _existingProfileSelectionError = null;
+      _existingProfileAction = null;
       _createHasOtherAddress = false;
       _addressType = 'RESIDENTIAL';
       _primaryAddressType = 'RESIDENTIAL';
@@ -2012,6 +2139,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _ProfileManagementDraft.createProfilePosition = null;
     _ProfileManagementDraft.createProfileKind = null;
     _ProfileManagementDraft.createGender = null;
+    _ProfileManagementDraft.createExistingProfileAction = null;
     _ProfileManagementDraft.createHasOtherAddress = false;
     _ProfileManagementDraft.createAddressType = 'RESIDENTIAL';
     _ProfileManagementDraft.createPrimaryAddressType = 'RESIDENTIAL';
@@ -2098,6 +2226,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           hasOtherAddress: _createHasOtherAddress,
           addressType: _addressType,
           primaryAddressType: _primaryAddressType,
+          validatingExistingProfile: _validatingExistingProfile,
+          existingProfileTypeFound: _existingProfileTypeFound,
+          existingProfileSelectionError: _existingProfileSelectionError,
+          existingProfileAction: _existingProfileAction,
           onProfileTypeChanged: (value) {
             setState(() {
               _profileType = value;
@@ -2107,6 +2239,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
               }
               _ProfileManagementDraft.createProfileType = value;
             });
+            _scheduleCreateProfileValidation();
           },
           onProfilePositionChanged: (value) {
             setState(() {
@@ -2124,6 +2257,13 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
             setState(() {
               _gender = value;
               _ProfileManagementDraft.createGender = value;
+            });
+          },
+          onExistingProfileActionChanged: (value) {
+            setState(() {
+              _existingProfileAction = value;
+              _existingProfileSelectionError = null;
+              _ProfileManagementDraft.createExistingProfileAction = value;
             });
           },
           onHasOtherAddressChanged: (value) {
@@ -2555,6 +2695,24 @@ enum _ProfileManagementSection {
   updatePassword,
   tenantManagement,
 }
+
+String _profileTypeDisplayLabel(String? value, {String fallback = 'Profile'}) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty) {
+    return fallback;
+  }
+
+  return trimmed
+      .split(RegExp(r'[_\s]+'))
+      .where((part) => part.isNotEmpty)
+      .map((part) {
+        final lower = part.toLowerCase();
+        return '${lower[0].toUpperCase()}${lower.substring(1)}';
+      })
+      .join(' ');
+}
+
+enum _CreateProfileExistingAction { createNewDeleteExisting, addToExisting }
 
 class _ProfileImageEditorDialog extends StatefulWidget {
   const _ProfileImageEditorDialog({required this.imageBytes});
@@ -3111,10 +3269,15 @@ class _CreateProfileTab extends StatelessWidget {
     required this.hasOtherAddress,
     required this.addressType,
     required this.primaryAddressType,
+    required this.validatingExistingProfile,
+    required this.existingProfileTypeFound,
+    required this.existingProfileSelectionError,
+    required this.existingProfileAction,
     required this.onProfileTypeChanged,
     required this.onProfilePositionChanged,
     required this.onProfileKindChanged,
     required this.onGenderChanged,
+    required this.onExistingProfileActionChanged,
     required this.onHasOtherAddressChanged,
     required this.onAddressTypeChanged,
     required this.onPrimaryAddressTypeChanged,
@@ -3163,10 +3326,16 @@ class _CreateProfileTab extends StatelessWidget {
   final bool hasOtherAddress;
   final String addressType;
   final String primaryAddressType;
+  final bool validatingExistingProfile;
+  final bool existingProfileTypeFound;
+  final String? existingProfileSelectionError;
+  final _CreateProfileExistingAction? existingProfileAction;
   final ValueChanged<String?> onProfileTypeChanged;
   final ValueChanged<String?> onProfilePositionChanged;
   final ValueChanged<String?> onProfileKindChanged;
   final ValueChanged<String?> onGenderChanged;
+  final ValueChanged<_CreateProfileExistingAction?>
+  onExistingProfileActionChanged;
   final ValueChanged<bool> onHasOtherAddressChanged;
   final ValueChanged<String?> onAddressTypeChanged;
   final ValueChanged<String?> onPrimaryAddressTypeChanged;
@@ -3179,6 +3348,11 @@ class _CreateProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final profileTypeLabel = _profileTypeDisplayLabel(
+      profileType,
+      fallback: 'Profile',
+    );
+
     return Form(
       key: formKey,
       child: Column(
@@ -3277,6 +3451,100 @@ class _CreateProfileTab extends StatelessWidget {
               ),
             ],
           ),
+          if (validatingExistingProfile || existingProfileTypeFound) ...[
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: existingProfileTypeFound
+                    ? Color(0xFFFFF6E8)
+                    : Color(0xFFF5F8FA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: existingProfileTypeFound
+                      ? Color(0xFFFFD6A0)
+                      : Color(0xFFDCE5EB),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    validatingExistingProfile
+                        ? 'Checking existing $profileTypeLabel for this flat...'
+                        : 'Existing $profileTypeLabel already exists.',
+                    style: TextStyle(
+                      color: Color(0xFF124B45),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (validatingExistingProfile) ...[
+                    SizedBox(height: 10),
+                    SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _ProfileManagementPageState._brandColor,
+                      ),
+                    ),
+                  ] else ...[
+                    SizedBox(height: 12),
+                    Wrap(
+                      spacing: 20,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Radio<_CreateProfileExistingAction>(
+                              value: _CreateProfileExistingAction
+                                  .createNewDeleteExisting,
+                              groupValue: existingProfileAction,
+                              onChanged: onExistingProfileActionChanged,
+                              activeColor:
+                                  _ProfileManagementPageState._brandColor,
+                            ),
+                            Flexible(
+                              child: Text(
+                                'Create new $profileTypeLabel and delete the existing',
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Radio<_CreateProfileExistingAction>(
+                              value: _CreateProfileExistingAction.addToExisting,
+                              groupValue: existingProfileAction,
+                              onChanged: onExistingProfileActionChanged,
+                              activeColor:
+                                  _ProfileManagementPageState._brandColor,
+                            ),
+                            Flexible(
+                              child: Text('Add to existing $profileTypeLabel'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (existingProfileSelectionError != null) ...[
+                      SizedBox(height: 8),
+                      Text(
+                        existingProfileSelectionError!,
+                        style: TextStyle(
+                          color: Color(0xFFB3261E),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: 16),
           _ResponsiveFieldRow(
             mobile: mobile,

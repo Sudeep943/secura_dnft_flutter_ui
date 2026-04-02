@@ -117,6 +117,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   final _updatePrimaryPinController = TextEditingController();
   final _tenantStartDateController = TextEditingController();
   final _tenantEndDateController = TextEditingController();
+  final _ownerStartDateController = TextEditingController();
+  final _ownerEndDateController = TextEditingController();
 
   _ProfileManagementSection? _selectedSection;
   String? _profileType;
@@ -146,22 +148,40 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   bool _loadingTenant = false;
   bool _updatingTenant = false;
   bool _validatingExistingTenant = false;
+  bool _loadingOwner = false;
+  bool _updatingOwner = false;
+  bool _validatingExistingOwner = false;
   Map<String, dynamic>? _loadedProfile;
   Map<String, dynamic>? _loadedTenantResponse;
+  Map<String, dynamic>? _loadedOwnerResponse;
   String? _currentProfilePicBase64;
   String? _selectedProfileImageBase64;
   Uint8List? _selectedProfileImageBytes;
   List<_TenantProfileData> _tenantProfiles = [];
   List<_TenantExistingDocument> _tenantExistingDocuments = [];
   final List<_TenantNewDocumentDraft> _tenantNewDocuments = [];
+  List<_TenantProfileData> _ownerProfiles = [];
+  List<_TenantExistingDocument> _ownerExistingDocuments = [];
+  final List<_TenantNewDocumentDraft> _ownerNewDocuments = [];
   bool _tenantVerified = false;
   String _tenantStatus = '';
+  String? _tenantInlineErrorMessage;
+  bool _ownerVerified = false;
+  String _ownerStatus = '';
   String? _tenantDocumentStatusMessage;
   String? _tenantDocumentStatusProfileId;
   bool _tenantDocumentStatusIsSuccess = false;
+  String? _ownerDocumentStatusMessage;
+  String? _ownerDocumentStatusProfileId;
+  bool _ownerDocumentStatusIsSuccess = false;
   bool _existingTenantTypeFound = false;
   String? _existingTenantSelectionError;
   _CreateProfileExistingAction? _existingTenantAction;
+  String? _removingTenantProfileId;
+  bool _existingOwnerTypeFound = false;
+  String? _existingOwnerSelectionError;
+  _CreateProfileExistingAction? _existingOwnerAction;
+  String? _removingOwnerProfileId;
 
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
@@ -180,6 +200,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       } else if (_selectedSection ==
           _ProfileManagementSection.tenantManagement) {
         _loadTenantManagement();
+      } else if (_selectedSection ==
+          _ProfileManagementSection.ownerManagement) {
+        _loadOwnerManagement();
       }
     });
   }
@@ -246,8 +269,11 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _updatePrimaryPinController.dispose();
     _tenantStartDateController.dispose();
     _tenantEndDateController.dispose();
+    _ownerStartDateController.dispose();
+    _ownerEndDateController.dispose();
     _createProfileValidationDebounce?.cancel();
     _disposeTenantDocumentDrafts();
+    _disposeOwnerDocumentDrafts();
     super.dispose();
   }
 
@@ -389,6 +415,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _loadProfileForUpdate();
     } else if (section == _ProfileManagementSection.tenantManagement) {
       _loadTenantManagement();
+    } else if (section == _ProfileManagementSection.ownerManagement) {
+      _loadOwnerManagement();
     }
   }
 
@@ -398,6 +426,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         _selectedSection == _ProfileManagementSection.viewProfile;
     final closingTenantSection =
         _selectedSection == _ProfileManagementSection.tenantManagement;
+    final closingOwnerSection =
+        _selectedSection == _ProfileManagementSection.ownerManagement;
 
     setState(() {
       _selectedSection = null;
@@ -410,6 +440,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
 
     if (closingTenantSection) {
       _clearTenantManagementState();
+    }
+
+    if (closingOwnerSection) {
+      _clearOwnerManagementState();
     }
   }
 
@@ -488,6 +522,45 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         );
       },
     );
+  }
+
+  Future<bool> _showRemoveProfileConfirmation({
+    required String entityLabel,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            'Remove $entityLabel Profile',
+            style: TextStyle(
+              color: _brandTextColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            'Are You Sure To Delete The Profile from $entityLabel List ?',
+            style: TextStyle(color: Colors.black87, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('No'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: Color(0xFFB3261E)),
+              child: Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
   }
 
   String _stringValue(dynamic value) => value?.toString().trim() ?? '';
@@ -660,6 +733,13 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _tenantNewDocuments.clear();
   }
 
+  void _disposeOwnerDocumentDrafts() {
+    for (final draft in _ownerNewDocuments) {
+      draft.dispose();
+    }
+    _ownerNewDocuments.clear();
+  }
+
   void _clearTenantManagementState() {
     _tenantStartDateController.clear();
     _tenantEndDateController.clear();
@@ -669,6 +749,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _tenantExistingDocuments = [];
     _tenantVerified = false;
     _tenantStatus = '';
+    _tenantInlineErrorMessage = null;
     _tenantDocumentStatusMessage = null;
     _tenantDocumentStatusProfileId = null;
     _tenantDocumentStatusIsSuccess = false;
@@ -676,8 +757,184 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _existingTenantTypeFound = false;
     _existingTenantSelectionError = null;
     _existingTenantAction = null;
+    _removingTenantProfileId = null;
     _loadingTenant = false;
     _updatingTenant = false;
+  }
+
+  void _clearOwnerManagementState() {
+    _ownerStartDateController.clear();
+    _ownerEndDateController.clear();
+    _disposeOwnerDocumentDrafts();
+    _loadedOwnerResponse = null;
+    _ownerProfiles = [];
+    _ownerExistingDocuments = [];
+    _ownerVerified = false;
+    _ownerStatus = '';
+    _ownerDocumentStatusMessage = null;
+    _ownerDocumentStatusProfileId = null;
+    _ownerDocumentStatusIsSuccess = false;
+    _validatingExistingOwner = false;
+    _existingOwnerTypeFound = false;
+    _existingOwnerSelectionError = null;
+    _existingOwnerAction = null;
+    _removingOwnerProfileId = null;
+    _loadingOwner = false;
+    _updatingOwner = false;
+  }
+
+  Future<void> _removeTenantProfile(_TenantProfileData profile) async {
+    final flatId = _resolveTenantFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Tenant Removal Failed',
+        message: 'Unable to find the flat number required to remove a tenant.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final confirmed = await _showRemoveProfileConfirmation(
+      entityLabel: 'Tenant',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setState(() {
+      _removingTenantProfileId = profile.profileId;
+    });
+
+    final response = await ApiService.removeProfileFromOwnerTenant(
+      flatId: flatId,
+      profileId: profile.profileId,
+      profileType: 'TENANT',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _removingTenantProfileId = null;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Tenant Removal Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    await _showStatusModal(
+      title: isSuccess ? 'Tenant Removed' : 'Tenant Removal Failed',
+      message: _stringValue(response['message']).isNotEmpty
+          ? _stringValue(response['message'])
+          : isSuccess
+          ? 'Tenant profile was removed successfully.'
+          : 'Unable to remove the selected tenant profile.',
+      isSuccess: isSuccess,
+    );
+
+    if (isSuccess) {
+      final genericHeader = _jsonMapValue(
+        _loadedTenantResponse?['genericHeader'],
+      );
+      final tenant = _jsonMapValue(_loadedTenantResponse?['tenant']);
+      _disposeTenantDocumentDrafts();
+      setState(() {
+        _tenantProfiles = _tenantProfiles
+            .where((item) => item.profileId != profile.profileId)
+            .toList();
+        _tenantExistingDocuments = _tenantExistingDocuments
+            .where((item) => item.profileId != profile.profileId)
+            .toList();
+        _tenantStartDateController.clear();
+        _tenantEndDateController.clear();
+        _tenantVerified = false;
+        _tenantStatus = '';
+        _tenantDocumentStatusMessage = null;
+        _tenantDocumentStatusProfileId = null;
+        _tenantDocumentStatusIsSuccess = false;
+        _loadedTenantResponse = {
+          'genericHeader': genericHeader,
+          'tenant': {
+            ...tenant,
+            'flatId': flatId,
+            'flatNo': _stringValue(tenant['flatNo']).isNotEmpty
+                ? _stringValue(tenant['flatNo'])
+                : flatId,
+            'status': '',
+            'startDate': '',
+            'endDate': '',
+            'verified': false,
+            'document': <Map<String, dynamic>>[],
+          },
+          'profile': <Map<String, dynamic>>[],
+        };
+      });
+      await _loadTenantManagement(showErrorModal: false);
+    }
+  }
+
+  Future<void> _removeOwnerProfile(_TenantProfileData profile) async {
+    final flatId = _resolveOwnerFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Owner Removal Failed',
+        message: 'Unable to find the flat number required to remove an owner.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final confirmed = await _showRemoveProfileConfirmation(
+      entityLabel: 'Owner',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setState(() {
+      _removingOwnerProfileId = profile.profileId;
+    });
+
+    final response = await ApiService.removeProfileFromOwnerTenant(
+      flatId: flatId,
+      profileId: profile.profileId,
+      profileType: 'OWNER',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _removingOwnerProfileId = null;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Owner Removal Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    await _showStatusModal(
+      title: isSuccess ? 'Owner Removed' : 'Owner Removal Failed',
+      message: _stringValue(response['message']).isNotEmpty
+          ? _stringValue(response['message'])
+          : isSuccess
+          ? 'Owner profile was removed successfully.'
+          : 'Unable to remove the selected owner profile.',
+      isSuccess: isSuccess,
+    );
+
+    if (isSuccess) {
+      await _loadOwnerManagement(showErrorModal: false);
+    }
   }
 
   Future<void> _pickTenantDate({
@@ -879,6 +1136,45 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       'verified': _tenantVerified,
       'listOfDocuments': [
         for (final document in _tenantExistingDocuments)
+          {
+            'documentName': document.documentName,
+            'documentCode': document.documentCode,
+          },
+        for (final draft in additionalDrafts)
+          {
+            'documentName': _tenantRequestDocumentName(draft),
+            'documentCode': draft.documentBase64,
+          },
+      ],
+    };
+  }
+
+  Map<String, dynamic>? _buildOwnerUpdateRequest({
+    Iterable<_TenantNewDocumentDraft> additionalDrafts = const [],
+  }) {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
+      return null;
+    }
+
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty || _loadedOwnerResponse == null) {
+      return null;
+    }
+
+    final owner = _jsonMapValue(_loadedOwnerResponse?['owner']);
+
+    return {
+      'header': header,
+      'status': _ownerStatus.isNotEmpty
+          ? _ownerStatus
+          : _stringValue(owner['status']),
+      'flatId': flatId,
+      'startDate': _formatTenantDateForRequest(_ownerStartDateController.text),
+      'endDate': _formatTenantDateForRequest(_ownerEndDateController.text),
+      'verified': _ownerVerified,
+      'listOfDocuments': [
+        for (final document in _ownerExistingDocuments)
           {
             'documentName': document.documentName,
             'documentCode': document.documentCode,
@@ -1496,6 +1792,427 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                                     onPressed: addingProfileId.isNotEmpty
                                         ? null
                                         : () => addTenant(result),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _brandColor,
+                                    ),
+                                    child: addingProfileId == result.profileId
+                                        ? SizedBox(
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Text('Add'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    dialogOpen = false;
+    searchDebounce?.cancel();
+    searchController.dispose();
+  }
+
+  Future<bool> _validateExistingOwnerProfile({required String flatId}) async {
+    final exists =
+        await ApiService.validateCurrentOwner(
+          flatId: flatId,
+          profileType: 'OWNER',
+        ) ??
+        false;
+
+    if (!mounted) {
+      return exists;
+    }
+
+    setState(() {
+      _validatingExistingOwner = false;
+      _existingOwnerTypeFound = exists;
+      _existingOwnerSelectionError = null;
+      if (!exists) {
+        _existingOwnerAction = null;
+      }
+    });
+
+    return exists;
+  }
+
+  String _resolveOwnerFlatId() {
+    final owner = _jsonMapValue(_loadedOwnerResponse?['owner']);
+    final ownerFlatId = _stringValue(owner['flatId']);
+    if (ownerFlatId.isNotEmpty) {
+      return ownerFlatId;
+    }
+
+    final ownerFlatNo = _stringValue(owner['flatNo']);
+    if (ownerFlatNo.isNotEmpty) {
+      return ownerFlatNo;
+    }
+
+    return _readHeaderValue(['flatNo']);
+  }
+
+  void _dismissExistingOwnerPanel() {
+    setState(() {
+      _validatingExistingOwner = false;
+      _existingOwnerTypeFound = false;
+      _existingOwnerSelectionError = null;
+      _existingOwnerAction = null;
+    });
+  }
+
+  Future<void> _handleAddOwnerPressed() async {
+    final flatId = _resolveOwnerFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Owner Add Failed',
+        message: 'Unable to find the flat number required to add an owner.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _validatingExistingOwner = true;
+      _existingOwnerTypeFound = false;
+      _existingOwnerSelectionError = null;
+      _existingOwnerAction = null;
+    });
+
+    final exists = await _validateExistingOwnerProfile(flatId: flatId);
+    if (!mounted || exists) {
+      return;
+    }
+
+    await _proceedAddOwner();
+  }
+
+  Future<void> _proceedAddOwner() async {
+    final flatId = _resolveOwnerFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Owner Add Failed',
+        message: 'Unable to find the flat number required to add an owner.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    if (_existingOwnerTypeFound && _existingOwnerAction == null) {
+      setState(() {
+        _existingOwnerSelectionError =
+            'Please select one operation before continuing.';
+      });
+      return;
+    }
+
+    final addToExisting =
+        _existingOwnerTypeFound &&
+            _existingOwnerAction == _CreateProfileExistingAction.addToExisting
+        ? 'Y'
+        : 'N';
+
+    await _showAddOwnerSearchModal(
+      flatId: flatId,
+      addToExisting: addToExisting,
+    );
+  }
+
+  Future<void> _showAddOwnerSearchModal({
+    required String flatId,
+    required String addToExisting,
+  }) async {
+    final searchController = TextEditingController();
+    Timer? searchDebounce;
+    var searchRequestId = 0;
+    var dialogOpen = true;
+    var searching = false;
+    var addingProfileId = '';
+    String? errorMessage;
+    var results = <_TenantSearchResult>[];
+
+    Future<void> runSearch(String value, StateSetter setModalState) async {
+      final query = value.trim();
+      searchRequestId++;
+      final requestId = searchRequestId;
+
+      if (query.isEmpty) {
+        if (!dialogOpen) {
+          return;
+        }
+        setModalState(() {
+          searching = false;
+          errorMessage = null;
+          results = [];
+        });
+        return;
+      }
+
+      setModalState(() {
+        searching = true;
+        errorMessage = null;
+      });
+
+      final response = await _searchTenantProfiles(query);
+      if (!dialogOpen || requestId != searchRequestId) {
+        return;
+      }
+
+      setModalState(() {
+        searching = false;
+        results = response;
+        errorMessage = response.isEmpty
+            ? 'No matching profiles were found.'
+            : null;
+      });
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> addOwner(_TenantSearchResult result) async {
+              final navigator = Navigator.of(dialogContext);
+
+              setModalState(() {
+                addingProfileId = result.profileId;
+              });
+
+              final response = await ApiService.addOwner(
+                profileId: result.profileId,
+                flatId: flatId,
+                addToExisting: addToExisting,
+              );
+
+              if (!mounted) {
+                return;
+              }
+
+              dialogOpen = false;
+              if (navigator.canPop()) {
+                navigator.pop();
+              }
+
+              if (response == null) {
+                await _showStatusModal(
+                  title: 'Owner Add Failed',
+                  message: 'No response was returned from the server.',
+                  isSuccess: false,
+                );
+                return;
+              }
+
+              final isSuccess = _isSuccessResponse(
+                response,
+                idKeys: const ['message'],
+              );
+              final message = _stringValue(response['message']).isNotEmpty
+                  ? _stringValue(response['message'])
+                  : isSuccess
+                  ? 'Owner added successfully.'
+                  : 'Unable to add the selected owner.';
+
+              await _showStatusModal(
+                title: isSuccess ? 'Owner Added' : 'Owner Add Failed',
+                message: message,
+                isSuccess: isSuccess,
+              );
+
+              if (isSuccess) {
+                setState(() {
+                  _validatingExistingOwner = false;
+                  _existingOwnerTypeFound = false;
+                  _existingOwnerAction = null;
+                  _existingOwnerSelectionError = null;
+                });
+                await _loadOwnerManagement(showErrorModal: false);
+              }
+            }
+
+            return AlertDialog(
+              clipBehavior: Clip.antiAlias,
+              insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: Text(
+                'Add Owner',
+                style: TextStyle(
+                  color: Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              content: SizedBox(
+                width: MediaQuery.of(dialogContext).size.width < 800
+                    ? double.maxFinite
+                    : 720,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      addToExisting == 'Y'
+                          ? 'Search for a profile to add to the existing owner list.'
+                          : 'Search for a profile to create a new owner entry and replace the existing one.',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Search profile',
+                        hintText: 'Type a name or profile ID',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        searchDebounce?.cancel();
+                        searchDebounce = Timer(
+                          const Duration(milliseconds: 350),
+                          () => runSearch(value, setModalState),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    if (searching)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: LinearProgressIndicator(color: _brandColor),
+                      ),
+                    if (!searching &&
+                        searchController.text.trim().isEmpty &&
+                        results.isEmpty)
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Color(0xFFF4FBFA),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Color(0xFFD5EBE7)),
+                        ),
+                        child: Text(
+                          'Start typing to search profiles.',
+                          style: TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else if (errorMessage != null)
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Color(0xFFFFF6E8),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Color(0xFFFFD6A0)),
+                        ),
+                        child: Text(
+                          errorMessage!,
+                          style: TextStyle(
+                            color: Color(0xFF7A3F0D),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: results.length,
+                          separatorBuilder: (context, index) =>
+                              SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final result = results[index];
+                            ImageProvider<Object>? imageProvider;
+                            if (result.profilePicUrl.startsWith('http')) {
+                              imageProvider = NetworkImage(
+                                result.profilePicUrl,
+                              );
+                            } else if (result.profilePicBytes != null) {
+                              imageProvider = MemoryImage(
+                                result.profilePicBytes!,
+                              );
+                            }
+                            final initials = result.displayName
+                                .split(RegExp(r'\s+'))
+                                .where((part) => part.isNotEmpty)
+                                .take(2)
+                                .map((part) => part[0].toUpperCase())
+                                .join();
+
+                            return Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFF9FCFB),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Color(0xFFDCEBE8)),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Color(0xFFE7F3F0),
+                                    backgroundImage: imageProvider,
+                                    child: imageProvider == null
+                                        ? Text(
+                                            initials.isEmpty ? 'OP' : initials,
+                                            style: TextStyle(
+                                              color: _brandColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          result.displayName,
+                                          style: TextStyle(
+                                            color: Color(0xFF124B45),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4),
+                                        Text(
+                                          result.profileId,
+                                          style: TextStyle(
+                                            color: Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  FilledButton(
+                                    onPressed: addingProfileId.isNotEmpty
+                                        ? null
+                                        : () => addOwner(result),
                                     style: FilledButton.styleFrom(
                                       backgroundColor: _brandColor,
                                     ),
@@ -2171,6 +2888,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
 
     setState(() {
       _loadingTenant = true;
+      _tenantInlineErrorMessage = null;
     });
 
     final response = await ApiService.getTenant(flatId: flatId);
@@ -2191,14 +2909,35 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       return;
     }
 
+    final messageCode = _stringValue(response['messageCode']);
     final isSuccess = _isSuccessResponse(response, idKeys: const ['tenant']);
     if (!isSuccess) {
+      final message = _stringValue(response['message']).isNotEmpty
+          ? _stringValue(response['message'])
+          : 'Unable to load tenant details for the current flat.';
+
+      if (messageCode == 'ERR_MESSAGE_35') {
+        _disposeTenantDocumentDrafts();
+        setState(() {
+          _loadedTenantResponse = null;
+          _tenantProfiles = [];
+          _tenantExistingDocuments = [];
+          _tenantStartDateController.clear();
+          _tenantEndDateController.clear();
+          _tenantVerified = false;
+          _tenantStatus = '';
+          _tenantInlineErrorMessage = message;
+          _tenantDocumentStatusMessage = null;
+          _tenantDocumentStatusProfileId = null;
+          _tenantDocumentStatusIsSuccess = false;
+        });
+        return;
+      }
+
       if (showErrorModal) {
         await _showStatusModal(
           title: 'Tenant Fetch Failed',
-          message: _stringValue(response['message']).isNotEmpty
-              ? _stringValue(response['message'])
-              : 'Unable to load tenant details for the current flat.',
+          message: message,
           isSuccess: false,
         );
       }
@@ -2247,6 +2986,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
       _tenantExistingDocuments = documents;
       _tenantVerified = _boolValue(tenant['verified']);
       _tenantStatus = _stringValue(tenant['status']);
+      _tenantInlineErrorMessage = null;
       if (!preserveDocumentStatus) {
         _tenantDocumentStatusMessage = null;
         _tenantDocumentStatusProfileId = null;
@@ -2549,6 +3289,403 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
+  Future<void> _loadOwnerManagement({
+    bool showErrorModal = true,
+    bool preserveDocumentStatus = false,
+  }) async {
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Owner Fetch Failed',
+          message:
+              'Unable to find the logged-in flat number required to fetch owner details.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _loadingOwner = true;
+    });
+
+    final response = await ApiService.getOwner(flatId: flatId);
+    if (!mounted) return;
+
+    setState(() {
+      _loadingOwner = false;
+    });
+
+    if (response == null) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Owner Fetch Failed',
+          message: 'No response was returned from the server.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['owner']);
+    if (!isSuccess) {
+      if (showErrorModal) {
+        await _showStatusModal(
+          title: 'Owner Fetch Failed',
+          message: _stringValue(response['message']).isNotEmpty
+              ? _stringValue(response['message'])
+              : 'Unable to load owner details for the current flat.',
+          isSuccess: false,
+        );
+      }
+      return;
+    }
+
+    final owner = _jsonMapValue(response['owner']);
+    final profiles = _jsonMapList(response['profile'])
+        .map(
+          (entry) => _TenantProfileData(
+            profileId: _stringValue(entry['prflId']),
+            displayName: _composeDisplayName(_jsonMapValue(entry['prflName'])),
+            profileKind: _stringValue(entry['profileKind']),
+            primaryAddress: _formatAddressDisplay(
+              _jsonMapValue(entry['prflPrimaryPostalAdrss']),
+            ),
+            gender: _stringValue(entry['gender']),
+            phoneNo: _stringValue(entry['prflPhoneNo']),
+            dob: _formatDate(entry['prflDob']),
+            imageBytes: _decodeBase64Bytes(_stringValue(entry['profile_pic'])),
+          ),
+        )
+        .where((profile) => profile.profileId.isNotEmpty)
+        .toList();
+    final documents = _jsonMapList(owner['document'])
+        .map(
+          (entry) => _TenantExistingDocument(
+            profileId: _matchDocumentProfileId(
+              _stringValue(entry['documentName']),
+              profiles,
+            ),
+            documentName: _stringValue(entry['documentName']),
+            documentCode: _stringValue(entry['documentCode']),
+          ),
+        )
+        .where((document) => document.documentName.isNotEmpty)
+        .toList();
+
+    _disposeOwnerDocumentDrafts();
+    _ownerStartDateController.text = _formatDate(owner['startDate']);
+    _ownerEndDateController.text = _formatDate(owner['endDate']);
+
+    setState(() {
+      _loadedOwnerResponse = response;
+      _ownerProfiles = profiles;
+      _ownerExistingDocuments = documents;
+      _ownerVerified = _boolValue(owner['verified']);
+      _ownerStatus = _stringValue(owner['status']);
+      if (!preserveDocumentStatus) {
+        _ownerDocumentStatusMessage = null;
+        _ownerDocumentStatusProfileId = null;
+        _ownerDocumentStatusIsSuccess = false;
+      }
+    });
+  }
+
+  Future<void> _pickOwnerDocument(_TenantNewDocumentDraft draft) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf'],
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final selectedFile = result.files.single;
+    final bytes = selectedFile.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'The selected document could not be read.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      draft.documentBase64 = base64Encode(bytes);
+      draft.fileName = selectedFile.name;
+    });
+  }
+
+  void _addOwnerDocument(String profileId) {
+    setState(() {
+      _ownerNewDocuments.add(_TenantNewDocumentDraft(profileId: profileId));
+      _ownerDocumentStatusMessage = null;
+      _ownerDocumentStatusProfileId = null;
+      _ownerDocumentStatusIsSuccess = false;
+    });
+  }
+
+  void _removeOwnerExistingDocument(_TenantExistingDocument document) {
+    setState(() {
+      _ownerExistingDocuments = _ownerExistingDocuments
+          .where((item) => item != document)
+          .toList();
+      _ownerDocumentStatusMessage = null;
+      _ownerDocumentStatusProfileId = null;
+      _ownerDocumentStatusIsSuccess = false;
+    });
+  }
+
+  void _removeOwnerNewDocument(_TenantNewDocumentDraft draft) {
+    setState(() {
+      _ownerNewDocuments.remove(draft);
+      _ownerDocumentStatusMessage = null;
+      _ownerDocumentStatusProfileId = null;
+      _ownerDocumentStatusIsSuccess = false;
+    });
+    draft.dispose();
+  }
+
+  Future<void> _uploadOwnerDocument(_TenantNewDocumentDraft draft) async {
+    final documentName = _normalizedDocumentBaseName(
+      draft.documentNameController.text,
+    );
+    if (documentName.isEmpty ||
+        draft.documentBase64 == null ||
+        draft.documentBase64!.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message:
+            'Provide a document name and choose a file before uploading it.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final owner = _jsonMapValue(_loadedOwnerResponse?['owner']);
+    if (_stringValue(owner['startDate']).isEmpty &&
+        _ownerStartDateController.text.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'Start date is required before uploading an owner document.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final requestBody = _buildOwnerUpdateRequest(additionalDrafts: [draft]);
+    if (requestBody == null) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'Unable to prepare the owner update request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      draft.uploading = true;
+    });
+
+    final response = await ApiService.updateOwnerDetails(requestBody);
+    if (!mounted) return;
+
+    setState(() {
+      draft.uploading = false;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    final message = _stringValue(response['message']).isNotEmpty
+        ? _stringValue(response['message'])
+        : isSuccess
+        ? 'The document was uploaded successfully.'
+        : 'Unable to upload the document.';
+
+    if (!isSuccess) {
+      await _showStatusModal(
+        title: 'Document Upload Failed',
+        message: message,
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _ownerDocumentStatusMessage = message;
+      _ownerDocumentStatusProfileId = draft.profileId;
+      _ownerDocumentStatusIsSuccess = true;
+    });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_ownerDocumentStatusMessage == message &&
+          _ownerDocumentStatusProfileId == draft.profileId) {
+        setState(() {
+          _ownerDocumentStatusMessage = null;
+          _ownerDocumentStatusProfileId = null;
+          _ownerDocumentStatusIsSuccess = false;
+        });
+      }
+    });
+
+    await _loadOwnerManagement(
+      showErrorModal: false,
+      preserveDocumentStatus: true,
+    );
+  }
+
+  Future<void> _downloadOwnerDocument(_TenantExistingDocument document) async {
+    final bytes = _decodeBase64Bytes(document.documentCode);
+    if (bytes == null || bytes.isEmpty) {
+      await _showStatusModal(
+        title: 'Download Failed',
+        message: 'The selected document is not available for download.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final inferredExtension = _guessExtensionFromBytes(bytes);
+    final extension = _fileExtensionFromName(document.documentName).isNotEmpty
+        ? _fileExtensionFromName(document.documentName)
+        : inferredExtension;
+    final fileName = _fileNameWithoutExtension(document.documentName).isNotEmpty
+        ? _fileNameWithoutExtension(document.documentName)
+        : 'owner_document';
+
+    try {
+      await FileSaver.instance.saveFile(
+        name: fileName.isEmpty ? document.documentName : fileName,
+        bytes: bytes,
+        fileExtension: extension,
+        mimeType: _mimeTypeForExtension(extension),
+      );
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${document.documentName} downloaded successfully.'),
+        ),
+      );
+    } catch (_) {
+      await _showStatusModal(
+        title: 'Download Failed',
+        message: 'The document could not be downloaded on this device.',
+        isSuccess: false,
+      );
+    }
+  }
+
+  Future<void> _submitOwnerManagement() async {
+    final header = _buildHeaderRequest();
+    if (header.values.every((value) => _stringValue(value).isEmpty)) {
+      await _showStatusModal(
+        title: 'Owner Update Failed',
+        message: 'Unable to find login header details for this request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final flatId = _readHeaderValue(['flatNo']);
+    if (flatId.isEmpty || _loadedOwnerResponse == null) {
+      await _showStatusModal(
+        title: 'Owner Update Failed',
+        message: 'Load owner details before trying to update them.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final owner = _jsonMapValue(_loadedOwnerResponse?['owner']);
+    if (_stringValue(owner['startDate']).isEmpty &&
+        _ownerStartDateController.text.trim().isEmpty) {
+      await _showStatusModal(
+        title: 'Owner Update Failed',
+        message: 'Start date is required before submitting owner details.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    for (final draft in _ownerNewDocuments) {
+      final documentName = draft.documentNameController.text.trim();
+      if (documentName.isEmpty ||
+          draft.documentBase64 == null ||
+          draft.documentBase64!.trim().isEmpty) {
+        await _showStatusModal(
+          title: 'Owner Update Failed',
+          message:
+              'Each added document must include a document name and an uploaded file before submit.',
+          isSuccess: false,
+        );
+        return;
+      }
+    }
+
+    final requestBody = _buildOwnerUpdateRequest(
+      additionalDrafts: _ownerNewDocuments,
+    );
+    if (requestBody == null) {
+      await _showStatusModal(
+        title: 'Owner Update Failed',
+        message: 'Unable to prepare the owner update request.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _updatingOwner = true;
+    });
+
+    final response = await ApiService.updateOwnerDetails(requestBody);
+
+    if (!mounted) return;
+
+    setState(() {
+      _updatingOwner = false;
+    });
+
+    if (response == null) {
+      await _showStatusModal(
+        title: 'Owner Update Failed',
+        message: 'No response was returned from the server.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final isSuccess = _isSuccessResponse(response, idKeys: const ['message']);
+    await _showStatusModal(
+      title: isSuccess ? 'Owner Updated' : 'Owner Update Failed',
+      message: _stringValue(response['message']).isNotEmpty
+          ? _stringValue(response['message'])
+          : isSuccess
+          ? 'Owner details were updated successfully.'
+          : 'Unable to update owner details.',
+      isSuccess: isSuccess,
+    );
+
+    if (isSuccess) {
+      await _loadOwnerManagement(showErrorModal: false);
+    }
+  }
+
   void _resetCreateProfileForm() {
     _createProfileFormKey.currentState?.reset();
     _firstNameController.clear();
@@ -2615,6 +3752,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         return 'Update Password';
       case _ProfileManagementSection.tenantManagement:
         return 'Tenant Management';
+      case _ProfileManagementSection.ownerManagement:
+        return 'Owner Management';
       case null:
         return 'Account Management';
     }
@@ -2632,6 +3771,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         return 'Update account credentials from the password management form.';
       case _ProfileManagementSection.tenantManagement:
         return 'Fetch tenant details for the logged-in flat, review linked profiles and documents, and submit tenant verification updates.';
+      case _ProfileManagementSection.ownerManagement:
+        return 'Fetch owner details for the logged-in flat, review linked profiles and documents, and submit owner verification updates.';
       case null:
         return 'Choose one of the account management actions below.';
     }
@@ -2858,7 +3999,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
         return _UpdatePasswordTab(mobile: mobile);
       case _ProfileManagementSection.tenantManagement:
         return _TenantManagementTab(
+          entityLabel: 'Tenant',
           response: _loadedTenantResponse,
+          inlineErrorMessage: _tenantInlineErrorMessage,
           profiles: _tenantProfiles,
           existingDocuments: _tenantExistingDocuments,
           newDocuments: _tenantNewDocuments,
@@ -2902,9 +4045,66 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           onPickDocument: _pickTenantDocument,
           onUploadDocument: _uploadTenantDocument,
           onDownloadDocument: _downloadTenantDocument,
+          onRemoveProfile: _removeTenantProfile,
+          removingProfileId: _removingTenantProfileId,
           documentStatusMessage: _tenantDocumentStatusMessage,
           documentStatusProfileId: _tenantDocumentStatusProfileId,
           documentStatusIsSuccess: _tenantDocumentStatusIsSuccess,
+          mobile: mobile,
+        );
+      case _ProfileManagementSection.ownerManagement:
+        return _TenantManagementTab(
+          entityLabel: 'Owner',
+          response: _loadedOwnerResponse,
+          inlineErrorMessage: null,
+          profiles: _ownerProfiles,
+          existingDocuments: _ownerExistingDocuments,
+          newDocuments: _ownerNewDocuments,
+          loading: _loadingOwner,
+          submitting: _updatingOwner,
+          validatingExistingTenant: _validatingExistingOwner,
+          verified: _ownerVerified,
+          tenantStatus: _ownerStatus,
+          existingTenantTypeFound: _existingOwnerTypeFound,
+          existingTenantSelectionError: _existingOwnerSelectionError,
+          existingTenantAction: _existingOwnerAction,
+          startDateController: _ownerStartDateController,
+          endDateController: _ownerEndDateController,
+          onVerifiedChanged: (value) {
+            setState(() {
+              _ownerVerified = value;
+            });
+          },
+          onExistingTenantActionChanged: (value) {
+            setState(() {
+              _existingOwnerAction = value;
+              _existingOwnerSelectionError = null;
+            });
+          },
+          onPickStartDate: () => _pickTenantDate(
+            controller: _ownerStartDateController,
+            helpText: 'Select Start Date',
+          ),
+          onPickEndDate: () => _pickTenantDate(
+            controller: _ownerEndDateController,
+            helpText: 'Select End Date',
+          ),
+          onRefresh: _loadOwnerManagement,
+          onAddTenant: _handleAddOwnerPressed,
+          onProceedAddTenant: _proceedAddOwner,
+          onDismissExistingTenantPanel: _dismissExistingOwnerPanel,
+          onSubmit: _submitOwnerManagement,
+          onAddDocument: _addOwnerDocument,
+          onRemoveExistingDocument: _removeOwnerExistingDocument,
+          onRemoveNewDocument: _removeOwnerNewDocument,
+          onPickDocument: _pickOwnerDocument,
+          onUploadDocument: _uploadOwnerDocument,
+          onDownloadDocument: _downloadOwnerDocument,
+          onRemoveProfile: _removeOwnerProfile,
+          removingProfileId: _removingOwnerProfileId,
+          documentStatusMessage: _ownerDocumentStatusMessage,
+          documentStatusProfileId: _ownerDocumentStatusProfileId,
+          documentStatusIsSuccess: _ownerDocumentStatusIsSuccess,
           mobile: mobile,
         );
     }
@@ -3072,8 +4272,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                               title: 'Owner Management',
                               icon: Icons.home_work_outlined,
                               selected: false,
-                              onTap: () =>
-                                  _showAccountActionMessage('Owner Management'),
+                              onTap: () => _openSection(
+                                _ProfileManagementSection.ownerManagement,
+                              ),
                             ),
                             _ProfileActionCard(
                               title: 'Staff Management',
@@ -3165,6 +4366,7 @@ enum _ProfileManagementSection {
   updateProfile,
   updatePassword,
   tenantManagement,
+  ownerManagement,
 }
 
 String _profileTypeDisplayLabel(String? value, {String fallback = 'Profile'}) {
@@ -5740,7 +6942,9 @@ class _TenantSearchResult {
 
 class _TenantManagementTab extends StatelessWidget {
   const _TenantManagementTab({
+    required this.entityLabel,
     required this.response,
+    required this.inlineErrorMessage,
     required this.profiles,
     required this.existingDocuments,
     required this.newDocuments,
@@ -5769,13 +6973,17 @@ class _TenantManagementTab extends StatelessWidget {
     required this.onPickDocument,
     required this.onUploadDocument,
     required this.onDownloadDocument,
+    required this.onRemoveProfile,
+    required this.removingProfileId,
     required this.documentStatusMessage,
     required this.documentStatusProfileId,
     required this.documentStatusIsSuccess,
     required this.mobile,
   });
 
+  final String entityLabel;
   final Map<String, dynamic>? response;
+  final String? inlineErrorMessage;
   final List<_TenantProfileData> profiles;
   final List<_TenantExistingDocument> existingDocuments;
   final List<_TenantNewDocumentDraft> newDocuments;
@@ -5806,6 +7014,8 @@ class _TenantManagementTab extends StatelessWidget {
   final Future<void> Function(_TenantNewDocumentDraft draft) onUploadDocument;
   final Future<void> Function(_TenantExistingDocument document)
   onDownloadDocument;
+  final Future<void> Function(_TenantProfileData profile) onRemoveProfile;
+  final String? removingProfileId;
   final String? documentStatusMessage;
   final String? documentStatusProfileId;
   final bool documentStatusIsSuccess;
@@ -5830,6 +7040,8 @@ class _TenantManagementTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final entityLower = entityLabel.toLowerCase();
+
     if (response == null && loading) {
       return Center(
         child: Padding(
@@ -5840,31 +7052,44 @@ class _TenantManagementTab extends StatelessWidget {
     }
 
     if (response == null) {
+      final hasInlineError =
+          inlineErrorMessage != null && inlineErrorMessage!.trim().isNotEmpty;
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             padding: EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Color(0xFFF4FBFA),
+              color: hasInlineError ? Color(0xFFFFF1F1) : Color(0xFFF4FBFA),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Color(0xFFD5EBE7)),
+              border: Border.all(
+                color: hasInlineError ? Color(0xFFE58F8F) : Color(0xFFD5EBE7),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No tenant data has been fetched yet.',
+                  hasInlineError
+                      ? inlineErrorMessage!
+                      : 'No $entityLower data has been fetched yet.',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF124B45),
+                    color: hasInlineError
+                        ? Color(0xFFB42318)
+                        : Color(0xFF124B45),
                   ),
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Use the logged-in header flat number to load tenant profiles and documents.',
-                  style: TextStyle(color: Colors.black54),
+                  hasInlineError
+                      ? 'No $entityLower profile is currently linked to the logged-in flat. You can add one below.'
+                      : 'Use the logged-in header flat number to load $entityLower profiles and documents.',
+                  style: TextStyle(
+                    color: hasInlineError ? Color(0xFFB42318) : Colors.black54,
+                  ),
                 ),
               ],
             ),
@@ -5872,10 +7097,37 @@ class _TenantManagementTab extends StatelessWidget {
           SizedBox(height: 18),
           Align(
             alignment: Alignment.centerRight,
-            child: OutlinedButton.icon(
-              onPressed: loading ? null : onRefresh,
-              icon: Icon(Icons.refresh),
-              label: Text('Fetch Tenant Details'),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: loading ? null : onRefresh,
+                  icon: Icon(Icons.refresh),
+                  label: Text('Fetch $entityLabel Details'),
+                ),
+                if (entityLabel == 'Tenant')
+                  FilledButton.icon(
+                    onPressed: loading || validatingExistingTenant
+                        ? null
+                        : onAddTenant,
+                    icon: validatingExistingTenant
+                        ? SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(Icons.person_add_alt_1),
+                    label: Text('Add Tenant'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Color(0xFF0F8F82),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -5883,15 +7135,12 @@ class _TenantManagementTab extends StatelessWidget {
     }
 
     final genericHeader = _mapValue(response!['genericHeader']);
-    final tenant = _mapValue(response!['tenant']);
+    final profileRecord = _mapValue(response![entityLower]);
     final apartmentName = _textValue(
       genericHeader['apartmentName'],
       fallback: _textValue(ApiService.userHeader?['apartmentName']),
     );
-    final profileTypeLabel = _profileTypeDisplayLabel(
-      'TENANT',
-      fallback: 'tenant profile',
-    );
+    final profileTypeLabel = '$entityLower profile';
     final startDateLocked = startDateController.text.trim().isNotEmpty;
     final endDateLocked = endDateController.text.trim().isNotEmpty;
 
@@ -5916,7 +7165,7 @@ class _TenantManagementTab extends StatelessWidget {
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Tenant details are fetched using the logged-in flat number. Profile fields stay read-only, while verification, missing dates, and documents can be updated before submit.',
+                  '$entityLabel details are fetched using the logged-in flat number. Profile fields stay read-only, while verification, missing dates, and documents can be updated before submit.',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF7A3F0D),
@@ -5939,7 +7188,7 @@ class _TenantManagementTab extends StatelessWidget {
                     ? null
                     : onRefresh,
                 icon: Icon(Icons.refresh),
-                label: Text('Refresh Tenant Details'),
+                label: Text('Refresh $entityLabel Details'),
               ),
               FilledButton.icon(
                 onPressed:
@@ -5959,7 +7208,7 @@ class _TenantManagementTab extends StatelessWidget {
                         ),
                       )
                     : Icon(Icons.person_add_alt_1),
-                label: Text('Add Tenant'),
+                label: Text('Add $entityLabel'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Color(0xFF0F8F82),
                 ),
@@ -5973,7 +7222,7 @@ class _TenantManagementTab extends StatelessWidget {
             profileTypeLabel: profileTypeLabel,
             validating: validatingExistingTenant,
             found: existingTenantTypeFound,
-            title: 'Tenant Exists. Please Select From Below Operation',
+            title: '$entityLabel Exists. Please Select From Below Operation',
             selectionError: existingTenantSelectionError,
             selectedAction: existingTenantAction,
             onChanged: onExistingTenantActionChanged,
@@ -5995,13 +7244,13 @@ class _TenantManagementTab extends StatelessWidget {
             ),
             _ProfileInputField(
               label: 'Flat No.',
-              initialValue: _textValue(tenant['flatNo']),
+              initialValue: _textValue(profileRecord['flatNo']),
               readOnly: true,
             ),
             _ProfileInputField(
               label: 'Status',
               initialValue: tenantStatus.isEmpty
-                  ? _textValue(tenant['status'])
+                  ? _textValue(profileRecord['status'])
                   : tenantStatus,
               readOnly: true,
             ),
@@ -6071,26 +7320,29 @@ class _TenantManagementTab extends StatelessWidget {
                     ),
                   )
                 : Icon(Icons.save_outlined),
-            label: Text(submitting ? 'Submitting...' : 'Submit Tenant Details'),
             style: FilledButton.styleFrom(
               backgroundColor: Color(0xFF0F8F82),
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+            label: Text(
+              submitting ? 'Submitting...' : 'Submit $entityLabel Details',
             ),
           ),
         ),
         SizedBox(height: 18),
         Text(
-          'Tenant Profiles',
+          '$entityLabel Profiles',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         SizedBox(height: 12),
         if (profiles.isEmpty)
           Text(
-            'No tenant profiles were returned for this flat.',
+            'No $entityLower profiles were returned for this flat.',
             style: TextStyle(color: Colors.black54),
           )
         else
           _TenantProfilesSlider(
+            entityLabel: entityLabel,
             profiles: profiles,
             existingDocuments: existingDocuments,
             newDocuments: newDocuments,
@@ -6100,6 +7352,8 @@ class _TenantManagementTab extends StatelessWidget {
             onPickDocument: onPickDocument,
             onUploadDocument: onUploadDocument,
             onDownloadDocument: onDownloadDocument,
+            onRemoveProfile: onRemoveProfile,
+            removingProfileId: removingProfileId,
             documentStatusMessage: documentStatusMessage,
             documentStatusProfileId: documentStatusProfileId,
             documentStatusIsSuccess: documentStatusIsSuccess,
@@ -6112,6 +7366,7 @@ class _TenantManagementTab extends StatelessWidget {
 
 class _TenantProfilePanel extends StatelessWidget {
   const _TenantProfilePanel({
+    required this.entityLabel,
     required this.profile,
     required this.existingDocuments,
     required this.newDocuments,
@@ -6127,6 +7382,7 @@ class _TenantProfilePanel extends StatelessWidget {
     required this.mobile,
   });
 
+  final String entityLabel;
   final _TenantProfileData profile;
   final List<_TenantExistingDocument> existingDocuments;
   final List<_TenantNewDocumentDraft> newDocuments;
@@ -6189,7 +7445,7 @@ class _TenantProfilePanel extends StatelessWidget {
                   children: [
                     Text(
                       profile.displayName.isEmpty
-                          ? 'Tenant Profile'
+                          ? '$entityLabel Profile'
                           : profile.displayName,
                       style: TextStyle(
                         color: Color(0xFF124B45),
@@ -6337,6 +7593,7 @@ class _TenantProfilePanel extends StatelessWidget {
 
 class _TenantProfilesSlider extends StatefulWidget {
   const _TenantProfilesSlider({
+    required this.entityLabel,
     required this.profiles,
     required this.existingDocuments,
     required this.newDocuments,
@@ -6346,12 +7603,15 @@ class _TenantProfilesSlider extends StatefulWidget {
     required this.onPickDocument,
     required this.onUploadDocument,
     required this.onDownloadDocument,
+    required this.onRemoveProfile,
+    required this.removingProfileId,
     required this.documentStatusMessage,
     required this.documentStatusProfileId,
     required this.documentStatusIsSuccess,
     required this.mobile,
   });
 
+  final String entityLabel;
   final List<_TenantProfileData> profiles;
   final List<_TenantExistingDocument> existingDocuments;
   final List<_TenantNewDocumentDraft> newDocuments;
@@ -6362,6 +7622,8 @@ class _TenantProfilesSlider extends StatefulWidget {
   final Future<void> Function(_TenantNewDocumentDraft draft) onUploadDocument;
   final Future<void> Function(_TenantExistingDocument document)
   onDownloadDocument;
+  final Future<void> Function(_TenantProfileData profile) onRemoveProfile;
+  final String? removingProfileId;
   final String? documentStatusMessage;
   final String? documentStatusProfileId;
   final bool documentStatusIsSuccess;
@@ -6395,13 +7657,22 @@ class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
             children: [
               for (var index = 0; index < widget.profiles.length; index++) ...[
                 _TenantSliderTab(
+                  entityLabel: widget.entityLabel,
                   profile: widget.profiles[index],
                   selected: index == _selectedIndex,
+                  showRemoveControl:
+                      widget.entityLabel != 'Owner' ||
+                      widget.profiles.length > 1,
+                  removing:
+                      widget.removingProfileId ==
+                      widget.profiles[index].profileId,
                   onTap: () {
                     setState(() {
                       _selectedIndex = index;
                     });
                   },
+                  onRemove: () =>
+                      widget.onRemoveProfile(widget.profiles[index]),
                 ),
                 if (index != widget.profiles.length - 1) SizedBox(width: 12),
               ],
@@ -6410,6 +7681,7 @@ class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
         ),
         SizedBox(height: 16),
         _TenantProfilePanel(
+          entityLabel: widget.entityLabel,
           profile: selectedProfile,
           existingDocuments: widget.existingDocuments
               .where(
@@ -6437,57 +7709,139 @@ class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
   }
 }
 
-class _TenantSliderTab extends StatelessWidget {
+class _TenantSliderTab extends StatefulWidget {
   const _TenantSliderTab({
+    required this.entityLabel,
     required this.profile,
     required this.selected,
+    required this.showRemoveControl,
+    required this.removing,
     required this.onTap,
+    required this.onRemove,
   });
 
+  final String entityLabel;
   final _TenantProfileData profile;
   final bool selected;
+  final bool showRemoveControl;
+  final bool removing;
   final VoidCallback onTap;
+  final Future<void> Function() onRemove;
+
+  @override
+  State<_TenantSliderTab> createState() => _TenantSliderTabState();
+}
+
+class _TenantSliderTabState extends State<_TenantSliderTab> {
+  bool _hoveringDelete = false;
 
   @override
   Widget build(BuildContext context) {
+    final deleteTint = _hoveringDelete
+        ? const Color(0xFFB3261E)
+        : (widget.selected ? Colors.white : const Color(0xFF7A8F8A));
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          width: 198,
+          padding: EdgeInsets.fromLTRB(16, 14, 16, 14),
           decoration: BoxDecoration(
-            color: selected ? Color(0xFF0F8F82) : Color(0xFFF6FBFA),
+            color: widget.selected ? Color(0xFF0F8F82) : Color(0xFFF6FBFA),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? Color(0xFF0F8F82) : Color(0xFFD8E8E4),
+              color: widget.selected ? Color(0xFF0F8F82) : Color(0xFFD8E8E4),
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Text(
-                profile.displayName.isEmpty
-                    ? 'Tenant Profile'
-                    : profile.displayName,
-                style: TextStyle(
-                  color: selected ? Colors.white : Color(0xFF124B45),
-                  fontWeight: FontWeight.w700,
+              Padding(
+                padding: EdgeInsets.only(
+                  right: widget.showRemoveControl ? 28 : 0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.profile.displayName.isEmpty
+                          ? '${widget.entityLabel} Profile'
+                          : widget.profile.displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: widget.selected
+                            ? Colors.white
+                            : Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      widget.profile.profileId,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: widget.selected
+                            ? Colors.white70
+                            : Color(0xFF5E7D77),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(height: 4),
-              Text(
-                profile.profileId,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? Colors.white70 : Color(0xFF5E7D77),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              if (widget.showRemoveControl)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: MouseRegion(
+                    onEnter: (_) {
+                      setState(() {
+                        _hoveringDelete = true;
+                      });
+                    },
+                    onExit: (_) {
+                      setState(() {
+                        _hoveringDelete = false;
+                      });
+                    },
+                    child: Material(
+                      color: _hoveringDelete
+                          ? const Color(0xFFFDECEA)
+                          : Colors.transparent,
+                      shape: CircleBorder(),
+                      child: InkWell(
+                        customBorder: CircleBorder(),
+                        onTap: widget.removing ? null : widget.onRemove,
+                        child: SizedBox(
+                          height: 28,
+                          width: 28,
+                          child: Center(
+                            child: widget.removing
+                                ? SizedBox(
+                                    height: 14,
+                                    width: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: deleteTint,
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                    color: deleteTint,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),

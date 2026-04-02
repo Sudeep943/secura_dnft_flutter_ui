@@ -594,6 +594,30 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getOwner({
+    required String flatId,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/getOwner"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'genericHeader': genericHeader, 'flatId': flatId}),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<List<Map<String, dynamic>>?> searchProfile({
     required String inputKey,
   }) async {
@@ -654,6 +678,65 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> addOwner({
+    required String profileId,
+    required String flatId,
+    required String addToExisting,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/addOwner"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'header': Map<String, dynamic>.from(userHeader!),
+        'profileId': profileId,
+        'flatId': flatId,
+        'addtoExisting': addToExisting,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> removeProfileFromOwnerTenant({
+    required String flatId,
+    required String profileId,
+    required String profileType,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final header =
+        _buildGenericHeader() ?? Map<String, dynamic>.from(userHeader!);
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/removeProfileFromOwnerTenant"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'header': header,
+        'flatId': flatId,
+        'id': profileId,
+        'profileType': profileType,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> updateProfile(
     Map<String, dynamic> requestBody,
   ) async {
@@ -682,6 +765,27 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse("$_baseUrl/profile/updateTenantDetails"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> updateOwnerDetails(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/updateOwnerDetails"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

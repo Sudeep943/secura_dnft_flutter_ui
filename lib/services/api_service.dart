@@ -594,6 +594,66 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<List<Map<String, dynamic>>?> searchProfile({
+    required String inputKey,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/searchProfile"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': Map<String, dynamic>.from(userHeader!),
+        'inputKey': inputKey,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .toList();
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> addTenant({
+    required String profileId,
+    required String flatId,
+    required String addToExisting,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/profile/addTenant"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'header': Map<String, dynamic>.from(userHeader!),
+        'profileId': profileId,
+        'flatId': flatId,
+        'addtoExisting': addToExisting,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> updateProfile(
     Map<String, dynamic> requestBody,
   ) async {

@@ -145,6 +145,7 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   bool _updatingProfile = false;
   bool _loadingTenant = false;
   bool _updatingTenant = false;
+  bool _validatingExistingTenant = false;
   Map<String, dynamic>? _loadedProfile;
   Map<String, dynamic>? _loadedTenantResponse;
   String? _currentProfilePicBase64;
@@ -158,6 +159,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   String? _tenantDocumentStatusMessage;
   String? _tenantDocumentStatusProfileId;
   bool _tenantDocumentStatusIsSuccess = false;
+  bool _existingTenantTypeFound = false;
+  String? _existingTenantSelectionError;
+  _CreateProfileExistingAction? _existingTenantAction;
 
   bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < 800;
@@ -668,6 +672,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     _tenantDocumentStatusMessage = null;
     _tenantDocumentStatusProfileId = null;
     _tenantDocumentStatusIsSuccess = false;
+    _validatingExistingTenant = false;
+    _existingTenantTypeFound = false;
+    _existingTenantSelectionError = null;
+    _existingTenantAction = null;
     _loadingTenant = false;
     _updatingTenant = false;
   }
@@ -1076,6 +1084,456 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     });
 
     return exists;
+  }
+
+  Future<bool> _validateExistingTenantOwner({required String flatId}) async {
+    final exists =
+        await ApiService.validateCurrentOwner(
+          flatId: flatId,
+          profileType: 'TENANT',
+        ) ??
+        false;
+
+    if (!mounted) {
+      return exists;
+    }
+
+    setState(() {
+      _validatingExistingTenant = false;
+      _existingTenantTypeFound = exists;
+      _existingTenantSelectionError = null;
+      if (!exists) {
+        _existingTenantAction = null;
+      }
+    });
+
+    return exists;
+  }
+
+  Future<List<_TenantSearchResult>> _searchTenantProfiles(
+    String inputKey,
+  ) async {
+    final response = await ApiService.searchProfile(inputKey: inputKey) ?? [];
+
+    return response
+        .map((entry) {
+          final nameMap = _jsonMapValue(entry['prflName']);
+          final displayName = _stringValue(entry['displayName']).isNotEmpty
+              ? _stringValue(entry['displayName'])
+              : _composeDisplayName(nameMap);
+          final profileId = _stringValue(entry['profileId']).isNotEmpty
+              ? _stringValue(entry['profileId'])
+              : _stringValue(entry['prflId']);
+          final profilePicUrl = _stringValue(entry['profilePic']).isNotEmpty
+              ? _stringValue(entry['profilePic'])
+              : _stringValue(entry['profile_pic']);
+
+          return _TenantSearchResult(
+            displayName: displayName,
+            profileId: profileId,
+            profilePicUrl: profilePicUrl,
+            profilePicBytes: _decodeBase64Bytes(profilePicUrl),
+          );
+        })
+        .where((entry) => entry.profileId.isNotEmpty)
+        .toList();
+  }
+
+  String _resolveTenantFlatId() {
+    final tenant = _jsonMapValue(_loadedTenantResponse?['tenant']);
+    final tenantFlatId = _stringValue(tenant['flatId']);
+    if (tenantFlatId.isNotEmpty) {
+      return tenantFlatId;
+    }
+
+    final tenantFlatNo = _stringValue(tenant['flatNo']);
+    if (tenantFlatNo.isNotEmpty) {
+      return tenantFlatNo;
+    }
+
+    return _readHeaderValue(['flatNo']);
+  }
+
+  void _dismissExistingTenantPanel() {
+    setState(() {
+      _validatingExistingTenant = false;
+      _existingTenantTypeFound = false;
+      _existingTenantSelectionError = null;
+      _existingTenantAction = null;
+    });
+  }
+
+  Future<void> _handleAddTenantPressed() async {
+    final flatId = _resolveTenantFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Tenant Add Failed',
+        message: 'Unable to find the flat number required to add a tenant.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _validatingExistingTenant = true;
+      _existingTenantTypeFound = false;
+      _existingTenantSelectionError = null;
+      _existingTenantAction = null;
+    });
+
+    final exists = await _validateExistingTenantOwner(flatId: flatId);
+    if (!mounted || exists) {
+      return;
+    }
+
+    await _proceedAddTenant();
+  }
+
+  Future<void> _proceedAddTenant() async {
+    final flatId = _resolveTenantFlatId();
+    if (flatId.isEmpty) {
+      await _showStatusModal(
+        title: 'Tenant Add Failed',
+        message: 'Unable to find the flat number required to add a tenant.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    if (_existingTenantTypeFound && _existingTenantAction == null) {
+      setState(() {
+        _existingTenantSelectionError =
+            'Please select one operation before continuing.';
+      });
+      return;
+    }
+
+    final addToExisting =
+        _existingTenantTypeFound &&
+            _existingTenantAction == _CreateProfileExistingAction.addToExisting
+        ? 'Y'
+        : 'N';
+
+    await _showAddTenantSearchModal(
+      flatId: flatId,
+      addToExisting: addToExisting,
+    );
+  }
+
+  Future<void> _showAddTenantSearchModal({
+    required String flatId,
+    required String addToExisting,
+  }) async {
+    final searchController = TextEditingController();
+    Timer? searchDebounce;
+    var searchRequestId = 0;
+    var dialogOpen = true;
+    var searching = false;
+    var addingProfileId = '';
+    String? errorMessage;
+    var results = <_TenantSearchResult>[];
+
+    Future<void> runSearch(String value, StateSetter setModalState) async {
+      final query = value.trim();
+      searchRequestId++;
+      final requestId = searchRequestId;
+
+      if (query.isEmpty) {
+        if (!dialogOpen) {
+          return;
+        }
+        setModalState(() {
+          searching = false;
+          errorMessage = null;
+          results = [];
+        });
+        return;
+      }
+
+      setModalState(() {
+        searching = true;
+        errorMessage = null;
+      });
+
+      final response = await _searchTenantProfiles(query);
+      if (!dialogOpen || requestId != searchRequestId) {
+        return;
+      }
+
+      setModalState(() {
+        searching = false;
+        results = response;
+        errorMessage = response.isEmpty
+            ? 'No matching profiles were found.'
+            : null;
+      });
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> addTenant(_TenantSearchResult result) async {
+              final navigator = Navigator.of(dialogContext);
+
+              setModalState(() {
+                addingProfileId = result.profileId;
+              });
+
+              final response = await ApiService.addTenant(
+                profileId: result.profileId,
+                flatId: flatId,
+                addToExisting: addToExisting,
+              );
+
+              if (!mounted) {
+                return;
+              }
+
+              dialogOpen = false;
+              if (navigator.canPop()) {
+                navigator.pop();
+              }
+
+              if (response == null) {
+                await _showStatusModal(
+                  title: 'Tenant Add Failed',
+                  message: 'No response was returned from the server.',
+                  isSuccess: false,
+                );
+                return;
+              }
+
+              final isSuccess = _isSuccessResponse(
+                response,
+                idKeys: const ['message'],
+              );
+              final message = _stringValue(response['message']).isNotEmpty
+                  ? _stringValue(response['message'])
+                  : isSuccess
+                  ? 'Tenant added successfully.'
+                  : 'Unable to add the selected tenant.';
+
+              await _showStatusModal(
+                title: isSuccess ? 'Tenant Added' : 'Tenant Add Failed',
+                message: message,
+                isSuccess: isSuccess,
+              );
+
+              if (isSuccess) {
+                setState(() {
+                  _validatingExistingTenant = false;
+                  _existingTenantTypeFound = false;
+                  _existingTenantAction = null;
+                  _existingTenantSelectionError = null;
+                });
+                await _loadTenantManagement(showErrorModal: false);
+              }
+            }
+
+            return AlertDialog(
+              clipBehavior: Clip.antiAlias,
+              insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: Text(
+                'Add Tenant',
+                style: TextStyle(
+                  color: Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              content: SizedBox(
+                width: MediaQuery.of(dialogContext).size.width < 800
+                    ? double.maxFinite
+                    : 720,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      addToExisting == 'Y'
+                          ? 'Search for a profile to add to the existing tenant list.'
+                          : 'Search for a profile to create a new tenant entry and replace the existing one.',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Search profile',
+                        hintText: 'Type a name or profile ID',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        searchDebounce?.cancel();
+                        searchDebounce = Timer(
+                          const Duration(milliseconds: 350),
+                          () => runSearch(value, setModalState),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    if (searching)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: LinearProgressIndicator(color: _brandColor),
+                      ),
+                    if (!searching &&
+                        searchController.text.trim().isEmpty &&
+                        results.isEmpty)
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Color(0xFFF4FBFA),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Color(0xFFD5EBE7)),
+                        ),
+                        child: Text(
+                          'Start typing to search profiles.',
+                          style: TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else if (errorMessage != null)
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Color(0xFFFFF6E8),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Color(0xFFFFD6A0)),
+                        ),
+                        child: Text(
+                          errorMessage!,
+                          style: TextStyle(
+                            color: Color(0xFF7A3F0D),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: results.length,
+                          separatorBuilder: (context, index) =>
+                              SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final result = results[index];
+                            ImageProvider<Object>? imageProvider;
+                            if (result.profilePicUrl.startsWith('http')) {
+                              imageProvider = NetworkImage(
+                                result.profilePicUrl,
+                              );
+                            } else if (result.profilePicBytes != null) {
+                              imageProvider = MemoryImage(
+                                result.profilePicBytes!,
+                              );
+                            }
+                            final initials = result.displayName
+                                .split(RegExp(r'\s+'))
+                                .where((part) => part.isNotEmpty)
+                                .take(2)
+                                .map((part) => part[0].toUpperCase())
+                                .join();
+
+                            return Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFF9FCFB),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Color(0xFFDCEBE8)),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Color(0xFFE7F3F0),
+                                    backgroundImage: imageProvider,
+                                    child: imageProvider == null
+                                        ? Text(
+                                            initials.isEmpty ? 'TP' : initials,
+                                            style: TextStyle(
+                                              color: _brandColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          result.displayName,
+                                          style: TextStyle(
+                                            color: Color(0xFF124B45),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4),
+                                        Text(
+                                          result.profileId,
+                                          style: TextStyle(
+                                            color: Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  FilledButton(
+                                    onPressed: addingProfileId.isNotEmpty
+                                        ? null
+                                        : () => addTenant(result),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _brandColor,
+                                    ),
+                                    child: addingProfileId == result.profileId
+                                        ? SizedBox(
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Text('Add'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    dialogOpen = false;
+    searchDebounce?.cancel();
+    searchController.dispose();
   }
 
   Map<String, dynamic> _buildHeaderRequest() {
@@ -2406,13 +2864,23 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
           newDocuments: _tenantNewDocuments,
           loading: _loadingTenant,
           submitting: _updatingTenant,
+          validatingExistingTenant: _validatingExistingTenant,
           verified: _tenantVerified,
           tenantStatus: _tenantStatus,
+          existingTenantTypeFound: _existingTenantTypeFound,
+          existingTenantSelectionError: _existingTenantSelectionError,
+          existingTenantAction: _existingTenantAction,
           startDateController: _tenantStartDateController,
           endDateController: _tenantEndDateController,
           onVerifiedChanged: (value) {
             setState(() {
               _tenantVerified = value;
+            });
+          },
+          onExistingTenantActionChanged: (value) {
+            setState(() {
+              _existingTenantAction = value;
+              _existingTenantSelectionError = null;
             });
           },
           onPickStartDate: () => _pickTenantDate(
@@ -2424,6 +2892,9 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
             helpText: 'Select End Date',
           ),
           onRefresh: _loadTenantManagement,
+          onAddTenant: _handleAddTenantPressed,
+          onProceedAddTenant: _proceedAddTenant,
+          onDismissExistingTenantPanel: _dismissExistingTenantPanel,
           onSubmit: _submitTenantManagement,
           onAddDocument: _addTenantDocument,
           onRemoveExistingDocument: _removeTenantExistingDocument,
@@ -3453,96 +3924,13 @@ class _CreateProfileTab extends StatelessWidget {
           ),
           if (validatingExistingProfile || existingProfileTypeFound) ...[
             SizedBox(height: 16),
-            Container(
-              padding: EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: existingProfileTypeFound
-                    ? Color(0xFFFFF6E8)
-                    : Color(0xFFF5F8FA),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: existingProfileTypeFound
-                      ? Color(0xFFFFD6A0)
-                      : Color(0xFFDCE5EB),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    validatingExistingProfile
-                        ? 'Checking existing $profileTypeLabel for this flat...'
-                        : 'Existing $profileTypeLabel already exists.',
-                    style: TextStyle(
-                      color: Color(0xFF124B45),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (validatingExistingProfile) ...[
-                    SizedBox(height: 10),
-                    SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: _ProfileManagementPageState._brandColor,
-                      ),
-                    ),
-                  ] else ...[
-                    SizedBox(height: 12),
-                    Wrap(
-                      spacing: 20,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Radio<_CreateProfileExistingAction>(
-                              value: _CreateProfileExistingAction
-                                  .createNewDeleteExisting,
-                              groupValue: existingProfileAction,
-                              onChanged: onExistingProfileActionChanged,
-                              activeColor:
-                                  _ProfileManagementPageState._brandColor,
-                            ),
-                            Flexible(
-                              child: Text(
-                                'Create new $profileTypeLabel and delete the existing',
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Radio<_CreateProfileExistingAction>(
-                              value: _CreateProfileExistingAction.addToExisting,
-                              groupValue: existingProfileAction,
-                              onChanged: onExistingProfileActionChanged,
-                              activeColor:
-                                  _ProfileManagementPageState._brandColor,
-                            ),
-                            Flexible(
-                              child: Text('Add to existing $profileTypeLabel'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    if (existingProfileSelectionError != null) ...[
-                      SizedBox(height: 8),
-                      Text(
-                        existingProfileSelectionError!,
-                        style: TextStyle(
-                          color: Color(0xFFB3261E),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ],
-              ),
+            _ExistingProfileActionPanel(
+              profileTypeLabel: profileTypeLabel,
+              validating: validatingExistingProfile,
+              found: existingProfileTypeFound,
+              selectionError: existingProfileSelectionError,
+              selectedAction: existingProfileAction,
+              onChanged: onExistingProfileActionChanged,
             ),
           ],
           SizedBox(height: 16),
@@ -5205,6 +5593,151 @@ class _TenantNewDocumentDraft {
   }
 }
 
+class _ExistingProfileActionPanel extends StatelessWidget {
+  const _ExistingProfileActionPanel({
+    required this.profileTypeLabel,
+    required this.validating,
+    required this.found,
+    required this.selectionError,
+    required this.selectedAction,
+    required this.onChanged,
+    this.title,
+    this.actionLabel,
+    this.onAction,
+    this.onTapOutside,
+  });
+
+  final String profileTypeLabel;
+  final bool validating;
+  final bool found;
+  final String? selectionError;
+  final _CreateProfileExistingAction? selectedAction;
+  final ValueChanged<_CreateProfileExistingAction?> onChanged;
+  final String? title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final VoidCallback? onTapOutside;
+
+  @override
+  Widget build(BuildContext context) {
+    return TapRegion(
+      onTapOutside: onTapOutside == null ? null : (event) => onTapOutside!(),
+      child: Container(
+        padding: EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: found ? Color(0xFFFFF6E8) : Color(0xFFF5F8FA),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: found ? Color(0xFFFFD6A0) : Color(0xFFDCE5EB),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              validating
+                  ? 'Checking existing $profileTypeLabel for this flat...'
+                  : title ?? 'Existing $profileTypeLabel already exists.',
+              style: TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (validating) ...[
+              SizedBox(height: 10),
+              SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _ProfileManagementPageState._brandColor,
+                ),
+              ),
+            ] else ...[
+              SizedBox(height: 12),
+              Wrap(
+                spacing: 20,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Radio<_CreateProfileExistingAction>(
+                        value: _CreateProfileExistingAction
+                            .createNewDeleteExisting,
+                        groupValue: selectedAction,
+                        onChanged: onChanged,
+                        activeColor: _ProfileManagementPageState._brandColor,
+                      ),
+                      Flexible(
+                        child: Text(
+                          'Create new $profileTypeLabel and delete the existing',
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Radio<_CreateProfileExistingAction>(
+                        value: _CreateProfileExistingAction.addToExisting,
+                        groupValue: selectedAction,
+                        onChanged: onChanged,
+                        activeColor: _ProfileManagementPageState._brandColor,
+                      ),
+                      Flexible(
+                        child: Text('Add to existing $profileTypeLabel'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              if (selectionError != null) ...[
+                SizedBox(height: 8),
+                Text(
+                  selectionError!,
+                  style: TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (onAction != null) ...[
+                SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: onAction,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Color(0xFF0F8F82),
+                    ),
+                    child: Text(actionLabel ?? 'Add'),
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TenantSearchResult {
+  const _TenantSearchResult({
+    required this.displayName,
+    required this.profileId,
+    required this.profilePicUrl,
+    this.profilePicBytes,
+  });
+
+  final String displayName;
+  final String profileId;
+  final String profilePicUrl;
+  final Uint8List? profilePicBytes;
+}
+
 class _TenantManagementTab extends StatelessWidget {
   const _TenantManagementTab({
     required this.response,
@@ -5213,14 +5746,22 @@ class _TenantManagementTab extends StatelessWidget {
     required this.newDocuments,
     required this.loading,
     required this.submitting,
+    required this.validatingExistingTenant,
     required this.verified,
     required this.tenantStatus,
+    required this.existingTenantTypeFound,
+    required this.existingTenantSelectionError,
+    required this.existingTenantAction,
     required this.startDateController,
     required this.endDateController,
     required this.onVerifiedChanged,
+    required this.onExistingTenantActionChanged,
     required this.onPickStartDate,
     required this.onPickEndDate,
     required this.onRefresh,
+    required this.onAddTenant,
+    required this.onProceedAddTenant,
+    required this.onDismissExistingTenantPanel,
     required this.onSubmit,
     required this.onAddDocument,
     required this.onRemoveExistingDocument,
@@ -5240,14 +5781,23 @@ class _TenantManagementTab extends StatelessWidget {
   final List<_TenantNewDocumentDraft> newDocuments;
   final bool loading;
   final bool submitting;
+  final bool validatingExistingTenant;
   final bool verified;
   final String tenantStatus;
+  final bool existingTenantTypeFound;
+  final String? existingTenantSelectionError;
+  final _CreateProfileExistingAction? existingTenantAction;
   final TextEditingController startDateController;
   final TextEditingController endDateController;
   final ValueChanged<bool> onVerifiedChanged;
+  final ValueChanged<_CreateProfileExistingAction?>
+  onExistingTenantActionChanged;
   final Future<void> Function() onPickStartDate;
   final Future<void> Function() onPickEndDate;
   final Future<void> Function() onRefresh;
+  final Future<void> Function() onAddTenant;
+  final Future<void> Function() onProceedAddTenant;
+  final VoidCallback onDismissExistingTenantPanel;
   final Future<void> Function() onSubmit;
   final ValueChanged<String> onAddDocument;
   final ValueChanged<_TenantExistingDocument> onRemoveExistingDocument;
@@ -5264,20 +5814,6 @@ class _TenantManagementTab extends StatelessWidget {
   String _textValue(dynamic value, {String fallback = '-'}) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
-  }
-
-  String _visibleDocumentName(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return '-';
-    }
-
-    final underscoreIndex = trimmed.indexOf('_');
-    if (underscoreIndex <= 0 || underscoreIndex == trimmed.length - 1) {
-      return trimmed;
-    }
-
-    return trimmed.substring(underscoreIndex + 1);
   }
 
   Map<String, dynamic> _mapValue(dynamic value) {
@@ -5352,6 +5888,10 @@ class _TenantManagementTab extends StatelessWidget {
       genericHeader['apartmentName'],
       fallback: _textValue(ApiService.userHeader?['apartmentName']),
     );
+    final profileTypeLabel = _profileTypeDisplayLabel(
+      'TENANT',
+      fallback: 'tenant profile',
+    );
     final startDateLocked = startDateController.text.trim().isNotEmpty;
     final endDateLocked = endDateController.text.trim().isNotEmpty;
 
@@ -5389,12 +5929,61 @@ class _TenantManagementTab extends StatelessWidget {
         SizedBox(height: 18),
         Align(
           alignment: Alignment.centerRight,
-          child: OutlinedButton.icon(
-            onPressed: loading || submitting ? null : onRefresh,
-            icon: Icon(Icons.refresh),
-            label: Text('Refresh Tenant Details'),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.end,
+            children: [
+              OutlinedButton.icon(
+                onPressed: loading || submitting || validatingExistingTenant
+                    ? null
+                    : onRefresh,
+                icon: Icon(Icons.refresh),
+                label: Text('Refresh Tenant Details'),
+              ),
+              FilledButton.icon(
+                onPressed:
+                    loading ||
+                        submitting ||
+                        validatingExistingTenant ||
+                        existingTenantTypeFound
+                    ? null
+                    : onAddTenant,
+                icon: validatingExistingTenant
+                    ? SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(Icons.person_add_alt_1),
+                label: Text('Add Tenant'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Color(0xFF0F8F82),
+                ),
+              ),
+            ],
           ),
         ),
+        if (validatingExistingTenant || existingTenantTypeFound) ...[
+          SizedBox(height: 16),
+          _ExistingProfileActionPanel(
+            profileTypeLabel: profileTypeLabel,
+            validating: validatingExistingTenant,
+            found: existingTenantTypeFound,
+            title: 'Tenant Exists. Please Select From Below Operation',
+            selectionError: existingTenantSelectionError,
+            selectedAction: existingTenantAction,
+            onChanged: onExistingTenantActionChanged,
+            actionLabel: 'Add',
+            onAction: () {
+              onProceedAddTenant();
+            },
+            onTapOutside: onDismissExistingTenantPanel,
+          ),
+        ],
         SizedBox(height: 18),
         _ResponsiveFieldRow(
           mobile: mobile,

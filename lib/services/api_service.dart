@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:http/http.dart' as http;
 
+import 'notice_models.dart';
+
 class ApiService {
   //static const String _baseUrl = 'http://localhost:8080';
   static const String _authEncryptionKeyBase64 =
@@ -19,6 +21,8 @@ class ApiService {
   static Map<String, dynamic>? userHeader;
   static String? dashboardProfilePic;
   static Map<String, dynamic>? profileData;
+
+  static String get baseUrl => _baseUrl;
 
   static void clearSession() {
     token = null;
@@ -391,6 +395,165 @@ class ApiService {
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Map<String, String> _authorizedJsonHeaders() {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+
+    if (token != null && token!.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    return headers;
+  }
+
+  static Future<http.Response> _getWithOptionalAuthorization(
+    String path,
+  ) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final headers = _authorizedJsonHeaders();
+
+    var response = await http.get(uri, headers: headers);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        headers.containsKey('Authorization')) {
+      response = await http.get(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+      );
+    }
+
+    return response;
+  }
+
+  static Future<http.Response> _postWithOptionalAuthorization({
+    required String path,
+    required Map<String, dynamic> requestBody,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final headers = _authorizedJsonHeaders();
+
+    var response = await http.post(
+      uri,
+      headers: headers,
+      body: jsonEncode(requestBody),
+    );
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        headers.containsKey('Authorization')) {
+      response = await http.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+    }
+
+    return response;
+  }
+
+  static Future<Map<String, dynamic>?> getLetterHead() async {
+    const paths = [
+      '/meetingnotice/getLetterHead',
+      '/meetingNotice/getLetterHead',
+    ];
+
+    for (final path in paths) {
+      final response = await _getWithOptionalAuthorization(path);
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> createNotice(
+    Map<String, dynamic> requestBody,
+  ) async {
+    const paths = [
+      '/meetingnotice/createNotice',
+      '/meetingNotice/createNotice',
+    ];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> createNoticeRequest(
+    NoticeCreateRequest request,
+  ) async {
+    return createNotice(request.toJson());
+  }
+
+  static Future<Map<String, dynamic>?> getNotice({String noticeId = ''}) async {
+    if (userHeader == null) {
+      return null;
+    }
+
+    final genericHeader = Map<String, dynamic>.from(userHeader!);
+    const paths = ['/meetingnotice/getNotice', '/meetingNotice/getNotice'];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: {
+          'genericHeader': genericHeader,
+          'noticeId': noticeId.trim(),
+        },
+      );
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> getNoticeRequest(
+    NoticeQueryRequest request,
+  ) async {
+    const paths = ['/meetingnotice/getNotice', '/meetingNotice/getNotice'];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: request.toJson(),
+      );
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
   }
 
   static Future<http.Response> _postBookingEndpoint({

@@ -4,6 +4,8 @@ import '../navigation/app_section.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'app_shell.dart';
+import 'create_notice_page.dart';
+import 'view_all_notices_page.dart';
 
 class MeetingAndNoticeManagementPage extends StatelessWidget {
   const MeetingAndNoticeManagementPage({super.key, this.embedded = false});
@@ -18,12 +20,30 @@ class MeetingAndNoticeManagementPage extends StatelessWidget {
       title: 'Meeting And Notice Management',
       subtitle:
           'Choose one of the meeting, notice, event, or poll actions below.',
-      items: const [
+      items: [
         _ModuleHubItem('Schedule New Meeting', Icons.event_note),
         _ModuleHubItem('View Meeting Details', Icons.visibility),
         _ModuleHubItem('Update MOM', Icons.edit_document),
-        _ModuleHubItem('Create Notice', Icons.campaign),
-        _ModuleHubItem('View All Notice', Icons.notifications_active),
+        _ModuleHubItem(
+          'Create Notice',
+          Icons.campaign,
+          onTap: () {
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const CreateNoticeDialog(),
+            );
+          },
+        ),
+        _ModuleHubItem(
+          'View All Notice',
+          Icons.notifications_active,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ViewAllNoticesPage()),
+            );
+          },
+        ),
         _ModuleHubItem('Create Event', Icons.event),
         _ModuleHubItem('View Events', Icons.calendar_month),
         _ModuleHubItem('Create Poll', Icons.how_to_vote),
@@ -369,6 +389,7 @@ class _ModuleHubPage extends StatelessWidget {
                     return _ModuleActionCard(
                       title: item.title,
                       icon: item.icon,
+                      onTap: item.onTap,
                     );
                   },
                 ),
@@ -417,17 +438,23 @@ class _ModuleHubPage extends StatelessWidget {
 }
 
 class _ModuleHubItem {
-  const _ModuleHubItem(this.title, this.icon);
+  const _ModuleHubItem(this.title, this.icon, {this.onTap});
 
   final String title;
   final IconData icon;
+  final VoidCallback? onTap;
 }
 
 class _ModuleActionCard extends StatefulWidget {
-  const _ModuleActionCard({required this.title, required this.icon});
+  const _ModuleActionCard({
+    required this.title,
+    required this.icon,
+    this.onTap,
+  });
 
   final String title;
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   State<_ModuleActionCard> createState() => _ModuleActionCardState();
@@ -444,6 +471,12 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
+          final action = widget.onTap;
+          if (action != null) {
+            action();
+            return;
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('${widget.title} page is ready for the next step.'),

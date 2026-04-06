@@ -160,6 +160,7 @@ class _SideBarState extends State<SideBar> {
             Icons.event_note,
             section: AppSection.meetingAndNotice,
           ),
+          item("Finance", Icons.account_balance, section: AppSection.finance),
           item(
             "Ticket Management",
             Icons.confirmation_number,
@@ -181,7 +182,6 @@ class _SideBarState extends State<SideBar> {
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),
           item("Admin Section", Icons.admin_panel_settings),
-          item("Finance", Icons.account_balance, section: AppSection.finance),
         ],
       ),
     );
@@ -210,12 +210,12 @@ class _SidebarItemState extends State<_SidebarItem> {
 
   @override
   Widget build(BuildContext context) {
-    final glowColor = Colors.white.withOpacity(0.35);
+    final glowColor = Colors.white.withValues(alpha: 0.35);
     final isActive = widget.selected;
     final tileColor = isActive
-        ? Colors.white.withOpacity(0.16)
+        ? Colors.white.withValues(alpha: 0.16)
         : hovered
-        ? Colors.white.withOpacity(0.08)
+        ? Colors.white.withValues(alpha: 0.08)
         : Colors.transparent;
 
     return MouseRegion(

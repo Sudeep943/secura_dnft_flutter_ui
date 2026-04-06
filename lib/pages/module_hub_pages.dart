@@ -4,6 +4,7 @@ import '../navigation/app_section.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'app_shell.dart';
+import 'create_payment_page.dart';
 import 'create_notice_page.dart';
 import 'view_all_notices_page.dart';
 
@@ -226,22 +227,48 @@ class OthersManagementPage extends StatelessWidget {
   }
 }
 
-class FinanceManagementPage extends StatelessWidget {
+class FinanceManagementPage extends StatefulWidget {
   const FinanceManagementPage({super.key, this.embedded = false});
 
   final bool embedded;
 
   @override
+  State<FinanceManagementPage> createState() => _FinanceManagementPageState();
+}
+
+class _FinanceManagementPageState extends State<FinanceManagementPage> {
+  bool _showCreatePayment = false;
+
+  @override
   Widget build(BuildContext context) {
+    if (_showCreatePayment) {
+      return CreatePaymentPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showCreatePayment = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
-      embedded: embedded,
+      embedded: widget.embedded,
       section: AppSection.finance,
       title: 'Finance',
       subtitle: 'Choose one of the finance actions below.',
-      items: const [
+      items: [
         _ModuleHubItem('Add Credit', Icons.add_card),
         _ModuleHubItem('Add Debit', Icons.credit_card_off),
-        _ModuleHubItem('Create New Payment', Icons.payment),
+        _ModuleHubItem(
+          'Create New Payment',
+          Icons.payment,
+          onTap: () {
+            setState(() {
+              _showCreatePayment = true;
+            });
+          },
+        ),
         _ModuleHubItem('Add Bank Account', Icons.account_balance),
         _ModuleHubItem('Pay Dues', Icons.currency_rupee),
       ],

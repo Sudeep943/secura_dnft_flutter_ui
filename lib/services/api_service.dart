@@ -158,6 +158,15 @@ class ApiService {
     };
   }
 
+  static Map<String, dynamic>? _buildLoginResponseHeader() {
+    final header = rawLoginHeader ?? userHeader;
+    if (header == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(header);
+  }
+
   static Map<String, dynamic>? _buildFlatUploadHeader() {
     final loginHeader = rawLoginHeader;
     if (loginHeader != null) {
@@ -1084,6 +1093,29 @@ class ApiService {
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> getAllFlats() async {
+    final genericHeader = _buildLoginResponseHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/flat/getAllFlats',
+      requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
   }
 
   static Future<Map<String, dynamic>?> bookHall(

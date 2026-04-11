@@ -154,6 +154,11 @@ class _SideBarState extends State<SideBar> {
             Icons.person_add,
             section: AppSection.profileManagement,
           ),
+          item(
+            "Admin Section",
+            Icons.admin_panel_settings,
+            section: AppSection.adminSection,
+          ),
           item("Bookings", Icons.event_available, section: AppSection.bookings),
           item(
             "Meeting And Notice",
@@ -181,7 +186,6 @@ class _SideBarState extends State<SideBar> {
           item("Others", Icons.more_horiz, section: AppSection.others),
           item("Create Skill Class", Icons.school),
           item("View Classes", Icons.list),
-          item("Admin Section", Icons.admin_panel_settings),
         ],
       ),
     );

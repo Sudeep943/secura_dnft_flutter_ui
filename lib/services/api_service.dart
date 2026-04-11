@@ -6,19 +6,20 @@ import 'package:http/http.dart' as http;
 import 'notice_models.dart';
 
 class ApiService {
-  //static const String _baseUrl = 'http://localhost:8080';
+  static const String _baseUrl = 'http://localhost:8080';
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
   static const String _authEncryptionIvBase64 = 'U2VjdXJhSW5pdFZlYzEyMw==';
 
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://secura-dnft-production.up.railway.app',
-  );
+  // static const String _baseUrl = String.fromEnvironment(
+  //   'API_BASE_URL',
+  //   defaultValue: 'https://secura-dnft-production.up.railway.app',
+  // );
 
   static String? token;
   static String? loginPassword;
   static Map<String, dynamic>? userHeader;
+  static Map<String, dynamic>? rawLoginHeader;
   static String? dashboardProfilePic;
   static Map<String, dynamic>? profileData;
 
@@ -28,6 +29,7 @@ class ApiService {
     token = null;
     loginPassword = null;
     userHeader = null;
+    rawLoginHeader = null;
     dashboardProfilePic = null;
     profileData = null;
   }
@@ -156,6 +158,27 @@ class ApiService {
     };
   }
 
+  static Map<String, dynamic>? _buildFlatUploadHeader() {
+    final loginHeader = rawLoginHeader;
+    if (loginHeader != null) {
+      return Map<String, dynamic>.from(loginHeader);
+    }
+
+    final header = userHeader;
+    final userId = currentUserId;
+    if (header == null && (userId == null || userId.isEmpty)) {
+      return null;
+    }
+
+    return {
+      'requestId':
+          header?['requestId'] ?? 'REQ${DateTime.now().millisecondsSinceEpoch}',
+      'timestamp': DateTime.now().toIso8601String(),
+      'sourceSystem': header?['sourceSystem'] ?? 'WEB_APP',
+      'userId': userId ?? header?['userId'],
+    };
+  }
+
   static void _storeLoginSession({
     required Map<String, dynamic> responseData,
     required String password,
@@ -164,6 +187,9 @@ class ApiService {
     loginPassword = password;
 
     final header = responseData['header'];
+    rawLoginHeader = header is Map<String, dynamic>
+        ? Map<String, dynamic>.from(header)
+        : (header is Map ? Map<String, dynamic>.from(header) : rawLoginHeader);
     userHeader = header is Map<String, dynamic>
         ? _normalizeSessionHeader(loginHeader: header)
         : (header is Map
@@ -1079,5 +1105,57 @@ class ApiService {
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> getSampleExcelToUploadFlatData() async {
+    final response = await _getWithOptionalAuthorization(
+      '/flat/getSampleExcellToUploadData',
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> uploadFlatDetails({
+    required String documentName,
+    required String documentData,
+    String importType = 'FULL',
+    String sheetName = 'Sheet1',
+  }) async {
+    final header = _buildFlatUploadHeader();
+    if (header == null || documentData.trim().isEmpty) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/flat/uploadFlatDetails',
+      requestBody: {
+        'header': header,
+        'documentName': documentName,
+        'documentCode': 'FLAT_UPLOAD_${DateTime.now().millisecondsSinceEpoch}',
+        'importType': importType,
+        'sheetName': sheetName,
+        'documentData': documentData,
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
   }
 }

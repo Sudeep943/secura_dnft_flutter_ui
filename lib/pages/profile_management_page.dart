@@ -3778,12 +3778,6 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
-  void _showAccountActionMessage(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$title is ready for the next step.')),
-    );
-  }
-
   Widget _buildSelectedSectionContent(bool mobile) {
     switch (_selectedSection!) {
       case _ProfileManagementSection.createProfile:
@@ -4111,6 +4105,45 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
   }
 
   Widget _buildProfileManagementContent(bool mobile) {
+    final items = [
+      _ProfileActionCard(
+        title: 'Create Profile',
+        icon: Icons.person_add_alt_1,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.createProfile),
+      ),
+      _ProfileActionCard(
+        title: 'Update Profile',
+        icon: Icons.manage_accounts,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.updateProfile),
+      ),
+      _ProfileActionCard(
+        title: 'Update Password',
+        icon: Icons.password,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.updatePassword),
+      ),
+      _ProfileActionCard(
+        title: 'View Profile Details',
+        icon: Icons.badge_outlined,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.viewProfile),
+      ),
+      _ProfileActionCard(
+        title: 'Tenant Management',
+        icon: Icons.apartment_outlined,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.tenantManagement),
+      ),
+      _ProfileActionCard(
+        title: 'Owner Management',
+        icon: Icons.home_work_outlined,
+        selected: false,
+        onTap: () => _openSection(_ProfileManagementSection.ownerManagement),
+      ),
+    ];
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(mobile ? 16 : 24),
       child: Center(
@@ -4189,10 +4222,10 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                                   color: Colors.white.withValues(alpha: 0.14),
                                 ),
                               ),
-                              child: const Column(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  const Text(
                                     'Account Desk',
                                     style: TextStyle(
                                       color: Colors.white70,
@@ -4202,8 +4235,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                                   ),
                                   SizedBox(height: 6),
                                   Text(
-                                    '9 Active Actions',
-                                    style: TextStyle(
+                                    '${items.length} Active Actions',
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 20,
                                       fontWeight: FontWeight.w700,
@@ -4225,82 +4258,8 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
                           mainAxisSpacing: 20,
                           mainAxisExtent: mobile ? 170 : 240,
                         ),
-                        itemCount: 9,
+                        itemCount: items.length,
                         itemBuilder: (context, index) {
-                          final items = [
-                            _ProfileActionCard(
-                              title: 'Create Profile',
-                              icon: Icons.person_add_alt_1,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.createProfile,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Update Profile',
-                              icon: Icons.manage_accounts,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.updateProfile,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Update Password',
-                              icon: Icons.password,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.updatePassword,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'View Profile Details',
-                              icon: Icons.badge_outlined,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.viewProfile,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Tenant Management',
-                              icon: Icons.apartment_outlined,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.tenantManagement,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Owner Management',
-                              icon: Icons.home_work_outlined,
-                              selected: false,
-                              onTap: () => _openSection(
-                                _ProfileManagementSection.ownerManagement,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Staff Management',
-                              icon: Icons.groups_outlined,
-                              selected: false,
-                              onTap: () =>
-                                  _showAccountActionMessage('Staff Management'),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Role And Access',
-                              icon: Icons.lock_person_outlined,
-                              selected: false,
-                              onTap: () => openAppShellSection(
-                                context,
-                                AppSection.roleAndAccess,
-                              ),
-                            ),
-                            _ProfileActionCard(
-                              title: 'Flat Management',
-                              icon: Icons.door_front_door_outlined,
-                              selected: false,
-                              onTap: () =>
-                                  _showAccountActionMessage('Flat Management'),
-                            ),
-                          ];
-
                           return items[index];
                         },
                       ),
@@ -7366,6 +7325,7 @@ class _TenantManagementTab extends StatelessWidget {
 
 class _TenantProfilePanel extends StatelessWidget {
   const _TenantProfilePanel({
+    super.key,
     required this.entityLabel,
     required this.profile,
     required this.existingDocuments,
@@ -7639,8 +7599,30 @@ class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
   @override
   void didUpdateWidget(covariant _TenantProfilesSlider oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (widget.profiles.isEmpty) {
+      _selectedIndex = 0;
+      return;
+    }
+
+    final previousSelectedId =
+        oldWidget.profiles.isEmpty ||
+            _selectedIndex >= oldWidget.profiles.length
+        ? null
+        : oldWidget.profiles[_selectedIndex].profileId;
+
+    if (previousSelectedId != null && previousSelectedId.isNotEmpty) {
+      final matchingIndex = widget.profiles.indexWhere(
+        (profile) => profile.profileId == previousSelectedId,
+      );
+      if (matchingIndex != -1) {
+        _selectedIndex = matchingIndex;
+        return;
+      }
+    }
+
     if (_selectedIndex >= widget.profiles.length) {
-      _selectedIndex = widget.profiles.isEmpty ? 0 : widget.profiles.length - 1;
+      _selectedIndex = widget.profiles.length - 1;
     }
   }
 
@@ -7681,6 +7663,7 @@ class _TenantProfilesSliderState extends State<_TenantProfilesSlider> {
         ),
         SizedBox(height: 16),
         _TenantProfilePanel(
+          key: ValueKey('${widget.entityLabel}_${selectedProfile.profileId}'),
           entityLabel: widget.entityLabel,
           profile: selectedProfile,
           existingDocuments: widget.existingDocuments
@@ -8205,6 +8188,11 @@ class _ProfileInputField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      key: controller == null
+          ? ValueKey(
+              '$label|${initialValue ?? ''}|$readOnly|$maxLines|${hintText ?? ''}',
+            )
+          : null,
       controller: controller,
       initialValue: initialValue,
       maxLines: maxLines,

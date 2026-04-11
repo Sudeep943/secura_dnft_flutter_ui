@@ -2,6 +2,8 @@ enum AppSection {
   dashboard,
   bookings,
   profileManagement,
+  adminSection,
+  flatManagement,
   meetingAndNotice,
   ticketManagement,
   security,
@@ -23,6 +25,10 @@ extension AppSectionX on AppSection {
         return 'Bookings';
       case AppSection.profileManagement:
         return 'Account Management';
+      case AppSection.adminSection:
+        return 'Admin Section';
+      case AppSection.flatManagement:
+        return 'Flat Management';
       case AppSection.meetingAndNotice:
         return 'Meeting And Notice Management';
       case AppSection.ticketManagement:

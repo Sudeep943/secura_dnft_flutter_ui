@@ -32,6 +32,7 @@
   <title>secura</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <!--
@@ -42,6 +43,87 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    window.securaFaceDetection = (() => {
+      let detectorPromise;
+      let pendingDetection;
+
+      async function getDetector() {
+        if (detectorPromise) {
+          return detectorPromise;
+        }
+
+        if (typeof FaceDetection !== 'function') {
+          throw new Error('The MediaPipe face detection script did not load.');
+        }
+
+        const detector = new FaceDetection({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
+        });
+
+        detector.setOptions({
+          model: 'short',
+          minDetectionConfidence: 0.5,
+        });
+
+        detector.onResults((results) => {
+          if (!pendingDetection) {
+            return;
+          }
+
+          const { resolve } = pendingDetection;
+          pendingDetection = null;
+          resolve(Array.isArray(results?.detections) ? results.detections.length : 0);
+        });
+
+        detectorPromise = detector.initialize().then(() => detector).catch((error) => {
+          detectorPromise = null;
+          throw error;
+        });
+
+        return detectorPromise;
+      }
+
+      async function checkSupport() {
+        try {
+          await getDetector();
+          return { supported: true, backend: 'mediapipe' };
+        } catch (error) {
+          return {
+            supported: false,
+            reason: error?.message || String(error),
+          };
+        }
+      }
+
+      async function detectFaces(image) {
+        const detector = await getDetector();
+
+        if (pendingDetection) {
+          throw new Error('Face detection is already running.');
+        }
+
+        return new Promise((resolve, reject) => {
+          pendingDetection = { resolve, reject };
+          detector.send({ image }).catch((error) => {
+            if (!pendingDetection) {
+              reject(error);
+              return;
+            }
+
+            const { reject: pendingReject } = pendingDetection;
+            pendingDetection = null;
+            pendingReject(error);
+          });
+        });
+      }
+
+      return {
+        checkSupport,
+        detectFaces,
+      };
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

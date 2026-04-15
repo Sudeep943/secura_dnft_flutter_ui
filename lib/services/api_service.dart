@@ -816,6 +816,38 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getDueAmountForFlat() async {
+    if (token == null || userHeader == null) return null;
+
+    final flatId = getLoggedInFlatNo();
+    if (flatId == null || flatId.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/flat/getDueAmountForFlat"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': Map<String, dynamic>.from(userHeader!),
+        'flatId': flatId,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<List<Map<String, dynamic>>?> searchProfile({
     required String inputKey,
   }) async {
@@ -1081,6 +1113,69 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse("$_baseUrl/payment/createPayment"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> addDiscfin(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/addDiscfin"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> deleteDiscfin(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/deleteDiscfin"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> getDiscfin(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/getDiscfin"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

@@ -51,6 +51,23 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _PaymentChoice(label: 'Percentage', value: 'PERCENTAGE'),
   ];
 
+  static const List<_PaymentChoice> _discountFineKindOptions = [
+    _PaymentChoice(label: 'Discount', value: 'DISCOUNT'),
+    _PaymentChoice(label: 'Fine', value: 'FINE'),
+  ];
+
+  static const List<_PaymentChoice> _discountFineTypeOptions = [
+    _PaymentChoice(label: 'Simple', value: 'SIMPLE'),
+    _PaymentChoice(label: 'Cumulative', value: 'CUMULATIVE'),
+  ];
+
+  static const List<_PaymentChoice> _discountFineCycleOptions = [
+    _PaymentChoice(label: 'Monthly', value: 'MONTHLY'),
+    _PaymentChoice(label: 'Quarterly', value: 'QUARTERLY'),
+    _PaymentChoice(label: 'Half Yearly', value: 'HALF_YEARLY'),
+    _PaymentChoice(label: 'Yearly', value: 'YEARLY'),
+  ];
+
   static const List<_PaymentChoice> _paymentTypeOptions = [
     _PaymentChoice(label: 'Mandatory', value: 'MANDATORY'),
     _PaymentChoice(label: 'Optional', value: 'OPTIONAL'),
@@ -94,6 +111,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   int _dueDetailsRequestId = 0;
   int _selectedFlatTypeIndex = 0;
   Timer? _previewDebounce;
+  final List<_AppliedDiscountFine> _appliedDiscountFines = [];
+  final Set<String> _deletingDiscountFineIds = <String>{};
+  final Set<String> _loadingDiscountFineIds = <String>{};
 
   @override
   void initState() {
@@ -152,6 +172,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 
     return response.containsKey('amountIncludingGst') ||
         response.containsKey('paymentId') ||
+        response.containsKey('discFnId') ||
+        response.containsKey('discFinId') ||
+        response.containsKey('discFinList') ||
         response.containsKey('listOfDueAmountDetails') ||
         response.containsKey('flatTypeDueAmountDetails');
   }
@@ -198,6 +221,41 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return null;
   }
 
+  String? _extractDiscFnId(Map<String, dynamic>? response) {
+    if (response == null) {
+      return null;
+    }
+
+    const candidates = [
+      'discFnId',
+      'discfnId',
+      'discFinId',
+      'discfinId',
+      'id',
+      'referenceId',
+    ];
+    for (final key in candidates) {
+      final value = response[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  String _formatBooleanValue(bool value) {
+    return value ? 'Yes' : 'No';
+  }
+
+  String _formatNullableValue(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed.toLowerCase() == 'null') {
+      return '--';
+    }
+    return trimmed;
+  }
+
   void _closeToFinancePage() {
     final onBack = widget.onBack;
     if (onBack != null) {
@@ -220,6 +278,26 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 
   String _formatRequestEndDate(DateTime date) {
     return '${_formatApiDate(date)}T23:59:59';
+  }
+
+  String _formatUtcBoundaryDate(DateTime date, {required bool endOfDay}) {
+    final utcDate = DateTime.utc(
+      date.year,
+      date.month,
+      date.day,
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+    );
+
+    final month = utcDate.month.toString().padLeft(2, '0');
+    final day = utcDate.day.toString().padLeft(2, '0');
+    final hour = utcDate.hour.toString().padLeft(2, '0');
+    final minute = utcDate.minute.toString().padLeft(2, '0');
+    final second = utcDate.second.toString().padLeft(2, '0');
+    return '${utcDate.year}-$month-$day'
+        'T$hour:$minute:$second'
+        'Z';
   }
 
   String _formatDisplayDate(DateTime date) {
@@ -1059,6 +1137,51 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return flatIds;
   }
 
+  _AppliedDiscountFine? _appliedDiscountFineByKind(String kind) {
+    for (final item in _appliedDiscountFines) {
+      if (item.kind == kind) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  String? get _nextDiscountFineKind {
+    final hasDiscount = _appliedDiscountFineByKind('DISCOUNT') != null;
+    final hasFine = _appliedDiscountFineByKind('FINE') != null;
+
+    if (!hasDiscount && !hasFine) {
+      return null;
+    }
+    if (hasDiscount && !hasFine) {
+      return 'FINE';
+    }
+    if (!hasDiscount && hasFine) {
+      return 'DISCOUNT';
+    }
+    return null;
+  }
+
+  String get _discountFineButtonLabel {
+    final nextKind = _nextDiscountFineKind;
+    if (nextKind == 'DISCOUNT') {
+      return 'Add Discount';
+    }
+    if (nextKind == 'FINE') {
+      return 'Add Fine';
+    }
+    if (_appliedDiscountFineByKind('DISCOUNT') != null &&
+        _appliedDiscountFineByKind('FINE') != null) {
+      return 'Discount/Fine Added';
+    }
+    return 'Add Discount/Fine';
+  }
+
+  bool get _canAddDiscountFine {
+    return !(_appliedDiscountFineByKind('DISCOUNT') != null &&
+        _appliedDiscountFineByKind('FINE') != null);
+  }
+
   Future<void> _submitPayment() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
@@ -1114,6 +1237,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         'applicableFor': _buildApplicableForRequestValue(),
         'paymentType': _paymentType,
         'bankAccountId': _bankAccountId,
+        'discountCode': _appliedDiscountFineByKind('DISCOUNT')?.discFnId ?? '',
+        'fineCode': _appliedDiscountFineByKind('FINE')?.discFnId ?? '',
         'status': _status,
       });
 
@@ -1137,6 +1262,230 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       if (mounted) {
         setState(() {
           _submitting = false;
+        });
+      }
+    }
+  }
+
+  Future<_DiscountFineSubmitResult> _createDiscountFine(
+    _DiscountFineDraft draft,
+  ) async {
+    final header = _buildGenericHeader();
+    if (header == null) {
+      return const _DiscountFineSubmitResult(
+        isSuccess: false,
+        message: 'User session details are missing. Please log in again.',
+      );
+    }
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': header,
+      'discFnType': draft.kind,
+      'dueDateAsStartDateFlag': draft.isFine ? draft.dueDateAsStartDate : false,
+      'discFnStrtDt': _formatUtcBoundaryDate(draft.startDate, endOfDay: false),
+      'discFnEndDt': _formatUtcBoundaryDate(draft.endDate, endOfDay: true),
+      'discFnMode': draft.mode,
+      'discFnValue': draft.value,
+      'discFnCycleType': draft.isFine ? draft.calculationType : null,
+    };
+
+    if (draft.isFine) {
+      requestBody['discFnCumlatonCycle'] = draft.cumulationCycle;
+    }
+
+    try {
+      final response = await ApiService.addDiscfin(requestBody);
+      final isSuccess = _isSuccessResponse(response);
+      final message = _responseMessage(response);
+      final discFnId = _extractDiscFnId(response) ?? '';
+
+      return _DiscountFineSubmitResult(
+        isSuccess: isSuccess,
+        message: message,
+        appliedDiscountFine: isSuccess
+            ? _AppliedDiscountFine(
+                kind: draft.kind,
+                discFnId: discFnId,
+                mode: draft.mode,
+                value: draft.value,
+                calculationType: draft.calculationType,
+                dueDateAsStartDate: draft.isFine
+                    ? draft.dueDateAsStartDate
+                    : false,
+                startDateText: _formatUtcBoundaryDate(
+                  draft.startDate,
+                  endOfDay: false,
+                ),
+                endDateText: _formatUtcBoundaryDate(
+                  draft.endDate,
+                  endOfDay: true,
+                ),
+                cumulationCycle: draft.cumulationCycle,
+              )
+            : null,
+      );
+    } catch (_) {
+      return const _DiscountFineSubmitResult(
+        isSuccess: false,
+        message: 'Unable to create the discount/fine right now.',
+      );
+    }
+  }
+
+  Future<void> _openDiscountFineDialog(String initialKind) async {
+    final lockedKind = _nextDiscountFineKind;
+    final appliedDiscountFine = await showDialog<_AppliedDiscountFine>(
+      context: context,
+      builder: (dialogContext) => _DiscountFineDialog(
+        initialKind: lockedKind ?? initialKind,
+        kindLocked: lockedKind != null,
+        onSubmit: _createDiscountFine,
+      ),
+    );
+
+    if (!mounted || appliedDiscountFine == null) {
+      return;
+    }
+
+    setState(() {
+      _appliedDiscountFines.removeWhere(
+        (item) => item.kind == appliedDiscountFine.kind,
+      );
+      _appliedDiscountFines.add(appliedDiscountFine);
+      _appliedDiscountFines.sort(
+        (left, right) => left.kind.compareTo(right.kind),
+      );
+    });
+  }
+
+  Future<void> _deleteDiscountFine(_AppliedDiscountFine item) async {
+    if (_deletingDiscountFineIds.contains(item.discFnId)) {
+      return;
+    }
+
+    final header = _buildGenericHeader();
+    if (header == null) {
+      await _showResultDialog(
+        title: 'Delete Discount/Fine Failed',
+        message: 'User session details are missing. Please log in again.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _deletingDiscountFineIds.add(item.discFnId);
+    });
+
+    try {
+      final response = await ApiService.deleteDiscfin({
+        'genericHeader': header,
+        'discFinId': item.discFnId,
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      if (_isSuccessResponse(response)) {
+        setState(() {
+          _appliedDiscountFines.removeWhere(
+            (entry) => entry.discFnId == item.discFnId,
+          );
+        });
+        return;
+      }
+
+      await _showResultDialog(
+        title: 'Delete Discount/Fine Failed',
+        message: _responseMessage(response),
+        isSuccess: false,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      await _showResultDialog(
+        title: 'Delete Discount/Fine Failed',
+        message: 'Unable to delete the discount/fine right now.',
+        isSuccess: false,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deletingDiscountFineIds.remove(item.discFnId);
+        });
+      }
+    }
+  }
+
+  Future<void> _openDiscountFineDetails(_AppliedDiscountFine item) async {
+    if (_loadingDiscountFineIds.contains(item.discFnId)) {
+      return;
+    }
+
+    final header = _buildGenericHeader();
+    if (header == null) {
+      await _showResultDialog(
+        title: 'Load Discount/Fine Failed',
+        message: 'User session details are missing. Please log in again.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _loadingDiscountFineIds.add(item.discFnId);
+    });
+
+    try {
+      final response = await ApiService.getDiscfin({
+        'genericHeader': header,
+        'discFinId': item.discFnId,
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!_isSuccessResponse(response)) {
+        await _showResultDialog(
+          title: 'Load Discount/Fine Failed',
+          message: _responseMessage(response),
+          isSuccess: false,
+        );
+        return;
+      }
+
+      final detail = _DiscountFineDetail.fromResponse(response, item);
+      if (detail == null) {
+        await _showResultDialog(
+          title: 'Load Discount/Fine Failed',
+          message: 'No matching discount/fine details were returned.',
+          isSuccess: false,
+        );
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => _DiscountFineDetailsDialog(detail: detail),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      await _showResultDialog(
+        title: 'Load Discount/Fine Failed',
+        message: 'Unable to load the discount/fine details right now.',
+        isSuccess: false,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingDiscountFineIds.remove(item.discFnId);
         });
       }
     }
@@ -1168,6 +1517,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       _dueDetails = null;
       _dueDetailsError = null;
       _loadingDueDetails = false;
+      _appliedDiscountFines.clear();
+      _deletingDiscountFineIds.clear();
+      _loadingDiscountFineIds.clear();
     });
   }
 
@@ -1620,6 +1972,115 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     );
   }
 
+  Widget _buildDiscountFineSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _canAddDiscountFine
+              ? () => _openDiscountFineDialog('DISCOUNT')
+              : null,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _brandColor,
+            side: const BorderSide(color: _brandColor),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          icon: const Icon(Icons.local_offer_outlined),
+          label: Text(_discountFineButtonLabel),
+        ),
+        if (_appliedDiscountFines.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _appliedDiscountFines
+                .map(_buildAppliedDiscountFineCard)
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAppliedDiscountFineCard(_AppliedDiscountFine item) {
+    final isFine = item.kind == 'FINE';
+    final accentColor = isFine ? const Color(0xFFCF8A2E) : _brandColor;
+    final isDeleting = _deletingDiscountFineIds.contains(item.discFnId);
+
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  isFine ? 'Fine Applied' : 'Discount Applied',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: isDeleting ? null : () => _deleteDiscountFine(item),
+                borderRadius: BorderRadius.circular(999),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: isDeleting
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: accentColor,
+                          ),
+                        )
+                      : Icon(Icons.close_rounded, size: 18, color: accentColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => _openDiscountFineDetails(item),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                item.discFnId.isEmpty
+                    ? 'Reference not returned'
+                    : item.discFnId,
+                style: const TextStyle(
+                  color: _brandTextColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${item.mode == 'PERCENTAGE' ? 'Percentage' : 'Amount'} • ${item.value}',
+            style: const TextStyle(color: Colors.black54, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildApplicableForField() {
     return FormField<Set<String>>(
       initialValue: _applicableFor,
@@ -1890,6 +2351,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
             ),
             const SizedBox(height: 18),
             _buildAdditionalChargesSection(),
+            const SizedBox(height: 22),
+            _buildDiscountFineSection(),
             const SizedBox(height: 22),
             _buildSectionTitle(
               'Audience And Settlement',
@@ -2701,6 +3164,743 @@ class _AdditionalChargeInput {
   void dispose() {
     nameController.dispose();
     valueController.dispose();
+  }
+}
+
+class _DiscountFineDraft {
+  const _DiscountFineDraft({
+    required this.kind,
+    required this.dueDateAsStartDate,
+    required this.startDate,
+    required this.endDate,
+    required this.mode,
+    required this.value,
+    this.calculationType,
+    this.cumulationCycle,
+  });
+
+  final String kind;
+  final bool dueDateAsStartDate;
+  final DateTime startDate;
+  final DateTime endDate;
+  final String mode;
+  final String value;
+  final String? calculationType;
+  final String? cumulationCycle;
+
+  bool get isFine => kind == 'FINE';
+}
+
+class _AppliedDiscountFine {
+  const _AppliedDiscountFine({
+    required this.kind,
+    required this.discFnId,
+    required this.mode,
+    required this.value,
+    this.calculationType,
+    required this.dueDateAsStartDate,
+    required this.startDateText,
+    required this.endDateText,
+    this.cumulationCycle,
+  });
+
+  final String kind;
+  final String discFnId;
+  final String mode;
+  final String value;
+  final String? calculationType;
+  final bool dueDateAsStartDate;
+  final String startDateText;
+  final String endDateText;
+  final String? cumulationCycle;
+}
+
+class _DiscountFineSubmitResult {
+  const _DiscountFineSubmitResult({
+    required this.isSuccess,
+    required this.message,
+    this.appliedDiscountFine,
+  });
+
+  final bool isSuccess;
+  final String message;
+  final _AppliedDiscountFine? appliedDiscountFine;
+}
+
+class _DiscountFineDetail {
+  const _DiscountFineDetail({
+    required this.kind,
+    required this.discFnId,
+    required this.discFnType,
+    required this.discFinValue,
+    required this.discFnCycleType,
+    required this.dueDateAsStartDateFlag,
+    required this.discFnStrtDt,
+    required this.discFnEndDt,
+    required this.discFnCumlatonCycle,
+    required this.discFnMode,
+  });
+
+  factory _DiscountFineDetail.fromApplied(_AppliedDiscountFine item) {
+    return _DiscountFineDetail(
+      kind: item.kind,
+      discFnId: item.discFnId,
+      discFnType: item.kind,
+      discFinValue: item.value,
+      dueDateAsStartDateFlag: item.dueDateAsStartDate,
+      discFnCycleType: item.calculationType,
+      discFnStrtDt: item.startDateText,
+      discFnEndDt: item.endDateText,
+      discFnCumlatonCycle: item.cumulationCycle,
+      discFnMode: item.mode,
+    );
+  }
+
+  static String? _normalizedValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+    return text;
+  }
+
+  static _DiscountFineDetail? fromResponse(
+    Map<String, dynamic>? response,
+    _AppliedDiscountFine item,
+  ) {
+    if (response == null) {
+      return null;
+    }
+
+    final rawList = response['discFinList'];
+    if (rawList is! List) {
+      return _DiscountFineDetail.fromApplied(item);
+    }
+
+    Map<String, dynamic>? matched;
+    for (final entry in rawList.whereType<Map>()) {
+      final record = Map<String, dynamic>.from(entry);
+      final recordId = record['discFnId']?.toString().trim() ?? '';
+      if (recordId == item.discFnId) {
+        matched = record;
+        break;
+      }
+    }
+
+    if (matched == null) {
+      return null;
+    }
+
+    return _DiscountFineDetail(
+      kind: item.kind,
+      discFnId: item.discFnId,
+      dueDateAsStartDateFlag:
+          matched['dueDateAsStartDateFlag'] == true ||
+          matched['dueDateAsStartDateFlag']?.toString().toLowerCase() == 'true',
+      discFnType: _normalizedValue(matched['discFnType']) ?? item.kind,
+      discFinValue: _normalizedValue(matched['discFinValue']) ?? item.value,
+      discFnCycleType:
+          _normalizedValue(matched['discFnCycleType']) ?? item.calculationType,
+      discFnStrtDt:
+          _normalizedValue(matched['discFnStrtDt']) ?? item.startDateText,
+      discFnEndDt: _normalizedValue(matched['discFnEndDt']) ?? item.endDateText,
+      discFnCumlatonCycle:
+          _normalizedValue(matched['discFnCumlatonCycle']) ??
+          item.cumulationCycle,
+      discFnMode: _normalizedValue(matched['discFnMode']) ?? item.mode,
+    );
+  }
+
+  final String kind;
+  final String discFnId;
+  final String discFnType;
+  final String? discFinValue;
+  final String? discFnCycleType;
+  final bool dueDateAsStartDateFlag;
+  final String? discFnStrtDt;
+  final String? discFnEndDt;
+  final String? discFnCumlatonCycle;
+  final String? discFnMode;
+}
+
+class _DiscountFineDetailsDialog extends StatelessWidget {
+  const _DiscountFineDetailsDialog({required this.detail});
+
+  final _DiscountFineDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final isFine = detail.kind == 'FINE';
+    final accentColor = isFine
+        ? const Color(0xFFCF8A2E)
+        : _CreatePaymentPageState._brandColor;
+    final summaryRows = <Widget>[
+      _SummaryRow(label: 'Type', value: detail.discFnType),
+    ];
+
+    if (detail.discFinValue != null) {
+      summaryRows.add(_SummaryRow(label: 'Value', value: detail.discFinValue!));
+    }
+
+    if (detail.discFnCycleType != null) {
+      summaryRows.add(
+        _SummaryRow(label: 'Cycle Type', value: detail.discFnCycleType!),
+      );
+    }
+
+    summaryRows.add(
+      _SummaryRow(
+        label: 'Start Date',
+        value: detail.dueDateAsStartDateFlag
+            ? 'As Due Date'
+            : (detail.discFnStrtDt ?? ''),
+      ),
+    );
+
+    if (detail.discFnEndDt != null) {
+      summaryRows.add(
+        _SummaryRow(label: 'End Date', value: detail.discFnEndDt!),
+      );
+    }
+
+    if (detail.discFnCumlatonCycle != null) {
+      summaryRows.add(
+        _SummaryRow(
+          label: 'Cummilation Cycle',
+          value: detail.discFnCumlatonCycle!,
+        ),
+      );
+    }
+
+    if (detail.discFnMode != null) {
+      summaryRows.add(_SummaryRow(label: 'Mode', value: detail.discFnMode!));
+    }
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF9F6FB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: Text(isFine ? 'Fine Details' : 'Discount Details'),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: accentColor.withValues(alpha: 0.22)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ID',
+                    style: TextStyle(
+                      color: accentColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    detail.discFnId,
+                    style: const TextStyle(
+                      color: _CreatePaymentPageState._brandTextColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...summaryRows,
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: accentColor),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DiscountFineDialog extends StatefulWidget {
+  const _DiscountFineDialog({
+    required this.initialKind,
+    required this.kindLocked,
+    required this.onSubmit,
+  });
+
+  final String initialKind;
+  final bool kindLocked;
+  final Future<_DiscountFineSubmitResult> Function(_DiscountFineDraft draft)
+  onSubmit;
+
+  @override
+  State<_DiscountFineDialog> createState() => _DiscountFineDialogState();
+}
+
+class _DiscountFineDialogState extends State<_DiscountFineDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _startDateController = TextEditingController();
+  final TextEditingController _endDateController = TextEditingController();
+  final TextEditingController _valueController = TextEditingController();
+
+  late String _kind;
+  String _mode = 'AMOUNT';
+  String _calculationType = 'SIMPLE';
+  String _cumulationCycle = 'MONTHLY';
+  bool _dueDateAsStartDate = false;
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _submitting = false;
+  String? _errorMessage;
+
+  bool get _isFine => _kind == 'FINE';
+
+  @override
+  void initState() {
+    super.initState();
+    _kind = widget.initialKind;
+  }
+
+  @override
+  void dispose() {
+    _startDateController.dispose();
+    _endDateController.dispose();
+    _valueController.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _inputDecoration({required String label, Widget? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      filled: true,
+      fillColor: Colors.white,
+      suffixIcon: suffix,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(
+          color: _CreatePaymentPageState._brandColor,
+          width: 1.4,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFB3261E)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.4),
+      ),
+    );
+  }
+
+  String _formatDisplayDate(DateTime date) {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    final day = date.day.toString().padLeft(2, '0');
+    return '$day-${monthNames[date.month - 1]}-${date.year}';
+  }
+
+  String _normalizeNumericValue(String value) {
+    final cleaned = value.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleaned.isEmpty) {
+      return '';
+    }
+
+    final firstDot = cleaned.indexOf('.');
+    if (firstDot < 0) {
+      return cleaned;
+    }
+
+    final integerPart = cleaned.substring(0, firstDot + 1);
+    final decimalPart = cleaned.substring(firstDot + 1).replaceAll('.', '');
+    return '$integerPart$decimalPart';
+  }
+
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2101),
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    setState(() {
+      _startDate = picked;
+      _startDateController.text = _formatDisplayDate(picked);
+      if (_endDate != null && _endDate!.isBefore(picked)) {
+        _endDate = null;
+        _endDateController.clear();
+      }
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final firstDate = _startDate ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? firstDate,
+      firstDate: firstDate,
+      lastDate: DateTime(2101),
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    setState(() {
+      _endDate = picked;
+      _endDateController.text = _formatDisplayDate(picked);
+    });
+  }
+
+  Future<void> _submit() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      return;
+    }
+
+    final startDate = _startDate;
+    final endDate = _endDate;
+    if (startDate == null || endDate == null) {
+      return;
+    }
+
+    if (endDate.isBefore(startDate)) {
+      setState(() {
+        _errorMessage = 'End date must be on or after the start date.';
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.onSubmit(
+      _DiscountFineDraft(
+        kind: _kind,
+        dueDateAsStartDate: _dueDateAsStartDate,
+        startDate: startDate,
+        endDate: endDate,
+        mode: _mode,
+        value: _normalizeNumericValue(_valueController.text),
+        calculationType: _isFine ? _calculationType : null,
+        cumulationCycle: _isFine ? _cumulationCycle : null,
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _submitting = false;
+    });
+
+    if (result.isSuccess) {
+      Navigator.of(context).pop(result.appliedDiscountFine);
+      return;
+    }
+
+    setState(() {
+      _errorMessage = result.message;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF9F6FB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      title: const Text('Create Discount / Fine'),
+      content: SizedBox(
+        width: 560,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _kind,
+                  decoration: _inputDecoration(label: 'Type'),
+                  items: _CreatePaymentPageState._discountFineKindOptions
+                      .map(
+                        (option) => DropdownMenuItem<String>(
+                          value: option.value,
+                          child: Text(option.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: widget.kindLocked
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            _kind = value;
+                            if (!_isFine) {
+                              _dueDateAsStartDate = false;
+                            }
+                          });
+                        },
+                  validator: (value) => value == null ? 'Select type' : null,
+                ),
+                const SizedBox(height: 16),
+                CheckboxListTile(
+                  value: _dueDateAsStartDate,
+                  enabled: _isFine,
+                  activeColor: _CreatePaymentPageState._brandColor,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('Is the due date as Start Date'),
+                  onChanged: _isFine
+                      ? (value) {
+                          setState(() {
+                            _dueDateAsStartDate = value ?? false;
+                          });
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _startDateController,
+                        readOnly: true,
+                        decoration: _inputDecoration(
+                          label: 'Start Date',
+                          suffix: const Icon(Icons.calendar_today_rounded),
+                        ),
+                        onTap: _pickStartDate,
+                        validator: (_) => _startDate == null
+                            ? 'Start date is required'
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _endDateController,
+                        readOnly: true,
+                        decoration: _inputDecoration(
+                          label: 'End Date',
+                          suffix: const Icon(Icons.calendar_today_rounded),
+                        ),
+                        onTap: _pickEndDate,
+                        validator: (_) =>
+                            _endDate == null ? 'End date is required' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _mode,
+                        decoration: _inputDecoration(label: 'Mode'),
+                        items: _CreatePaymentPageState._chargeTypeOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.value,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            _mode = value;
+                          });
+                        },
+                        validator: (value) =>
+                            value == null ? 'Select mode' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _calculationType,
+                        decoration: _inputDecoration(label: 'Cycle Type'),
+                        items: _CreatePaymentPageState._discountFineTypeOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.value,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _isFine
+                            ? (value) {
+                                if (value == null) {
+                                  return;
+                                }
+
+                                setState(() {
+                                  _calculationType = value;
+                                });
+                              }
+                            : null,
+                        validator: (value) {
+                          if (!_isFine) {
+                            return null;
+                          }
+                          return value == null ? 'Select type' : null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _cumulationCycle,
+                  decoration: _inputDecoration(label: 'Cummilation Cycle'),
+                  items: _CreatePaymentPageState._discountFineCycleOptions
+                      .map(
+                        (option) => DropdownMenuItem<String>(
+                          value: option.value,
+                          child: Text(option.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _isFine
+                      ? (value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            _cumulationCycle = value;
+                          });
+                        }
+                      : null,
+                  validator: (value) {
+                    if (!_isFine) {
+                      return null;
+                    }
+                    return value == null ? 'Select cycle' : null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _valueController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  decoration: _inputDecoration(label: 'Value'),
+                  validator: (value) {
+                    final normalized = _normalizeNumericValue(value ?? '');
+                    final number = double.tryParse(normalized);
+                    if (normalized.isEmpty || number == null || number <= 0) {
+                      return 'Enter a valid value';
+                    }
+                    return null;
+                  },
+                ),
+                if (_errorMessage != null && _errorMessage!.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF2F1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF1C8C5)),
+                      ),
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: Color(0xFF8B1E1E),
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _CreatePaymentPageState._brandColor,
+          ),
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(_isFine ? 'Add Fine' : 'Add Discount'),
+        ),
+      ],
+    );
   }
 }
 

@@ -28,6 +28,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Map<String, dynamic>? dashboardData;
+  Map<String, dynamic>? dueAmountData;
   bool loading = true;
 
   @override
@@ -36,11 +37,16 @@ class _HomePageState extends State<HomePage> {
     fetchDashboardData();
   }
 
-  fetchDashboardData() async {
-    final data = await ApiService.getDashboardData();
+  Future<void> fetchDashboardData() async {
+    final results = await Future.wait<Map<String, dynamic>?>([
+      ApiService.getDashboardData(),
+      ApiService.getDueAmountForFlat(),
+    ]);
+
     if (!mounted) return;
     setState(() {
-      dashboardData = data;
+      dashboardData = results[0];
+      dueAmountData = results[1];
       loading = false;
     });
   }
@@ -77,6 +83,52 @@ class _HomePageState extends State<HomePage> {
     }
 
     return '₹18,450';
+  }
+
+  String _formatCurrencyWithCommas(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '0';
+    }
+
+    final isNegative = trimmed.startsWith('-');
+    final unsignedValue = isNegative ? trimmed.substring(1) : trimmed;
+    final parts = unsignedValue.split('.');
+    final integerPart = parts.first.replaceAll(RegExp(r'[^0-9]'), '');
+    if (integerPart.isEmpty) {
+      return value;
+    }
+
+    final buffer = StringBuffer();
+    for (var index = 0; index < integerPart.length; index++) {
+      final reverseIndex = integerPart.length - index;
+      buffer.write(integerPart[index]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    final decimalPart = parts.length > 1
+        ? '.${parts.sublist(1).join().replaceAll(RegExp(r'[^0-9]'), '')}'
+        : '';
+    return '${isNegative ? '-' : ''}${buffer.toString()}$decimalPart';
+  }
+
+  String _dashboardDueAmount() {
+    final candidates = [
+      dueAmountData?['totalDueAmount'],
+      dashboardData?['totalDues'],
+    ];
+
+    for (final candidate in candidates) {
+      final text = candidate?.toString().trim() ?? '';
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        final rawAmount = text.startsWith('₹') ? text.substring(1) : text;
+        return '₹${_formatCurrencyWithCommas(rawAmount)}';
+      }
+    }
+
+    return '₹0';
   }
 
   int _pendingWorklistCount() {
@@ -400,7 +452,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _totalDues(),
+                  _dashboardDueAmount(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 34,
@@ -409,7 +461,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Total dues outstanding for this cycle',
+                  'Due Amount',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.82),
                     height: 1.45,

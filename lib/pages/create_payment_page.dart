@@ -46,6 +46,15 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _PaymentChoice(label: 'Post', value: 'POST'),
   ];
 
+  static const List<_PaymentChoice> _allowedPaymentModeOptions = [
+    _PaymentChoice(label: 'CASH', value: 'CASH'),
+    _PaymentChoice(
+      label: 'OFFLINE BANK TRANSFER',
+      value: 'OFFLINE_BANK_TRANSFER',
+    ),
+    _PaymentChoice(label: 'ONLINE', value: 'ONLINE'),
+  ];
+
   static const List<_PaymentChoice> _chargeTypeOptions = [
     _PaymentChoice(label: 'Amount', value: 'AMOUNT'),
     _PaymentChoice(label: 'Percentage', value: 'PERCENTAGE'),
@@ -94,6 +103,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   String? _paymentCapita;
   String? _paymentCollectionCycle;
   String? _paymentCollectionMode;
+  Set<String> _allowedPaymentModes = <String>{};
   String? _paymentType;
   String? _bankAccountId;
   bool _camPayment = false;
@@ -242,18 +252,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     }
 
     return null;
-  }
-
-  String _formatBooleanValue(bool value) {
-    return value ? 'Yes' : 'No';
-  }
-
-  String _formatNullableValue(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty || trimmed.toLowerCase() == 'null') {
-      return '--';
-    }
-    return trimmed;
   }
 
   void _closeToFinancePage() {
@@ -607,10 +605,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return DateTime(year, month, day);
   }
 
-  DateTime? _parseDueDate(String? value) {
-    return _parseStaticDueDate(value);
-  }
-
   String _buildApplicableForDisplayText() {
     if (_loadingApplicableForOptions) {
       return 'Loading flats...';
@@ -644,6 +638,48 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   bool get _areAllFlatsSelected {
     final allFlatIds = _allApplicableFlatIds;
     return allFlatIds.isNotEmpty && _applicableFor.containsAll(allFlatIds);
+  }
+
+  List<String> _buildAllowedPaymentModesRequestValue() {
+    final selected = _allowedPaymentModes.toList()..sort();
+    return selected;
+  }
+
+  String _buildAllowedPaymentModesDisplayText() {
+    if (_allowedPaymentModes.isEmpty) {
+      return 'Select modes';
+    }
+
+    final selected = _allowedPaymentModes.toList()..sort();
+    if (selected.length <= 2) {
+      return selected.map((item) => item.replaceAll('_', ' ')).join(', ');
+    }
+
+    return '${selected.length} modes selected';
+  }
+
+  Future<void> _openAllowedPaymentModesDialog(
+    FormFieldState<Set<String>> field,
+  ) async {
+    final selection = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => _AllowedPaymentModesDialog(
+        options: _allowedPaymentModeOptions,
+        initialSelection: _allowedPaymentModes,
+      ),
+    );
+
+    if (selection == null) {
+      return;
+    }
+
+    final validValues = _allowedPaymentModeOptions
+        .map((option) => option.value)
+        .toSet();
+    setState(() {
+      _allowedPaymentModes = selection.intersection(validValues);
+    });
+    field.didChange(_allowedPaymentModes);
   }
 
   String _mapCollectionCycleForRequest(String value) {
@@ -1231,6 +1267,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
           _paymentCollectionCycle!,
         ),
         'paymentCollectionMode': _paymentCollectionMode,
+        'allowedPaymentModes': _buildAllowedPaymentModesRequestValue(),
         'addedCharges': _buildAdditionalChargesRequest(),
         'camPayment': _camPayment,
         'addLeftOverPayment': true,
@@ -1509,6 +1546,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       _paymentCapita = null;
       _paymentCollectionCycle = null;
       _paymentCollectionMode = null;
+      _allowedPaymentModes = <String>{};
       _paymentType = null;
       _bankAccountId = null;
       _collectionStartDate = null;
@@ -2142,6 +2180,33 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     );
   }
 
+  Widget _buildAllowedPaymentModesField() {
+    return FormField<Set<String>>(
+      initialValue: _allowedPaymentModes,
+      builder: (field) {
+        return InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openAllowedPaymentModesDialog(field),
+          child: InputDecorator(
+            decoration: _inputDecoration(
+              label: 'Allowed Payment Modes',
+              suffix: const Icon(Icons.keyboard_arrow_down_rounded),
+            ).copyWith(errorText: field.errorText),
+            child: Text(
+              _buildAllowedPaymentModesDisplayText(),
+              style: TextStyle(
+                color: _allowedPaymentModes.isEmpty
+                    ? Colors.black45
+                    : Colors.black87,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFormColumn(bool mobile) {
     return Container(
       padding: EdgeInsets.all(mobile ? 20 : 26),
@@ -2298,7 +2363,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               ),
             ),
             const SizedBox(height: 16),
-            _buildTwoFieldRow(
+            _buildThreeFieldRow(
               first: DropdownButtonFormField<String>(
                 initialValue: _paymentCollectionCycle,
                 decoration: _inputDecoration(label: 'Collection Cycle'),
@@ -2335,6 +2400,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 validator: (value) =>
                     value == null ? 'Collection mode is required' : null,
               ),
+              third: _buildAllowedPaymentModesField(),
             ),
             const SizedBox(height: 14),
             CheckboxListTile(
@@ -3663,6 +3729,23 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7E8),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE7C787)),
+                  ),
+                  child: const Text(
+                    'Discount/Fine Will Not Be Applicable For Due Dates In Past',
+                    style: TextStyle(
+                      color: Color(0xFF8A5A00),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   initialValue: _kind,
                   decoration: _inputDecoration(label: 'Type'),
@@ -3915,6 +3998,79 @@ class _ApplicableForDialog extends StatefulWidget {
 
   @override
   State<_ApplicableForDialog> createState() => _ApplicableForDialogState();
+}
+
+class _AllowedPaymentModesDialog extends StatefulWidget {
+  const _AllowedPaymentModesDialog({
+    required this.options,
+    required this.initialSelection,
+  });
+
+  final List<_PaymentChoice> options;
+  final Set<String> initialSelection;
+
+  @override
+  State<_AllowedPaymentModesDialog> createState() =>
+      _AllowedPaymentModesDialogState();
+}
+
+class _AllowedPaymentModesDialogState
+    extends State<_AllowedPaymentModesDialog> {
+  late Set<String> _selectedValues;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValues = Set<String>.from(widget.initialSelection);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF9F6FB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: const Text('Allowed Payment Modes'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final option in widget.options)
+              CheckboxListTile(
+                value: _selectedValues.contains(option.value),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                activeColor: _CreatePaymentPageState._brandColor,
+                title: Text(option.label),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked ?? false) {
+                      _selectedValues.add(option.value);
+                    } else {
+                      _selectedValues.remove(option.value);
+                    }
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _CreatePaymentPageState._brandColor,
+          ),
+          onPressed: () => Navigator.of(context).pop(_selectedValues),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
 }
 
 class _ApplicableForDialogState extends State<_ApplicableForDialog> {

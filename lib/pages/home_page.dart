@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../navigation/app_section.dart';
@@ -30,11 +32,21 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? dueAmountData;
   bool loading = true;
+  final PageController _dueSliderController = PageController();
+  Timer? _dueSliderTimer;
+  int _dueSliderIndex = 0;
 
   @override
   void initState() {
     super.initState();
     fetchDashboardData();
+  }
+
+  @override
+  void dispose() {
+    _dueSliderTimer?.cancel();
+    _dueSliderController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchDashboardData() async {
@@ -49,6 +61,7 @@ class _HomePageState extends State<HomePage> {
       dueAmountData = results[1];
       loading = false;
     });
+    _configureDueSliderAutoPlay();
   }
 
   String _displayName() {
@@ -66,23 +79,6 @@ class _HomePageState extends State<HomePage> {
     }
 
     return 3;
-  }
-
-  String _totalDues() {
-    final candidates = [
-      dashboardData?['totalDues'],
-      dashboardData?['pendingDues'],
-      dashboardData?['payments'],
-    ];
-
-    for (final candidate in candidates) {
-      final text = candidate?.toString().trim() ?? '';
-      if (text.isNotEmpty) {
-        return text.startsWith('₹') ? text : '₹$text';
-      }
-    }
-
-    return '₹18,450';
   }
 
   String _formatCurrencyWithCommas(String value) {
@@ -129,6 +125,193 @@ class _HomePageState extends State<HomePage> {
     }
 
     return '₹0';
+  }
+
+  String _sumDueByPaymentType(String paymentType) {
+    final items = _duePaymentItems();
+    var total = 0.0;
+    for (final item in items) {
+      if (item.paymentType.toUpperCase() != paymentType) {
+        continue;
+      }
+      total += double.tryParse(item.totalAmount) ?? 0;
+    }
+    return _formatAsCurrency(total.toStringAsFixed(0));
+  }
+
+  String _extractTotalFromResponse({
+    required String key,
+    required String fallbackPaymentType,
+  }) {
+    final topLevel = dueAmountData?[key]?.toString().trim() ?? '';
+    if (topLevel.isNotEmpty && topLevel.toLowerCase() != 'null') {
+      return _formatAsCurrency(topLevel);
+    }
+
+    final rawList = dueAmountData?['duePaymentList'];
+    if (rawList is List) {
+      for (final entry in rawList.whereType<Map>()) {
+        final value = entry[key]?.toString().trim() ?? '';
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
+          return _formatAsCurrency(value);
+        }
+      }
+    }
+
+    return _sumDueByPaymentType(fallbackPaymentType);
+  }
+
+  String _totalMandatoryPaymentAmount() {
+    return _extractTotalFromResponse(
+      key: 'totalMandatoryPaymentAmount',
+      fallbackPaymentType: 'MANDATORY',
+    );
+  }
+
+  String _totalOptionalPaymentAmount() {
+    return _extractTotalFromResponse(
+      key: 'totalOptionalPaymentAmount',
+      fallbackPaymentType: 'OPTIONAL',
+    );
+  }
+
+  List<_DuePaymentItem> _duePaymentItems() {
+    final rawList = dueAmountData?['duePaymentList'];
+    if (rawList is! List) {
+      return const [];
+    }
+
+    return rawList
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .map(_DuePaymentItem.fromMap)
+        .toList();
+  }
+
+  DateTime? _parseDueDate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final direct = DateTime.tryParse(trimmed);
+    if (direct != null) {
+      return direct;
+    }
+
+    final match = RegExp(
+      r'^(\d{1,2})-([A-Za-z]{3})-(\d{4})$',
+    ).firstMatch(trimmed);
+    if (match == null) {
+      return null;
+    }
+
+    const monthMap = {
+      'jan': 1,
+      'feb': 2,
+      'mar': 3,
+      'apr': 4,
+      'may': 5,
+      'jun': 6,
+      'jul': 7,
+      'aug': 8,
+      'sep': 9,
+      'oct': 10,
+      'nov': 11,
+      'dec': 12,
+    };
+
+    final day = int.tryParse(match.group(1)!);
+    final month = monthMap[match.group(2)!.toLowerCase()];
+    final year = int.tryParse(match.group(3)!);
+    if (day == null || month == null || year == null) {
+      return null;
+    }
+
+    return DateTime(year, month, day);
+  }
+
+  _DuePaymentItem? _nextUpcomingDueItem() {
+    final dues = _duePaymentItems();
+    if (dues.isEmpty) {
+      return null;
+    }
+
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    _DuePaymentItem? selected;
+    DateTime? selectedDate;
+
+    for (final due in dues) {
+      final dueDate = _parseDueDate(due.dueDate);
+      if (dueDate == null) {
+        continue;
+      }
+
+      final normalizedDueDate = DateTime(
+        dueDate.year,
+        dueDate.month,
+        dueDate.day,
+      );
+      if (normalizedDueDate.isBefore(todayDate)) {
+        continue;
+      }
+
+      if (selectedDate == null || normalizedDueDate.isBefore(selectedDate)) {
+        selected = due;
+        selectedDate = normalizedDueDate;
+      }
+    }
+
+    return selected;
+  }
+
+  bool _isPastDue(_DuePaymentItem item) {
+    final dueDate = _parseDueDate(item.dueDate);
+    if (dueDate == null) {
+      return false;
+    }
+
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    final normalizedDueDate = DateTime(
+      dueDate.year,
+      dueDate.month,
+      dueDate.day,
+    );
+    return normalizedDueDate.isBefore(todayDate);
+  }
+
+  String _formatAsCurrency(String amount) {
+    final cleaned = amount.trim();
+    if (cleaned.isEmpty) {
+      return '₹0';
+    }
+
+    final rawAmount = cleaned.startsWith('₹') ? cleaned.substring(1) : cleaned;
+    return '₹${_formatCurrencyWithCommas(rawAmount)}';
+  }
+
+  void _configureDueSliderAutoPlay() {
+    _dueSliderTimer?.cancel();
+    final dueItems = _duePaymentItems();
+    if (dueItems.length <= 1) {
+      _dueSliderIndex = 0;
+      return;
+    }
+
+    _dueSliderTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!mounted || !_dueSliderController.hasClients) {
+        return;
+      }
+
+      final nextIndex = (_dueSliderIndex + 1) % dueItems.length;
+      _dueSliderController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   int _pendingWorklistCount() {
@@ -197,12 +380,6 @@ class _HomePageState extends State<HomePage> {
 
   List<_MetricCardData> _metricCards() {
     return [
-      _MetricCardData(
-        title: 'Total Dues',
-        value: _totalDues(),
-        subtitle: 'Due before 05 Apr 2026',
-        icon: Icons.account_balance_wallet_outlined,
-      ),
       _MetricCardData(
         title: 'Recent Visitors',
         value: '${_recentVisitorCount()}',
@@ -337,6 +514,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHeroCard(bool mobile) {
+    final nextDue = _nextUpcomingDueItem();
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(mobile ? 20 : 28),
@@ -441,10 +620,11 @@ class _HomePageState extends State<HomePage> {
               border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   'Financial Snapshot',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.90),
                     fontSize: 14,
@@ -453,6 +633,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 12),
                 Text(
                   _dashboardDueAmount(),
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 34,
@@ -461,12 +642,35 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Due Amount',
+                  'Total Due Amount',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.82),
                     height: 1.45,
                   ),
                 ),
+                if (nextDue != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Next Due: ${nextDue.dueDate} • ${_formatAsCurrency(nextDue.totalAmount)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.90),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Mandatory: ${_totalMandatoryPaymentAmount()} • Optional: ${_totalOptionalPaymentAmount()}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.88),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 LinearProgressIndicator(
                   minHeight: 10,
@@ -477,7 +681,8 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '64% of community dues collected this month',
+                  'Pay In Due Times To Avoid Penalities',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.85),
                     fontSize: 12,
@@ -492,16 +697,32 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildMetricGrid(bool mobile) {
+    final dueItems = _duePaymentItems();
+
     return Wrap(
       spacing: 16,
       runSpacing: 16,
-      children: _metricCards().map((metric) {
-        final width = mobile ? double.infinity : 260.0;
-        return SizedBox(
-          width: width,
-          child: _MetricCard(metric: metric),
-        );
-      }).toList(),
+      children: [
+        SizedBox(
+          width: mobile ? double.infinity : 260.0,
+          child: _DueSliderMetricCard(
+            dueItems: dueItems,
+            controller: _dueSliderController,
+            onPageChanged: (index) {
+              _dueSliderIndex = index;
+            },
+            isPastDue: _isPastDue,
+            formatAmount: _formatAsCurrency,
+          ),
+        ),
+        ..._metricCards().map((metric) {
+          final width = mobile ? double.infinity : 260.0;
+          return SizedBox(
+            width: width,
+            child: _MetricCard(metric: metric),
+          );
+        }),
+      ],
     );
   }
 
@@ -951,6 +1172,184 @@ class _MetricCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DueSliderMetricCard extends StatelessWidget {
+  const _DueSliderMetricCard({
+    required this.dueItems,
+    required this.controller,
+    required this.onPageChanged,
+    required this.isPastDue,
+    required this.formatAmount,
+  });
+
+  final List<_DuePaymentItem> dueItems;
+  final PageController controller;
+  final ValueChanged<int> onPageChanged;
+  final bool Function(_DuePaymentItem item) isPastDue;
+  final String Function(String amount) formatAmount;
+
+  @override
+  Widget build(BuildContext context) {
+    if (dueItems.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(17, 59, 52, 0.05),
+              blurRadius: 14,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Due Schedule',
+              style: TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'No dues available',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF124B45),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 188,
+      child: PageView.builder(
+        controller: controller,
+        itemCount: dueItems.length,
+        onPageChanged: onPageChanged,
+        itemBuilder: (context, index) {
+          final due = dueItems[index];
+          final overdue = isPastDue(due);
+          final backgroundColor = overdue
+              ? const Color(0xFFFFF3F2)
+              : Colors.white;
+          final accentColor = overdue
+              ? const Color(0xFFB3261E)
+              : const Color(0xFF0F8F82);
+
+          return Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(17, 59, 52, 0.05),
+                  blurRadius: 14,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Due Schedule',
+                  style: TextStyle(color: Colors.black54, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  due.dueDate,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: accentColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Payment: ${due.displayPaymentName}',
+                  style: const TextStyle(color: Colors.black87, height: 1.35),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Type: ${due.displayPaymentType}',
+                  style: TextStyle(
+                    color: overdue
+                        ? const Color(0xFF8B1E1E)
+                        : const Color(0xFF124B45),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Amount: ${formatAmount(due.totalAmount)}',
+                  style: TextStyle(
+                    color: overdue
+                        ? const Color(0xFF8B1E1E)
+                        : const Color(0xFF124B45),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DuePaymentItem {
+  const _DuePaymentItem({
+    required this.dueDate,
+    required this.paymentName,
+    required this.paymentType,
+    required this.totalAmount,
+  });
+
+  factory _DuePaymentItem.fromMap(Map<String, dynamic> map) {
+    final paymentName = map['paymentName']?.toString().trim() ?? '';
+    final paymentType = map['paymentType']?.toString().trim() ?? '';
+    return _DuePaymentItem(
+      dueDate: map['dueDate']?.toString().trim() ?? '--',
+      paymentName: paymentName.isEmpty || paymentName.toLowerCase() == 'null'
+          ? '--'
+          : paymentName,
+      paymentType: paymentType.isEmpty || paymentType.toLowerCase() == 'null'
+          ? '--'
+          : paymentType,
+      totalAmount:
+          map['totalAmount']?.toString().trim() ??
+          map['amount']?.toString().trim() ??
+          '0',
+    );
+  }
+
+  final String dueDate;
+  final String paymentName;
+  final String paymentType;
+  final String totalAmount;
+
+  String _toCamelCase(String text) {
+    if (text.isEmpty) return text;
+    List<String> words = text.toLowerCase().split(' ');
+    words[0] = words[0][0].toUpperCase() + words[0].substring(1);
+    for (int i = 1; i < words.length; i++) {
+      if (words[i].isNotEmpty) {
+        words[i] = words[i][0].toUpperCase() + words[i].substring(1);
+      }
+    }
+    return words.join(' ');
+  }
+
+  String get displayPaymentName => _toCamelCase(paymentName);
+  String get displayPaymentType => _toCamelCase(paymentType);
 }
 
 class _QuickPick {

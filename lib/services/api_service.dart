@@ -487,13 +487,20 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>?> getLetterHead() async {
+    if (token == null || userHeader == null) {
+      return null;
+    }
+
     const paths = [
       '/meetingnotice/getLetterHead',
       '/meetingNotice/getLetterHead',
     ];
 
     for (final path in paths) {
-      final response = await _getWithOptionalAuthorization(path);
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: {'genericHeader': userHeader},
+      );
       if (response.statusCode == 404 || response.body.isEmpty) {
         continue;
       }
@@ -834,6 +841,61 @@ class ApiService {
         'genericHeader': Map<String, dynamic>.from(userHeader!),
         'flatId': flatId,
       }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getApartmentDetails() async {
+    if (token == null || userHeader == null) return null;
+
+    final header = Map<String, dynamic>.from(userHeader!);
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/apartments/getApartmentDetails"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'genericHeader': header}),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> updateApartmentDetails(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null || userHeader == null) return null;
+
+    final payload = Map<String, dynamic>.from(requestBody);
+    payload['genericHeader'] = Map<String, dynamic>.from(userHeader!);
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/apartments/updateApartmentDetails"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(payload),
     );
 
     if (response.body.isEmpty) {

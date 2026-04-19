@@ -1002,7 +1002,7 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const BrandLogo(width: 520),
+                const BrandLogo(width: 260),
                 const SizedBox(height: 28),
                 Center(
                   child: Container(

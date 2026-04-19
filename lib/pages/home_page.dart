@@ -1023,7 +1023,22 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Color(0xFF0F8F82),
-        title: Text("Dashboard"),
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset('secura_logo.png', fit: BoxFit.contain),
+            ),
+            const SizedBox(width: 10),
+            const Text("Dashboard"),
+          ],
+        ),
 
         actions: [
           Padding(

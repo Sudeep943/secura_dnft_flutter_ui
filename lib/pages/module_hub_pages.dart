@@ -156,6 +156,17 @@ class AdminSectionPage extends StatelessWidget {
           Icons.door_front_door_outlined,
           onTap: () => openAppShellSection(context, AppSection.flatManagement),
         ),
+        _ModuleHubItem(
+          'Update Society Details',
+          Icons.apartment_outlined,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const UpdateSocietyDetailsPage(),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
@@ -1051,5 +1062,978 @@ MimeType _mimeTypeForExtension(String extension) {
       return MimeType.microsoftExcel;
     default:
       return MimeType.other;
+  }
+}
+
+class UpdateSocietyDetailsPage extends StatefulWidget {
+  const UpdateSocietyDetailsPage({super.key});
+
+  @override
+  State<UpdateSocietyDetailsPage> createState() =>
+      _UpdateSocietyDetailsPageState();
+}
+
+class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _apartmentNameController =
+      TextEditingController();
+  final TextEditingController _addressLine1Controller = TextEditingController();
+  final TextEditingController _addressLine2Controller = TextEditingController();
+  final TextEditingController _addressLine3Controller = TextEditingController();
+  final TextEditingController _addressLine4Controller = TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
+  final TextEditingController _cityController = TextEditingController();
+  final TextEditingController _stateController = TextEditingController();
+  final TextEditingController _postOfficeController = TextEditingController();
+  final TextEditingController _policeStationController =
+      TextEditingController();
+  final TextEditingController _pinController = TextEditingController();
+  final TextEditingController _addressTypeController = TextEditingController();
+
+  final List<_ExecutiveMemberInput> _executiveMembers =
+      <_ExecutiveMemberInput>[];
+  final List<_BankAccountInput> _bankAccounts = <_BankAccountInput>[];
+
+  bool _loading = true;
+  bool _updating = false;
+  String? _error;
+  String _apartmentLogoData = '';
+  String _apartmentLetterHeadData = '';
+  String? _apartmentLogoName;
+  String? _apartmentLetterHeadName;
+  Map<String, dynamic>? _requestHeader;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApartmentDetails();
+  }
+
+  @override
+  void dispose() {
+    _apartmentNameController.dispose();
+    _addressLine1Controller.dispose();
+    _addressLine2Controller.dispose();
+    _addressLine3Controller.dispose();
+    _addressLine4Controller.dispose();
+    _landmarkController.dispose();
+    _cityController.dispose();
+    _stateController.dispose();
+    _postOfficeController.dispose();
+    _policeStationController.dispose();
+    _pinController.dispose();
+    _addressTypeController.dispose();
+    for (final member in _executiveMembers) {
+      member.dispose();
+    }
+    for (final account in _bankAccounts) {
+      account.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _loadApartmentDetails() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await ApiService.getApartmentDetails();
+    if (!mounted) return;
+
+    if (response == null) {
+      setState(() {
+        _loading = false;
+        _error = 'Unable to fetch apartment details.';
+      });
+      return;
+    }
+
+    final messageCode = response['messageCode']?.toString().trim() ?? '';
+    if (!messageCode.startsWith('SUCC') &&
+        !messageCode.toUpperCase().contains('SUCCESS')) {
+      setState(() {
+        _loading = false;
+        _error = response['message']?.toString().trim().isNotEmpty == true
+            ? response['message'].toString()
+            : 'Unable to fetch apartment details.';
+      });
+      return;
+    }
+
+    final genericHeader = response['genericHeader'];
+    _requestHeader = genericHeader is Map
+        ? Map<String, dynamic>.from(genericHeader)
+        : (ApiService.rawLoginHeader ?? ApiService.userHeader);
+
+    _apartmentLogoData = response['apartmentLogo']?.toString().trim() ?? '';
+    _apartmentLetterHeadData =
+        response['apartmentLetterHead']?.toString().trim() ?? '';
+    _apartmentNameController.text =
+        response['apartmentName']?.toString().trim() ?? '';
+
+    final address = response['address'];
+    final addressMap = address is Map
+        ? Map<String, dynamic>.from(address)
+        : <String, dynamic>{};
+    _setAddressControllers(addressMap);
+
+    for (final member in _executiveMembers) {
+      member.dispose();
+    }
+    _executiveMembers.clear();
+    final executiveMembers = response['executiveMemberList'];
+    if (executiveMembers is List) {
+      for (final entry in executiveMembers.whereType<Map>()) {
+        _executiveMembers.add(
+          _ExecutiveMemberInput.fromMap(Map<String, dynamic>.from(entry)),
+        );
+      }
+    }
+    if (_executiveMembers.isEmpty) {
+      _executiveMembers.add(_ExecutiveMemberInput.empty());
+    }
+
+    for (final account in _bankAccounts) {
+      account.dispose();
+    }
+    _bankAccounts.clear();
+    final bankAccountDetails = response['bankAccountDetails'];
+    if (bankAccountDetails is List) {
+      for (final entry in bankAccountDetails.whereType<Map>()) {
+        _bankAccounts.add(
+          _BankAccountInput.fromMap(Map<String, dynamic>.from(entry)),
+        );
+      }
+    }
+    if (_bankAccounts.isEmpty) {
+      _bankAccounts.add(_BankAccountInput.empty());
+    }
+
+    setState(() {
+      _loading = false;
+    });
+  }
+
+  void _setAddressControllers(Map<String, dynamic> address) {
+    _addressLine1Controller.text = address['addressLine1']?.toString() ?? '';
+    _addressLine2Controller.text = address['addressLine2']?.toString() ?? '';
+    _addressLine3Controller.text = address['addressLine3']?.toString() ?? '';
+    _addressLine4Controller.text = address['addressLine4']?.toString() ?? '';
+    _landmarkController.text = address['landmark']?.toString() ?? '';
+    _cityController.text = address['city']?.toString() ?? '';
+    _stateController.text = address['state']?.toString() ?? '';
+    _postOfficeController.text = address['postOffice']?.toString() ?? '';
+    _policeStationController.text = address['policeStation']?.toString() ?? '';
+    _pinController.text = address['pin']?.toString() ?? '';
+    _addressTypeController.text = address['addressType']?.toString() ?? '';
+  }
+
+  Future<void> _pickApartmentDocument({required bool isLogo}) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf'],
+      withData: true,
+      allowMultiple: false,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final selected = result.files.single;
+    final bytes = selected.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to read selected file.')),
+      );
+      return;
+    }
+
+    setState(() {
+      if (isLogo) {
+        _apartmentLogoData = base64Encode(bytes);
+        _apartmentLogoName = selected.name;
+      } else {
+        _apartmentLetterHeadData = base64Encode(bytes);
+        _apartmentLetterHeadName = selected.name;
+      }
+    });
+  }
+
+  Map<String, dynamic> _buildAddressRequest() {
+    return {
+      'addressLine1': _addressLine1Controller.text.trim(),
+      'addressLine2': _addressLine2Controller.text.trim(),
+      'addressLine3': _addressLine3Controller.text.trim(),
+      'addressLine4': _addressLine4Controller.text.trim(),
+      'landmark': _landmarkController.text.trim(),
+      'city': _cityController.text.trim(),
+      'state': _stateController.text.trim(),
+      'postOffice': _postOfficeController.text.trim(),
+      'policeStation': _policeStationController.text.trim(),
+      'pin': _pinController.text.trim(),
+      'addressType': _addressTypeController.text.trim(),
+    };
+  }
+
+  List<Map<String, dynamic>> _buildExecutiveMembersRequest() {
+    return _executiveMembers
+        .where((item) => item.hasAnyValue)
+        .map((item) => item.toMap())
+        .toList();
+  }
+
+  List<Map<String, dynamic>> _buildBankAccountRequest() {
+    return _bankAccounts
+        .where((item) => item.hasAnyValue)
+        .map((item) => item.toMap())
+        .toList();
+  }
+
+  Future<void> _submitUpdate() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      return;
+    }
+
+    final requestHeader =
+        _requestHeader ?? ApiService.rawLoginHeader ?? ApiService.userHeader;
+    if (requestHeader == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Login header is not available.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _updating = true;
+    });
+
+    final requestBody = {
+      'genericHeader': Map<String, dynamic>.from(requestHeader),
+      'apartmentLogo': _apartmentLogoData,
+      'bankAccountDetails': _buildBankAccountRequest(),
+      'address': _buildAddressRequest(),
+      'executiveMemberList': _buildExecutiveMembersRequest(),
+      'apartmentLetterHead': _apartmentLetterHeadData,
+    };
+
+    try {
+      final response = await ApiService.updateApartmentDetails(requestBody);
+      if (!mounted) return;
+
+      final message = response?['message']?.toString().trim().isNotEmpty == true
+          ? response!['message'].toString()
+          : 'Apartment details updated.';
+      final messageCode = response?['messageCode']?.toString().trim() ?? '';
+      final isSuccess =
+          messageCode.startsWith('SUCC') ||
+          messageCode.toUpperCase().contains('SUCCESS');
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(isSuccess ? 'Update Successful' : 'Update Failed'),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _updating = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildSection(String title, Widget child) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCEAE7)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(18, 75, 69, 0.06),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF124B45),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF0F8F82), width: 1.4),
+      ),
+    );
+  }
+
+  Widget _buildTopSection() {
+    return _buildSection(
+      'Apartment Identity',
+      Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _updating
+                      ? null
+                      : () => _pickApartmentDocument(isLogo: true),
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('Upload Apartment Logo'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _updating
+                      ? null
+                      : () => _pickApartmentDocument(isLogo: false),
+                  icon: const Icon(Icons.description_outlined),
+                  label: const Text('Upload Apartment Letter Head'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _apartmentLogoName != null
+                  ? 'Apartment Logo: $_apartmentLogoName'
+                  : (_apartmentLogoData.isEmpty
+                        ? 'Apartment Logo: Not Available'
+                        : 'Apartment Logo: Existing Value Loaded'),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _apartmentLetterHeadName != null
+                  ? 'Apartment Letter Head: $_apartmentLetterHeadName'
+                  : (_apartmentLetterHeadData.isEmpty
+                        ? 'Apartment Letter Head: Not Available'
+                        : 'Apartment Letter Head: Existing Value Loaded'),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _apartmentNameController,
+            readOnly: true,
+            decoration: _decoration('Apartment Name'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddressSection() {
+    return _buildSection(
+      'Address',
+      Column(
+        children: [
+          TextFormField(
+            controller: _addressLine1Controller,
+            decoration: _decoration('Address Line 1'),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _addressLine2Controller,
+            decoration: _decoration('Address Line 2'),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _addressLine3Controller,
+            decoration: _decoration('Address Line 3'),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _addressLine4Controller,
+            decoration: _decoration('Address Line 4'),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _landmarkController,
+                  decoration: _decoration('Landmark'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _cityController,
+                  decoration: _decoration('City'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _stateController,
+                  decoration: _decoration('State'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _pinController,
+                  decoration: _decoration('Pin'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _postOfficeController,
+                  decoration: _decoration('Post Office'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: _policeStationController,
+                  decoration: _decoration('Police Station'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _addressTypeController,
+            decoration: _decoration('Address Type'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExecutiveMemberCard(_ExecutiveMemberInput input, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6FBFA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD9E8E4)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Executive Member ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: _executiveMembers.length <= 1 || _updating
+                    ? null
+                    : () {
+                        setState(() {
+                          final member = _executiveMembers.removeAt(index);
+                          member.dispose();
+                        });
+                      },
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.positionName,
+                  decoration: _decoration('Position Name'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.positionType,
+                  decoration: _decoration('Position Type'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.memberId,
+                  decoration: _decoration('Member Id'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.status,
+                  decoration: _decoration('Status'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.startDate,
+                  decoration: _decoration('Start Date'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.endDate,
+                  decoration: _decoration('End Date'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExecutiveMembersSection() {
+    return _buildSection(
+      'Executive Member List',
+      Column(
+        children: [
+          ..._executiveMembers.asMap().entries.map(
+            (entry) => _buildExecutiveMemberCard(entry.value, entry.key),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _updating
+                  ? null
+                  : () {
+                      setState(() {
+                        _executiveMembers.add(_ExecutiveMemberInput.empty());
+                      });
+                    },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Executive Member'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBankAccountCard(_BankAccountInput input, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6FBFA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD9E8E4)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Bank Account ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: _bankAccounts.length <= 1 || _updating
+                    ? null
+                    : () {
+                        setState(() {
+                          final item = _bankAccounts.removeAt(index);
+                          item.dispose();
+                        });
+                      },
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.bankName,
+                  decoration: _decoration('Bank Name'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.accountNumber,
+                  decoration: _decoration('Account Number'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.ifscCode,
+                  decoration: _decoration('Ifsc Code'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.branch,
+                  decoration: _decoration('Branch'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: input.accountName,
+                  decoration: _decoration('Account Name'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.razorPayKey,
+                  decoration: _decoration('Razor Pay Key'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: input.razorPaySecret,
+            decoration: _decoration('Razor Pay Secret'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBankAccountsSection() {
+    return _buildSection(
+      'Bank Account Details',
+      Column(
+        children: [
+          ..._bankAccounts.asMap().entries.map(
+            (entry) => _buildBankAccountCard(entry.value, entry.key),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _updating
+                  ? null
+                  : () {
+                      setState(() {
+                        _bankAccounts.add(_BankAccountInput.empty());
+                      });
+                    },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Bank Account'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F8F82),
+        title: const Text('Update Society Details'),
+      ),
+      body: BrandBackground(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1120),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF2F1),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFF1C8C5)),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Color(0xFF8B1E1E),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Form(
+                      key: _formKey,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildTopSection(),
+                            _buildAddressSection(),
+                            _buildExecutiveMembersSection(),
+                            _buildBankAccountsSection(),
+                            const SizedBox(height: 4),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F8F82),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                              ),
+                              onPressed: _updating ? null : _submitUpdate,
+                              icon: _updating
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                _updating
+                                    ? 'Updating...'
+                                    : 'Update Apartment Details',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExecutiveMemberInput {
+  _ExecutiveMemberInput({
+    required this.positionName,
+    required this.positionType,
+    required this.memberId,
+    required this.status,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  factory _ExecutiveMemberInput.empty() {
+    return _ExecutiveMemberInput(
+      positionName: TextEditingController(),
+      positionType: TextEditingController(),
+      memberId: TextEditingController(),
+      status: TextEditingController(),
+      startDate: TextEditingController(),
+      endDate: TextEditingController(),
+    );
+  }
+
+  factory _ExecutiveMemberInput.fromMap(Map<String, dynamic> map) {
+    return _ExecutiveMemberInput(
+      positionName: TextEditingController(
+        text: map['positionName']?.toString() ?? '',
+      ),
+      positionType: TextEditingController(
+        text: map['positiontype']?.toString() ?? '',
+      ),
+      memberId: TextEditingController(text: map['memberId']?.toString() ?? ''),
+      status: TextEditingController(text: map['status']?.toString() ?? ''),
+      startDate: TextEditingController(
+        text: map['startDate']?.toString() ?? '',
+      ),
+      endDate: TextEditingController(text: map['endDate']?.toString() ?? ''),
+    );
+  }
+
+  final TextEditingController positionName;
+  final TextEditingController positionType;
+  final TextEditingController memberId;
+  final TextEditingController status;
+  final TextEditingController startDate;
+  final TextEditingController endDate;
+
+  bool get hasAnyValue {
+    return positionName.text.trim().isNotEmpty ||
+        positionType.text.trim().isNotEmpty ||
+        memberId.text.trim().isNotEmpty ||
+        status.text.trim().isNotEmpty ||
+        startDate.text.trim().isNotEmpty ||
+        endDate.text.trim().isNotEmpty;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'positionName': positionName.text.trim(),
+      'positiontype': positionType.text.trim(),
+      'memberId': memberId.text.trim(),
+      'status': status.text.trim(),
+      'startDate': startDate.text.trim(),
+      'endDate': endDate.text.trim().isEmpty ? null : endDate.text.trim(),
+    };
+  }
+
+  void dispose() {
+    positionName.dispose();
+    positionType.dispose();
+    memberId.dispose();
+    status.dispose();
+    startDate.dispose();
+    endDate.dispose();
+  }
+}
+
+class _BankAccountInput {
+  _BankAccountInput({
+    required this.bankName,
+    required this.accountNumber,
+    required this.ifscCode,
+    required this.branch,
+    required this.accountName,
+    required this.razorPayKey,
+    required this.razorPaySecret,
+  });
+
+  factory _BankAccountInput.empty() {
+    return _BankAccountInput(
+      bankName: TextEditingController(),
+      accountNumber: TextEditingController(),
+      ifscCode: TextEditingController(),
+      branch: TextEditingController(),
+      accountName: TextEditingController(),
+      razorPayKey: TextEditingController(),
+      razorPaySecret: TextEditingController(),
+    );
+  }
+
+  factory _BankAccountInput.fromMap(Map<String, dynamic> map) {
+    return _BankAccountInput(
+      bankName: TextEditingController(text: map['bankName']?.toString() ?? ''),
+      accountNumber: TextEditingController(
+        text: map['accountNumber']?.toString() ?? '',
+      ),
+      ifscCode: TextEditingController(text: map['ifscCode']?.toString() ?? ''),
+      branch: TextEditingController(text: map['branch']?.toString() ?? ''),
+      accountName: TextEditingController(
+        text: map['accountName']?.toString() ?? '',
+      ),
+      razorPayKey: TextEditingController(
+        text: map['razorPayKey']?.toString() ?? '',
+      ),
+      razorPaySecret: TextEditingController(
+        text: map['razorPaySecret']?.toString() ?? '',
+      ),
+    );
+  }
+
+  final TextEditingController bankName;
+  final TextEditingController accountNumber;
+  final TextEditingController ifscCode;
+  final TextEditingController branch;
+  final TextEditingController accountName;
+  final TextEditingController razorPayKey;
+  final TextEditingController razorPaySecret;
+
+  bool get hasAnyValue {
+    return bankName.text.trim().isNotEmpty ||
+        accountNumber.text.trim().isNotEmpty ||
+        ifscCode.text.trim().isNotEmpty ||
+        branch.text.trim().isNotEmpty ||
+        accountName.text.trim().isNotEmpty ||
+        razorPayKey.text.trim().isNotEmpty ||
+        razorPaySecret.text.trim().isNotEmpty;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'bankName': bankName.text.trim(),
+      'accountNumber': accountNumber.text.trim(),
+      'ifscCode': ifscCode.text.trim(),
+      'branch': branch.text.trim(),
+      'accountName': accountName.text.trim(),
+      'razorPayKey': razorPayKey.text.trim(),
+      'razorPaySecret': razorPaySecret.text.trim(),
+    };
+  }
+
+  void dispose() {
+    bankName.dispose();
+    accountNumber.dispose();
+    ifscCode.dispose();
+    branch.dispose();
+    accountName.dispose();
+    razorPayKey.dispose();
+    razorPaySecret.dispose();
   }
 }

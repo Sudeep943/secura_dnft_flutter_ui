@@ -71,7 +71,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - DN-Fairytale-Logo.png
+    - secura_logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

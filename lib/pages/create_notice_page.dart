@@ -346,7 +346,10 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
     try {
       final response = await ApiService.getLetterHead();
-      final rawImage = response?['letterHeadImage']?.toString() ?? '';
+      final rawImage =
+          response?['letterHead']?.toString() ??
+          response?['letterHeadImage']?.toString() ??
+          '';
       final bytes = _decodeImageBytes(rawImage);
 
       if (!mounted) {

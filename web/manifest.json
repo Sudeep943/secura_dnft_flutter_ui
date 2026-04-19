@@ -1,6 +1,6 @@
 {
-    "name": "secura",
-    "short_name": "secura",
+    "name": "Secura",
+    "short_name": "Secura",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

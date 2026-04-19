@@ -10,11 +10,7 @@ class BrandLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: opacity,
-      child: Image.asset(
-        'DN-Fairytale-Logo.png',
-        width: width,
-        fit: BoxFit.contain,
-      ),
+      child: Image.asset('secura_logo.png', width: width, fit: BoxFit.contain),
     );
   }
 }
@@ -23,7 +19,7 @@ class BrandBackground extends StatelessWidget {
   const BrandBackground({
     super.key,
     required this.child,
-    this.logoWidth = 280,
+    this.logoWidth = 140,
     this.logoOpacity = 0.6,
     this.right = 16,
     this.bottom = 16,

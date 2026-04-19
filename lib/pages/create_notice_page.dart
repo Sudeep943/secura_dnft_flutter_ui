@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -93,6 +94,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
   Uint8List? _letterHeadBytes;
   bool _loadingLetterHead = true;
+  double _letterHeadLoadProgress = 0;
+  String _letterHeadLoadStatus = 'Fetching letterhead...';
+  Timer? _letterHeadProgressTimer;
   bool _submittingNotice = false;
   bool _capturingNotice = false;
   String? _letterHeadError;
@@ -246,6 +250,7 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
   @override
   void dispose() {
+    _stopLetterHeadProgressAnimation();
     _noticeShortDescriptionController.dispose();
     _noticeHeaderController.dispose();
     _publishingDateController.dispose();
@@ -267,6 +272,34 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
   void _resetCanvasViewport() {
     _canvasTransformationController.value = Matrix4.identity();
     _canvasZoom = 1.0;
+  }
+
+  void _startLetterHeadProgressAnimation() {
+    _letterHeadProgressTimer?.cancel();
+    _letterHeadProgressTimer = Timer.periodic(
+      const Duration(milliseconds: 120),
+      (_) {
+        if (!mounted || !_loadingLetterHead) {
+          return;
+        }
+        setState(() {
+          final next = (_letterHeadLoadProgress + 0.012).clamp(0.12, 0.94);
+          _letterHeadLoadProgress = next;
+          if (next < 0.5) {
+            _letterHeadLoadStatus = 'Requesting letterhead...';
+          } else if (next < 0.85) {
+            _letterHeadLoadStatus = 'Downloading letterhead...';
+          } else {
+            _letterHeadLoadStatus = 'Finalizing letterhead...';
+          }
+        });
+      },
+    );
+  }
+
+  void _stopLetterHeadProgressAnimation() {
+    _letterHeadProgressTimer?.cancel();
+    _letterHeadProgressTimer = null;
   }
 
   void _switchToPage(int index) {
@@ -357,16 +390,33 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
   Future<void> _fetchLetterHead() async {
     setState(() {
       _loadingLetterHead = true;
+      _letterHeadLoadProgress = 0.12;
+      _letterHeadLoadStatus = 'Requesting letterhead...';
       _letterHeadError = null;
     });
+    _startLetterHeadProgressAnimation();
 
     try {
       final response = await ApiService.getLetterHead();
+      _stopLetterHeadProgressAnimation();
+      if (mounted) {
+        setState(() {
+          _letterHeadLoadProgress = 0.96;
+          _letterHeadLoadStatus = 'Processing response...';
+        });
+      }
       final rawImage =
           response?['letterHead']?.toString() ??
           response?['letterHeadImage']?.toString() ??
           '';
       final bytes = _decodeImageBytes(rawImage);
+
+      if (mounted) {
+        setState(() {
+          _letterHeadLoadProgress = 0.82;
+          _letterHeadLoadStatus = 'Applying letterhead...';
+        });
+      }
 
       if (!mounted) {
         return;
@@ -377,18 +427,23 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
       } else {
         setState(() {
           _loadingLetterHead = false;
+          _letterHeadLoadProgress = 0;
+          _letterHeadLoadStatus = 'Fetching letterhead...';
           _letterHeadBytes = null;
           _letterHeadError =
               'Letterhead was not available from the server. Upload one to continue.';
         });
       }
     } catch (_) {
+      _stopLetterHeadProgressAnimation();
       if (!mounted) {
         return;
       }
 
       setState(() {
         _loadingLetterHead = false;
+        _letterHeadLoadProgress = 0;
+        _letterHeadLoadStatus = 'Fetching letterhead...';
         _letterHeadBytes = null;
         _letterHeadError =
             'Unable to load the letterhead from the server. Upload one to continue.';
@@ -419,9 +474,12 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
   void _setLetterHeadBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
+    _stopLetterHeadProgressAnimation();
 
     setState(() {
       _loadingLetterHead = false;
+      _letterHeadLoadProgress = 1;
+      _letterHeadLoadStatus = 'Letterhead loaded';
       _letterHeadBytes = bytes;
       _letterHeadError = null;
       if (decoded != null) {
@@ -646,8 +704,8 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
         layerWidth: cellWidth * columns,
         layerHeight: rowHeight * rows + _tableHandleHeight,
       ),
-      columnWidths: List<double>.filled(columns, cellWidth),
-      rowHeights: List<double>.filled(rows, rowHeight),
+      columnWidths: List<double>.filled(columns, cellWidth, growable: true),
+      rowHeights: List<double>.filled(rows, rowHeight, growable: true),
       cells: cells,
       zOrder: _nextLayerZOrder(),
     );
@@ -948,7 +1006,7 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
     _normalizeTableSelection(layer);
 
-    final targetColumn = (layer.selectedColumn + 1).clamp(0, layer.columns);
+    final targetColumn = layer.selectedColumn.clamp(0, layer.columns);
     setState(() {
       _resetTableMerges(layer);
       for (final row in layer.cells) {
@@ -1002,38 +1060,30 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     final startColumn = points.map((e) => e.$2).reduce(math.min);
     final endColumn = points.map((e) => e.$2).reduce(math.max);
 
-    final expectedCount =
-        (endRow - startRow + 1) * (endColumn - startColumn + 1);
-    if (selectedSet.length != expectedCount) {
-      return;
-    }
+    final sameRow = points.every((point) => point.$1 == startRow);
+    final sameColumn = points.every((point) => point.$2 == startColumn);
+    final isContiguousRowSelection =
+        sameRow && selectedSet.length == (endColumn - startColumn + 1);
+    final isContiguousColumnSelection =
+        sameColumn && selectedSet.length == (endRow - startRow + 1);
+    final isRectangleSelection =
+        selectedSet.length ==
+        ((endRow - startRow + 1) * (endColumn - startColumn + 1));
 
-    final visited = <(int, int)>{};
-    final queue = <(int, int)>[points.first];
-    while (queue.isNotEmpty) {
-      final current = queue.removeLast();
-      if (visited.contains(current)) {
-        continue;
-      }
-      visited.add(current);
-      final neighbors = <(int, int)>[
-        (current.$1 - 1, current.$2),
-        (current.$1 + 1, current.$2),
-        (current.$1, current.$2 - 1),
-        (current.$1, current.$2 + 1),
-      ];
-      for (final neighbor in neighbors) {
-        if (selectedSet.contains(neighbor) && !visited.contains(neighbor)) {
-          queue.add(neighbor);
-        }
-      }
-    }
-    if (visited.length != selectedSet.length) {
+    if (!isContiguousRowSelection &&
+        !isContiguousColumnSelection &&
+        !isRectangleSelection) {
       return;
     }
 
     for (var row = startRow; row <= endRow; row++) {
       for (var column = startColumn; column <= endColumn; column++) {
+        final shouldParticipate = isRectangleSelection
+            ? true
+            : selectedSet.contains((row, column));
+        if (!shouldParticipate) {
+          continue;
+        }
         final cell = layer.cells[row][column];
         if (cell.hidden || cell.rowSpan > 1 || cell.columnSpan > 1) {
           return;
@@ -1048,6 +1098,12 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
       for (var row = startRow; row <= endRow; row++) {
         for (var column = startColumn; column <= endColumn; column++) {
+          final shouldParticipate = isRectangleSelection
+              ? true
+              : selectedSet.contains((row, column));
+          if (!shouldParticipate) {
+            continue;
+          }
           if (row == startRow && column == startColumn) {
             continue;
           }
@@ -1056,7 +1112,6 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
           cell.hidden = true;
           cell.rowSpan = 1;
           cell.columnSpan = 1;
-          cell.controller.clear();
         }
       }
 
@@ -2957,19 +3012,46 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
         _selectedLayerId == layer.id &&
         layer.selectedCells.contains(layer.cellKey(row, column));
 
-    final editor = quill.QuillEditor.basic(
-      key: ValueKey('${layer.id}-$row-$column'),
-      controller: cell.controller,
-      focusNode: cell.focusNode,
-      config: quill.QuillEditorConfig(
-        padding: EdgeInsets.zero,
-        scrollable: false,
-        autoFocus: false,
-        expands: false,
-        onTapOutsideEnabled: false,
-        customStyleBuilder: _buildQuillCustomStyle,
-      ),
-    );
+    final plainText = cell.controller.document
+        .toPlainText()
+        .replaceAll('\u0000', '')
+        .trimRight();
+    final docOps = cell.controller.document.toDelta().toJson();
+    var textAlign = TextAlign.left;
+    for (var i = docOps.length - 1; i >= 0; i--) {
+      final attrs = docOps[i]['attributes'];
+      if (attrs is Map && attrs['align'] != null) {
+        final align = attrs['align'].toString();
+        textAlign = switch (align) {
+          'center' => TextAlign.center,
+          'right' => TextAlign.right,
+          _ => TextAlign.left,
+        };
+        break;
+      }
+    }
+
+    final editor = isSelected
+        ? quill.QuillEditor.basic(
+            key: ValueKey('${layer.id}-$row-$column'),
+            controller: cell.controller,
+            focusNode: cell.focusNode,
+            config: quill.QuillEditorConfig(
+              padding: EdgeInsets.zero,
+              scrollable: false,
+              autoFocus: false,
+              expands: false,
+              onTapOutsideEnabled: false,
+              customStyleBuilder: _buildQuillCustomStyle,
+            ),
+          )
+        : Text(
+            plainText,
+            maxLines: null,
+            softWrap: true,
+            textAlign: textAlign,
+            style: const TextStyle(fontSize: 12),
+          );
 
     return Container(
       width: width,
@@ -3022,7 +3104,43 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
   Widget _buildLetterHeadCanvas() {
     if (_loadingLetterHead) {
-      return const Center(child: CircularProgressIndicator());
+      final normalized = _letterHeadLoadProgress.clamp(0.0, 1.0);
+      final percent = (normalized * 100).round();
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _letterHeadLoadStatus,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: _brandTextColor,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 10,
+                  value: normalized == 0 ? null : normalized,
+                  color: _brandColor,
+                  backgroundColor: const Color(0xFFDDE7E5),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$percent%',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: _brandTextColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (_currentPage == null) {
@@ -4133,29 +4251,56 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
               'Table Width: ${selectedTableLayer.totalWidth.toStringAsFixed(0)} px',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            Slider(
-              value: selectedTableLayer.totalWidth,
-              min: (_tableMinCellWidth * selectedTableLayer.columns)
-                  .clamp(120.0, 2400.0)
-                  .toDouble(),
-              max: (_canvasWidth * 0.95).clamp(240.0, 2400.0).toDouble(),
-              divisions: 100,
-              activeColor: _brandColor,
-              onChanged: _updateSelectedTableWidth,
+            Builder(
+              builder: (context) {
+                final widthMin =
+                    (_tableMinCellWidth * selectedTableLayer.columns)
+                        .clamp(120.0, 2400.0)
+                        .toDouble();
+                final widthMax = (_canvasWidth * 0.95)
+                    .clamp(widthMin, 2400.0)
+                    .toDouble();
+                final widthVal = selectedTableLayer.totalWidth
+                    .clamp(widthMin, widthMax)
+                    .toDouble();
+                return Slider(
+                  value: widthVal,
+                  min: widthMin,
+                  max: widthMax,
+                  divisions: widthMax > widthMin ? 100 : null,
+                  activeColor: _brandColor,
+                  onChanged: widthMax > widthMin
+                      ? _updateSelectedTableWidth
+                      : null,
+                );
+              },
             ),
             Text(
               'Table Height: ${selectedTableLayer.totalBodyHeight.toStringAsFixed(0)} px',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            Slider(
-              value: selectedTableLayer.totalBodyHeight,
-              min: (_tableMinRowHeight * selectedTableLayer.rows)
-                  .clamp(60.0, 1600.0)
-                  .toDouble(),
-              max: (_canvasHeight * 0.8).clamp(180.0, 1800.0).toDouble(),
-              divisions: 80,
-              activeColor: _brandColor,
-              onChanged: _updateSelectedTableHeight,
+            Builder(
+              builder: (context) {
+                final heightMin = (_tableMinRowHeight * selectedTableLayer.rows)
+                    .clamp(60.0, 1600.0)
+                    .toDouble();
+                final heightMax = (_canvasHeight * 0.8)
+                    .clamp(heightMin, 1800.0)
+                    .toDouble();
+                final heightVal = selectedTableLayer.totalBodyHeight
+                    .clamp(heightMin, heightMax)
+                    .toDouble();
+                return Slider(
+                  value: heightVal,
+                  min: heightMin,
+                  max: heightMax,
+                  divisions: heightMax > heightMin ? 80 : null,
+                  activeColor: _brandColor,
+                  onChanged: heightMax > heightMin
+                      ? _updateSelectedTableHeight
+                      : null,
+                );
+              },
             ),
             const SizedBox(height: 8),
             Text(
@@ -4169,7 +4314,12 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
             ),
             Slider(
               value: selectedTableLayer
-                  .columnWidths[selectedTableLayer.selectedColumn],
+                  .columnWidths[selectedTableLayer.selectedColumn]
+                  .clamp(
+                    _tableMinCellWidth,
+                    (_canvasWidth * 0.65).clamp(150.0, 800.0),
+                  )
+                  .toDouble(),
               min: _tableMinCellWidth,
               max: (_canvasWidth * 0.65).clamp(150.0, 800.0).toDouble(),
               divisions: 50,
@@ -4181,8 +4331,10 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             Slider(
-              value:
-                  selectedTableLayer.rowHeights[selectedTableLayer.selectedRow],
+              value: selectedTableLayer
+                  .rowHeights[selectedTableLayer.selectedRow]
+                  .clamp(_tableMinRowHeight, 180.0)
+                  .toDouble(),
               min: _tableMinRowHeight,
               max: 180,
               divisions: 50,

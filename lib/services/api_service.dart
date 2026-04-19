@@ -848,6 +848,42 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> getDueAmountForPerHeadCalculation({
+    required String noOfPerson,
+    required String dueId,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final header = rawLoginHeader ?? userHeader;
+    if (header == null) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/flat/getDueAmountForPerHeadCalculation"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': Map<String, dynamic>.from(header),
+        'noOfPerson': noOfPerson,
+        'dueId': dueId,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<List<Map<String, dynamic>>?> searchProfile({
     required String inputKey,
   }) async {
@@ -1033,6 +1069,7 @@ class ApiService {
   static Future<Map<String, dynamic>?> createRazorPayOrder({
     required String amountInPaisa,
     required String eventDate,
+    String transactionType = 'BOOKING',
   }) async {
     if (token == null || userHeader == null) return null;
 
@@ -1047,7 +1084,7 @@ class ApiService {
         'amountInPaisa': amountInPaisa,
         'currency': 'INR',
         'eventDate': eventDate,
-        'transactionType': 'BOOKING',
+        'transactionType': transactionType,
       }),
     );
 
@@ -1056,6 +1093,32 @@ class ApiService {
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> payDues(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null || userHeader == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/payment/payDues"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
   }
 
   static Future<Map<String, dynamic>?> verifyPayment({

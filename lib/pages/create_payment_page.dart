@@ -35,6 +35,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   ];
 
   static const List<_PaymentChoice> _cycleOptions = [
+    _PaymentChoice(label: 'Once', value: 'ONCE'),
     _PaymentChoice(label: 'Monthly', value: 'MONTHLY'),
     _PaymentChoice(label: 'Quarterly', value: 'QUARTERLY'),
     _PaymentChoice(label: 'Half Yearly', value: 'HALF_YEARLY'),
@@ -106,7 +107,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   Set<String> _allowedPaymentModes = <String>{};
   String? _paymentType;
   String? _bankAccountId;
-  bool _camPayment = false;
+  bool _maintenancePayment = false;
+  bool _eventPayment = false;
   DateTime? _collectionStartDate;
   DateTime? _collectionEndDate;
   Set<String> _applicableFor = <String>{};
@@ -124,6 +126,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   final List<_AppliedDiscountFine> _appliedDiscountFines = [];
   final Set<String> _deletingDiscountFineIds = <String>{};
   final Set<String> _loadingDiscountFineIds = <String>{};
+
+  bool get _isPerHeadCapita => _paymentCapita == 'PER_HEAD';
 
   @override
   void initState() {
@@ -684,6 +688,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 
   String _mapCollectionCycleForRequest(String value) {
     switch (value) {
+      case 'ONCE':
+        return 'once';
       case 'MONTHLY':
         return 'monthly';
       case 'QUARTERLY':
@@ -1269,7 +1275,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         'paymentCollectionMode': _paymentCollectionMode,
         'allowedPaymentModes': _buildAllowedPaymentModesRequestValue(),
         'addedCharges': _buildAdditionalChargesRequest(),
-        'camPayment': _camPayment,
+        'camPayment': _maintenancePayment,
+        'eventPayment': _eventPayment,
         'addLeftOverPayment': true,
         'applicableFor': _buildApplicableForRequestValue(),
         'paymentType': _paymentType,
@@ -1327,7 +1334,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     };
 
     if (draft.isFine) {
-      requestBody['discFnCumlatonCycle'] = draft.cumulationCycle;
+      requestBody['discFnCumlatonCycle'] = draft.calculationType == 'CUMULATIVE'
+          ? draft.cumulationCycle
+          : null;
     }
 
     try {
@@ -1542,7 +1551,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     }
     setState(() {
       _additionalChargeInputs.clear();
-      _camPayment = false;
+      _maintenancePayment = false;
+      _eventPayment = false;
       _paymentCapita = null;
       _paymentCollectionCycle = null;
       _paymentCollectionMode = null;
@@ -2281,8 +2291,13 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                     )
                     .toList(),
                 onChanged: (value) {
-                  _paymentCapita = value;
-                  _onDueFieldChanged();
+                  setState(() {
+                    _paymentCapita = value;
+                    if (_isPerHeadCapita) {
+                      _paymentType = 'OPTIONAL';
+                    }
+                  });
+                  _scheduleDueDetailsRefresh();
                 },
                 validator: (value) =>
                     value == null ? 'Payment capita is required' : null,
@@ -2403,17 +2418,48 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               third: _buildAllowedPaymentModesField(),
             ),
             const SizedBox(height: 14),
-            CheckboxListTile(
-              value: _camPayment,
-              contentPadding: EdgeInsets.zero,
-              activeColor: _brandColor,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Maintainace Charge'),
-              onChanged: (value) {
-                setState(() {
-                  _camPayment = value ?? false;
-                });
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: CheckboxListTile(
+                    value: _maintenancePayment,
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: _brandColor,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Its Maintenance Payment'),
+                    onChanged: _eventPayment
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _maintenancePayment = value ?? false;
+                              if (_maintenancePayment) {
+                                _eventPayment = false;
+                              }
+                            });
+                          },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: CheckboxListTile(
+                    value: _eventPayment,
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: _brandColor,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Its Event Payment'),
+                    onChanged: _maintenancePayment
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _eventPayment = value ?? false;
+                              if (_eventPayment) {
+                                _maintenancePayment = false;
+                              }
+                            });
+                          },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 18),
             _buildAdditionalChargesSection(),
@@ -2436,7 +2482,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 SizedBox(
                   width: mobile ? double.infinity : 220,
                   child: DropdownButtonFormField<String>(
-                    initialValue: _paymentType,
+                    initialValue: _isPerHeadCapita ? 'OPTIONAL' : _paymentType,
                     decoration: _inputDecoration(label: 'Payment Type'),
                     items: _paymentTypeOptions
                         .map(
@@ -2446,11 +2492,13 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                           ),
                         )
                         .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _paymentType = value;
-                      });
-                    },
+                    onChanged: _isPerHeadCapita
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _paymentType = value;
+                            });
+                          },
                     validator: (value) =>
                         value == null ? 'Payment type is required' : null,
                   ),
@@ -3523,8 +3571,8 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
 
   late String _kind;
   String _mode = 'AMOUNT';
-  String _calculationType = 'SIMPLE';
-  String _cumulationCycle = 'MONTHLY';
+  String? _calculationType;
+  String? _cumulationCycle;
   bool _dueDateAsStartDate = false;
   DateTime? _startDate;
   DateTime? _endDate;
@@ -3532,6 +3580,9 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   String? _errorMessage;
 
   bool get _isFine => _kind == 'FINE';
+  bool get _showCycleType => _isFine;
+  bool get _showCumulationCycle => _isFine && _calculationType == 'CUMULATIVE';
+  bool get _isStartDateInputEnabled => !(_isFine && _dueDateAsStartDate);
 
   @override
   void initState() {
@@ -3618,6 +3669,10 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   }
 
   Future<void> _pickStartDate() async {
+    if (!_isStartDateInputEnabled) {
+      return;
+    }
+
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
@@ -3768,6 +3823,8 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                             _kind = value;
                             if (!_isFine) {
                               _dueDateAsStartDate = false;
+                              _calculationType = null;
+                              _cumulationCycle = null;
                             }
                           });
                         },
@@ -3780,11 +3837,15 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                   activeColor: _CreatePaymentPageState._brandColor,
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('Is the due date as Start Date'),
+                  title: const Text('Is Due Date As Start Date'),
                   onChanged: _isFine
                       ? (value) {
                           setState(() {
                             _dueDateAsStartDate = value ?? false;
+                            if (_dueDateAsStartDate) {
+                              _startDate = null;
+                              _startDateController.clear();
+                            }
                           });
                         }
                       : null,
@@ -3796,12 +3857,13 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _startDateController,
+                        enabled: _isStartDateInputEnabled,
                         readOnly: true,
                         decoration: _inputDecoration(
                           label: 'Start Date',
                           suffix: const Icon(Icons.calendar_today_rounded),
                         ),
-                        onTap: _pickStartDate,
+                        onTap: _isStartDateInputEnabled ? _pickStartDate : null,
                         validator: (_) => _startDate == null
                             ? 'Start date is required'
                             : null,
@@ -3852,70 +3914,60 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                             value == null ? 'Select mode' : null,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _calculationType,
-                        decoration: _inputDecoration(label: 'Cycle Type'),
-                        items: _CreatePaymentPageState._discountFineTypeOptions
-                            .map(
-                              (option) => DropdownMenuItem<String>(
-                                value: option.value,
-                                child: Text(option.label),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _isFine
-                            ? (value) {
-                                if (value == null) {
-                                  return;
-                                }
-
-                                setState(() {
-                                  _calculationType = value;
-                                });
+                    if (_showCycleType) ...[
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _calculationType,
+                          decoration: _inputDecoration(label: 'Cycle Type'),
+                          items: _CreatePaymentPageState
+                              ._discountFineTypeOptions
+                              .map(
+                                (option) => DropdownMenuItem<String>(
+                                  value: option.value,
+                                  child: Text(option.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _calculationType = value;
+                              if (_calculationType != 'CUMULATIVE') {
+                                _cumulationCycle = null;
                               }
-                            : null,
-                        validator: (value) {
-                          if (!_isFine) {
-                            return null;
-                          }
-                          return value == null ? 'Select type' : null;
-                        },
+                            });
+                          },
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: _cumulationCycle,
-                  decoration: _inputDecoration(label: 'Cummilation Cycle'),
-                  items: _CreatePaymentPageState._discountFineCycleOptions
-                      .map(
-                        (option) => DropdownMenuItem<String>(
-                          value: option.value,
-                          child: Text(option.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _isFine
-                      ? (value) {
-                          if (value == null) {
-                            return;
-                          }
-
-                          setState(() {
-                            _cumulationCycle = value;
-                          });
-                        }
-                      : null,
-                  validator: (value) {
-                    if (!_isFine) {
-                      return null;
-                    }
-                    return value == null ? 'Select cycle' : null;
-                  },
-                ),
+                if (_showCumulationCycle) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _cumulationCycle,
+                    decoration: _inputDecoration(label: 'Cummilation Cycle'),
+                    items: _CreatePaymentPageState._discountFineCycleOptions
+                        .map(
+                          (option) => DropdownMenuItem<String>(
+                            value: option.value,
+                            child: Text(option.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _cumulationCycle = value;
+                      });
+                    },
+                    validator: (value) {
+                      if (!_showCumulationCycle) {
+                        return null;
+                      }
+                      return value == null ? 'Select cycle' : null;
+                    },
+                  ),
+                ],
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _valueController,

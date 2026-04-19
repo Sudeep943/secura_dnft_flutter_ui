@@ -73,6 +73,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
   static const double _defaultTextBoxWidth = 72;
   static const double _defaultTextBoxHeight = 40;
   static const double _defaultAutosizeFontSize = 12;
+  static const double _tableHandleHeight = 28;
+  static const double _tableMinCellWidth = 56;
+  static const double _tableMinRowHeight = 30;
 
   final GlobalKey _canvasKey = GlobalKey();
   final GlobalKey _canvasViewportKey = GlobalKey();
@@ -116,6 +119,8 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
 
   List<_NoticeImageLayer> get _imageLayers => _currentPage!.imageLayers;
 
+  List<_NoticeTableLayer> get _tableLayers => _currentPage!.tableLayers;
+
   int _nextLayerZOrder() {
     final currentPage = _currentPage;
     if (currentPage == null) {
@@ -129,6 +134,11 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
       }
     }
     for (final layer in currentPage.imageLayers) {
+      if (layer.zOrder > maxZOrder) {
+        maxZOrder = layer.zOrder;
+      }
+    }
+    for (final layer in currentPage.tableLayers) {
       if (layer.zOrder > maxZOrder) {
         maxZOrder = layer.zOrder;
       }
@@ -148,6 +158,8 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
         _LayerStackEntry.image(layer: layer),
       for (final layer in currentPage.textLayers)
         _LayerStackEntry.text(layer: layer),
+      for (final layer in currentPage.tableLayers)
+        _LayerStackEntry.table(layer: layer),
     ];
 
     entries.sort((a, b) => a.zOrder.compareTo(b.zOrder));
@@ -245,6 +257,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
       for (final layer in page.textLayers) {
         _disposeTextLayer(layer);
       }
+      for (final layer in page.tableLayers) {
+        _disposeTableLayer(layer);
+      }
     }
     super.dispose();
   }
@@ -321,6 +336,7 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
       backgroundBytes: backgroundBytes,
       textLayers: <_NoticeTextLayer>[],
       imageLayers: <_NoticeImageLayer>[],
+      tableLayers: <_NoticeTableLayer>[],
     );
 
     setState(() {
@@ -419,6 +435,7 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
             backgroundBytes: Uint8List.fromList(bytes),
             textLayers: <_NoticeTextLayer>[],
             imageLayers: <_NoticeImageLayer>[],
+            tableLayers: <_NoticeTableLayer>[],
           ),
         );
         _currentPageIndex = 0;
@@ -511,6 +528,603 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     layer.controller.dispose();
     layer.focusNode.dispose();
     layer.scrollController.dispose();
+  }
+
+  void _disposeTableLayer(_NoticeTableLayer layer) {
+    for (final row in layer.cells) {
+      for (final cell in row) {
+        cell.controller.dispose();
+        cell.focusNode.dispose();
+      }
+    }
+  }
+
+  Future<void> _showAddTableDialog() async {
+    if (_currentPage == null) {
+      _showSnackBar('Add a page before adding a table.');
+      return;
+    }
+
+    final rowsController = TextEditingController(text: '3');
+    final columnsController = TextEditingController(text: '3');
+
+    final result = await showDialog<_TableConfigResult>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Add Table'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: rowsController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Rows',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: columnsController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Columns',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _brandColor),
+              onPressed: () {
+                final rows = int.tryParse(rowsController.text.trim()) ?? 0;
+                final columns =
+                    int.tryParse(columnsController.text.trim()) ?? 0;
+                Navigator.of(
+                  dialogContext,
+                ).pop(_TableConfigResult(rows: rows, columns: columns));
+              },
+              child: const Text('Add Table'),
+            ),
+          ],
+        );
+      },
+    );
+
+    rowsController.dispose();
+    columnsController.dispose();
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    if (result.rows < 1 || result.columns < 1) {
+      _showSnackBar('Rows and columns must be at least 1.');
+      return;
+    }
+
+    if (result.rows > 20 || result.columns > 12) {
+      _showSnackBar('Use up to 20 rows and 12 columns per table.');
+      return;
+    }
+
+    _addTableLayer(rows: result.rows, columns: result.columns);
+  }
+
+  void _addTableLayer({required int rows, required int columns}) {
+    final cellWidth = (_canvasWidth * 0.6 / columns)
+        .clamp(_tableMinCellWidth, 180.0)
+        .toDouble();
+    const rowHeight = 42.0;
+
+    final cells = <List<_NoticeTableCell>>[];
+    for (var row = 0; row < rows; row++) {
+      final rowCells = <_NoticeTableCell>[];
+      for (var column = 0; column < columns; column++) {
+        rowCells.add(
+          _NoticeTableCell(
+            controller: quill.QuillController.basic(),
+            focusNode: FocusNode(),
+          ),
+        );
+      }
+      cells.add(rowCells);
+    }
+
+    final layer = _NoticeTableLayer(
+      id: _nextLayerId('table'),
+      offset: _clampOffset(
+        Offset(_canvasWidth * 0.2, _canvasHeight * 0.25),
+        layerWidth: cellWidth * columns,
+        layerHeight: rowHeight * rows + _tableHandleHeight,
+      ),
+      columnWidths: List<double>.filled(columns, cellWidth),
+      rowHeights: List<double>.filled(rows, rowHeight),
+      cells: cells,
+      zOrder: _nextLayerZOrder(),
+    );
+
+    setState(() {
+      _tableLayers.add(layer);
+      _selectedLayerId = layer.id;
+      layer.selectedCells
+        ..clear()
+        ..add(layer.cellKey(0, 0));
+    });
+  }
+
+  void _selectTableCell(_NoticeTableLayer layer, int row, int column) {
+    _normalizeTableSelection(layer);
+
+    final key = layer.cellKey(row, column);
+    final sameTableAlreadySelected = _selectedLayerId == layer.id;
+    final controlPressed =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.logicalKeysPressed.contains(
+          LogicalKeyboardKey.controlLeft,
+        ) ||
+        HardwareKeyboard.instance.logicalKeysPressed.contains(
+          LogicalKeyboardKey.controlRight,
+        );
+
+    final isAlreadySingleSelected =
+        sameTableAlreadySelected &&
+        !controlPressed &&
+        layer.selectedRow == row &&
+        layer.selectedColumn == column &&
+        layer.selectedCells.length == 1 &&
+        layer.selectedCells.contains(key);
+    if (isAlreadySingleSelected) {
+      return;
+    }
+
+    setState(() {
+      _selectedLayerId = layer.id;
+      if (controlPressed && sameTableAlreadySelected) {
+        if (layer.selectedCells.contains(key) &&
+            layer.selectedCells.length > 1) {
+          layer.selectedCells.remove(key);
+        } else {
+          layer.selectedCells.add(key);
+        }
+      } else {
+        layer.selectedCells
+          ..clear()
+          ..add(key);
+      }
+
+      layer.selectedRow = row;
+      layer.selectedColumn = column;
+    });
+
+    final selectedCell = layer.cellAt(row, column);
+    if (selectedCell != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          selectedCell.focusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  void _normalizeTableSelection(_NoticeTableLayer layer) {
+    if (layer.rows == 0 || layer.columns == 0) {
+      return;
+    }
+
+    layer.selectedRow = layer.selectedRow.clamp(0, layer.rows - 1);
+    layer.selectedColumn = layer.selectedColumn.clamp(0, layer.columns - 1);
+
+    final cleaned = <String>{};
+    for (final key in layer.selectedCells) {
+      final coordinate = layer.coordinateFromKey(key);
+      if (coordinate == null) {
+        continue;
+      }
+      final row = coordinate.$1;
+      final column = coordinate.$2;
+      if (row < 0 ||
+          row >= layer.rows ||
+          column < 0 ||
+          column >= layer.columns) {
+        continue;
+      }
+      if (layer.cells[row][column].hidden) {
+        continue;
+      }
+      cleaned.add(key);
+    }
+    layer.selectedCells
+      ..clear()
+      ..addAll(cleaned);
+
+    final selectedCell = layer.cellAt(layer.selectedRow, layer.selectedColumn);
+    if (selectedCell != null && !selectedCell.hidden) {
+      if (layer.selectedCells.isEmpty) {
+        layer.selectedCells.add(
+          layer.cellKey(layer.selectedRow, layer.selectedColumn),
+        );
+      }
+      return;
+    }
+
+    for (var row = 0; row < layer.rows; row++) {
+      for (var column = 0; column < layer.columns; column++) {
+        final cell = layer.cells[row][column];
+        if (!cell.hidden) {
+          layer.selectedRow = row;
+          layer.selectedColumn = column;
+          layer.selectedCells
+            ..clear()
+            ..add(layer.cellKey(row, column));
+          return;
+        }
+      }
+    }
+  }
+
+  void _updateSelectedTableWidth(double targetWidth) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final currentWidth = layer.totalWidth;
+    if (currentWidth <= 0) {
+      return;
+    }
+
+    final ratio = targetWidth / currentWidth;
+    setState(() {
+      for (var i = 0; i < layer.columnWidths.length; i++) {
+        layer.columnWidths[i] = (layer.columnWidths[i] * ratio).clamp(
+          _tableMinCellWidth,
+          420,
+        );
+      }
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _updateSelectedTableHeight(double targetHeight) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final currentHeight = layer.totalBodyHeight;
+    if (currentHeight <= 0) {
+      return;
+    }
+
+    final ratio = targetHeight / currentHeight;
+    setState(() {
+      for (var i = 0; i < layer.rowHeights.length; i++) {
+        layer.rowHeights[i] = (layer.rowHeights[i] * ratio).clamp(
+          _tableMinRowHeight,
+          180,
+        );
+      }
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _updateSelectedTableColumnWidth(double value) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final column = layer.selectedColumn.clamp(0, layer.columns - 1);
+    setState(() {
+      layer.columnWidths[column] = value;
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _updateSelectedTableRowHeight(double value) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final row = layer.selectedRow.clamp(0, layer.rows - 1);
+    setState(() {
+      layer.rowHeights[row] = value;
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _setSelectedCellAlignment(quill.Attribute<String?> attribute) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final cell = layer.cellAt(layer.selectedRow, layer.selectedColumn);
+    if (cell == null || cell.hidden) {
+      return;
+    }
+
+    final docLength = cell.controller.document.length - 1;
+    if (docLength > 0) {
+      cell.controller.formatText(0, docLength, attribute);
+    } else {
+      cell.controller.formatSelection(attribute);
+    }
+    setState(() {});
+  }
+
+  void _setSelectedCellVerticalAlign(CrossAxisAlignment verticalAlign) {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    final cell = layer.cellAt(layer.selectedRow, layer.selectedColumn);
+    if (cell == null || cell.hidden) {
+      return;
+    }
+
+    setState(() {
+      cell.verticalAlign = verticalAlign;
+    });
+  }
+
+  void _resetTableMerges(_NoticeTableLayer layer) {
+    for (final row in layer.cells) {
+      for (final cell in row) {
+        cell.hidden = false;
+        cell.rowSpan = 1;
+        cell.columnSpan = 1;
+      }
+    }
+  }
+
+  void _addRowAfterSelectedTableCell() {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    _normalizeTableSelection(layer);
+
+    final targetRow = (layer.selectedRow + 1).clamp(0, layer.rows);
+    final newRow = <_NoticeTableCell>[];
+    for (var column = 0; column < layer.columns; column++) {
+      newRow.add(
+        _NoticeTableCell(
+          controller: quill.QuillController.basic(),
+          focusNode: FocusNode(),
+        ),
+      );
+    }
+
+    setState(() {
+      _resetTableMerges(layer);
+      layer.cells.insert(targetRow, newRow);
+      layer.rowHeights.insert(targetRow, 42);
+      layer.selectedRow = targetRow;
+      layer.selectedCells
+        ..clear()
+        ..add(layer.cellKey(targetRow, layer.selectedColumn));
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _addColumnAfterSelectedTableCell() {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    _normalizeTableSelection(layer);
+
+    final targetColumn = (layer.selectedColumn + 1).clamp(0, layer.columns);
+    setState(() {
+      _resetTableMerges(layer);
+      for (final row in layer.cells) {
+        row.insert(
+          targetColumn,
+          _NoticeTableCell(
+            controller: quill.QuillController.basic(),
+            focusNode: FocusNode(),
+          ),
+        );
+      }
+      layer.columnWidths.insert(targetColumn, _tableMinCellWidth + 12);
+      layer.selectedColumn = targetColumn;
+      layer.selectedCells
+        ..clear()
+        ..add(layer.cellKey(layer.selectedRow, targetColumn));
+      layer.offset = _clampOffset(
+        layer.offset,
+        layerWidth: layer.totalWidth,
+        layerHeight: layer.totalHeight,
+      );
+    });
+  }
+
+  void _mergeSelectedTableRange() {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    _normalizeTableSelection(layer);
+
+    if (layer.selectedCells.length < 2) {
+      return;
+    }
+
+    final points = <(int, int)>[];
+    for (final key in layer.selectedCells) {
+      final coordinate = layer.coordinateFromKey(key);
+      if (coordinate != null) {
+        points.add(coordinate);
+      }
+    }
+    if (points.length < 2) {
+      return;
+    }
+
+    final selectedSet = <(int, int)>{...points};
+    final startRow = points.map((e) => e.$1).reduce(math.min);
+    final endRow = points.map((e) => e.$1).reduce(math.max);
+    final startColumn = points.map((e) => e.$2).reduce(math.min);
+    final endColumn = points.map((e) => e.$2).reduce(math.max);
+
+    final expectedCount =
+        (endRow - startRow + 1) * (endColumn - startColumn + 1);
+    if (selectedSet.length != expectedCount) {
+      return;
+    }
+
+    final visited = <(int, int)>{};
+    final queue = <(int, int)>[points.first];
+    while (queue.isNotEmpty) {
+      final current = queue.removeLast();
+      if (visited.contains(current)) {
+        continue;
+      }
+      visited.add(current);
+      final neighbors = <(int, int)>[
+        (current.$1 - 1, current.$2),
+        (current.$1 + 1, current.$2),
+        (current.$1, current.$2 - 1),
+        (current.$1, current.$2 + 1),
+      ];
+      for (final neighbor in neighbors) {
+        if (selectedSet.contains(neighbor) && !visited.contains(neighbor)) {
+          queue.add(neighbor);
+        }
+      }
+    }
+    if (visited.length != selectedSet.length) {
+      return;
+    }
+
+    for (var row = startRow; row <= endRow; row++) {
+      for (var column = startColumn; column <= endColumn; column++) {
+        final cell = layer.cells[row][column];
+        if (cell.hidden || cell.rowSpan > 1 || cell.columnSpan > 1) {
+          return;
+        }
+      }
+    }
+
+    setState(() {
+      final master = layer.cells[startRow][startColumn];
+      master.rowSpan = endRow - startRow + 1;
+      master.columnSpan = endColumn - startColumn + 1;
+
+      for (var row = startRow; row <= endRow; row++) {
+        for (var column = startColumn; column <= endColumn; column++) {
+          if (row == startRow && column == startColumn) {
+            continue;
+          }
+
+          final cell = layer.cells[row][column];
+          cell.hidden = true;
+          cell.rowSpan = 1;
+          cell.columnSpan = 1;
+          cell.controller.clear();
+        }
+      }
+
+      layer.selectedRow = startRow;
+      layer.selectedColumn = startColumn;
+      layer.selectedCells
+        ..clear()
+        ..add(layer.cellKey(startRow, startColumn));
+    });
+  }
+
+  void _unmergeSelectedTableCell() {
+    final layer = _selectedTableLayer();
+    if (layer == null) {
+      return;
+    }
+
+    _normalizeTableSelection(layer);
+    final targetKeys = layer.selectedCells.isEmpty
+        ? <String>{layer.cellKey(layer.selectedRow, layer.selectedColumn)}
+        : Set<String>.from(layer.selectedCells);
+    final masters = <(int, int)>[];
+    for (final key in targetKeys) {
+      final coordinate = layer.coordinateFromKey(key);
+      if (coordinate == null) {
+        continue;
+      }
+      final master = layer.cellAt(coordinate.$1, coordinate.$2);
+      if (master == null || master.hidden) {
+        continue;
+      }
+      if (master.rowSpan > 1 || master.columnSpan > 1) {
+        masters.add(coordinate);
+      }
+    }
+
+    if (masters.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      for (final masterCoord in masters) {
+        final row = masterCoord.$1;
+        final column = masterCoord.$2;
+        final master = layer.cells[row][column];
+        final rowSpan = master.rowSpan;
+        final columnSpan = master.columnSpan;
+        master.rowSpan = 1;
+        master.columnSpan = 1;
+        for (var r = row; r < row + rowSpan; r++) {
+          for (var c = column; c < column + columnSpan; c++) {
+            final cell = layer.cells[r][c];
+            cell.hidden = false;
+            if (r != row || c != column) {
+              cell.rowSpan = 1;
+              cell.columnSpan = 1;
+            }
+          }
+        }
+      }
+
+      final first = masters.first;
+      layer.selectedRow = first.$1;
+      layer.selectedColumn = first.$2;
+      layer.selectedCells
+        ..clear()
+        ..add(layer.cellKey(first.$1, first.$2));
+    });
   }
 
   void _attachTextLayer(_NoticeTextLayer layer) {
@@ -703,23 +1317,61 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     return null;
   }
 
+  _NoticeTableLayer? _selectedTableLayer() {
+    if (_currentPage == null) {
+      return null;
+    }
+
+    final selectedLayerId = _selectedLayerId;
+    if (selectedLayerId == null) {
+      return null;
+    }
+
+    for (final layer in _tableLayers) {
+      if (layer.id == selectedLayerId) {
+        return layer;
+      }
+    }
+
+    return null;
+  }
+
+  quill.QuillController? _activeCellController() {
+    final tableLayer = _selectedTableLayer();
+    if (tableLayer == null) {
+      return null;
+    }
+    final cell = tableLayer.cellAt(
+      tableLayer.selectedRow,
+      tableLayer.selectedColumn,
+    );
+    if (cell == null || cell.hidden) {
+      return null;
+    }
+    return cell.controller;
+  }
+
   quill.Style _selectedStyle() {
     final layer = _selectedTextLayer();
-    if (layer == null) {
-      return quill.Style();
+    if (layer != null) {
+      final selection = layer.lastSelection;
+      if (selection.isValid && !selection.isCollapsed) {
+        return layer.controller.document
+            .collectAllStyles(selection.start, selection.end - selection.start)
+            .fold<quill.Style>(
+              quill.Style(),
+              (combined, style) => combined.mergeAll(style),
+            );
+      }
+      return layer.controller.getSelectionStyle();
     }
 
-    final selection = layer.lastSelection;
-    if (selection.isValid && !selection.isCollapsed) {
-      return layer.controller.document
-          .collectAllStyles(selection.start, selection.end - selection.start)
-          .fold<quill.Style>(
-            quill.Style(),
-            (combined, style) => combined.mergeAll(style),
-          );
+    final cellCtrl = _activeCellController();
+    if (cellCtrl != null) {
+      return cellCtrl.getSelectionStyle();
     }
 
-    return layer.controller.getSelectionStyle();
+    return quill.Style();
   }
 
   bool _selectionHas(quill.Attribute attribute) {
@@ -895,6 +1547,63 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     _applySelectionFormat(layer, attribute, remeasure: true);
   }
 
+  // ── Table cell formatting helpers ─────────────────────────────────────────
+
+  void _applyCellFormat(quill.QuillController ctrl, quill.Attribute attribute) {
+    final selection = ctrl.selection;
+    if (selection.isValid && !selection.isCollapsed) {
+      ctrl.formatText(
+        selection.start,
+        selection.end - selection.start,
+        attribute,
+      );
+    } else {
+      final docLength = math.max(0, ctrl.document.length - 1);
+      if (docLength > 0) {
+        ctrl.formatText(0, docLength, attribute);
+      } else {
+        ctrl.formatSelection(attribute);
+      }
+    }
+    setState(() {});
+  }
+
+  void _toggleCellAttribute(quill.Attribute attribute) {
+    final ctrl = _activeCellController();
+    if (ctrl == null) {
+      return;
+    }
+    final exists = _selectedStyle().attributes.containsKey(attribute.key);
+    _applyCellFormat(
+      ctrl,
+      exists ? quill.Attribute.clone(attribute, null) : attribute,
+    );
+  }
+
+  void _applyCellFontFamily(String fontFamily) {
+    final ctrl = _activeCellController();
+    if (ctrl == null) {
+      return;
+    }
+    _applyCellFormat(ctrl, quill.FontAttribute(fontFamily));
+  }
+
+  void _applyCellFontSize(int size) {
+    final ctrl = _activeCellController();
+    if (ctrl == null) {
+      return;
+    }
+    _applyCellFormat(ctrl, quill.SizeAttribute('$size'));
+  }
+
+  void _applyCellTextColor(Color color) {
+    final ctrl = _activeCellController();
+    if (ctrl == null) {
+      return;
+    }
+    _applyCellFormat(ctrl, quill.ColorAttribute(_colorToHex(color)));
+  }
+
   void _updateSelectedTextWidth(double value) {
     final layer = _selectedTextLayer();
     if (layer == null) {
@@ -982,6 +1691,15 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     _invalidateCanvas();
   }
 
+  void _moveTableLayer(_NoticeTableLayer layer, Offset delta) {
+    layer.offset = _clampOffset(
+      layer.offset + delta,
+      layerWidth: layer.totalWidth,
+      layerHeight: layer.totalHeight,
+    );
+    _invalidateCanvas();
+  }
+
   Offset _clampOffset(
     Offset candidate, {
     required double layerWidth,
@@ -1040,14 +1758,24 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     }
 
     final imageLayer = _selectedImageLayer();
-    if (imageLayer == null) {
+    if (imageLayer != null) {
+      setState(() {
+        _imageLayers.remove(imageLayer);
+        _selectedLayerId = null;
+      });
+      return;
+    }
+
+    final tableLayer = _selectedTableLayer();
+    if (tableLayer == null) {
       return;
     }
 
     setState(() {
-      _imageLayers.remove(imageLayer);
+      _tableLayers.remove(tableLayer);
       _selectedLayerId = null;
     });
+    _disposeTableLayer(tableLayer);
   }
 
   KeyEventResult _handleDialogKeyEvent(FocusNode node, KeyEvent event) {
@@ -1065,7 +1793,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
       return KeyEventResult.ignored;
     }
 
-    if (selectedTextLayer == null && _selectedImageLayer() == null) {
+    if (selectedTextLayer == null &&
+        _selectedImageLayer() == null &&
+        _selectedTableLayer() == null) {
       return KeyEventResult.ignored;
     }
 
@@ -1445,6 +2175,8 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
           _LayerStackEntry.image(layer: imageLayer),
         for (final textLayer in page.textLayers)
           _LayerStackEntry.text(layer: textLayer),
+        for (final tableLayer in page.tableLayers)
+          _LayerStackEntry.table(layer: tableLayer),
       ]..sort((a, b) => a.zOrder.compareTo(b.zOrder));
 
       for (final entry in pageEntries) {
@@ -1460,6 +2192,142 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
                   pw.MemoryImage(imageLayer.bytes),
                   fit: pw.BoxFit.fill,
                 ),
+              ),
+            ),
+          );
+          continue;
+        }
+
+        if (entry.tableLayer case final tableLayer?) {
+          final columnOffsets = <double>[];
+          var x = 0.0;
+          for (final width in tableLayer.columnWidths) {
+            columnOffsets.add(x);
+            x += width;
+          }
+
+          final rowOffsets = <double>[];
+          var y = 0.0;
+          for (final height in tableLayer.rowHeights) {
+            rowOffsets.add(y);
+            y += height;
+          }
+
+          final positionedCells = <pw.Widget>[];
+          for (var row = 0; row < tableLayer.rows; row++) {
+            for (var column = 0; column < tableLayer.columns; column++) {
+              final cell = tableLayer.cells[row][column];
+              if (cell.hidden) {
+                continue;
+              }
+
+              final mergedWidth = tableLayer.spannedWidth(
+                column,
+                cell.columnSpan,
+              );
+              final mergedHeight = tableLayer.spannedHeight(row, cell.rowSpan);
+
+              // Derive text alignment from the quill document
+              final cellOps = cell.controller.document.toDelta().toJson();
+              pw.TextAlign pdfTextAlign = pw.TextAlign.left;
+              for (final op in cellOps) {
+                final attrs = op['attributes'];
+                if (attrs is Map) {
+                  final align = attrs['align'];
+                  if (align == 'center') {
+                    pdfTextAlign = pw.TextAlign.center;
+                  } else if (align == 'right') {
+                    pdfTextAlign = pw.TextAlign.right;
+                  }
+                }
+              }
+
+              // Vertical alignment
+              final pdfVertAlign = switch (cell.verticalAlign) {
+                CrossAxisAlignment.center => pw.CrossAxisAlignment.center,
+                CrossAxisAlignment.end => pw.CrossAxisAlignment.end,
+                _ => pw.CrossAxisAlignment.start,
+              };
+
+              // Build rich text spans from quill doc
+              final cellSpans = <pw.InlineSpan>[];
+              for (final op in cellOps) {
+                final insert = op['insert'];
+                if (insert is! String || insert.isEmpty) {
+                  continue;
+                }
+                final attributes = op['attributes'] is Map
+                    ? Map<String, dynamic>.from(op['attributes'] as Map)
+                    : <String, dynamic>{};
+                cellSpans.add(
+                  pw.TextSpan(
+                    text: insert,
+                    style: _pdfTextStyleFromAttributes(
+                      attributes,
+                      fallbackFontSize: 10,
+                    ),
+                  ),
+                );
+              }
+              final cellTextSpan = cellSpans.isEmpty
+                  ? pw.TextSpan(
+                      text: '',
+                      style: _pdfTextStyleFromAttributes(
+                        const <String, dynamic>{},
+                        fallbackFontSize: 10,
+                      ),
+                    )
+                  : pw.TextSpan(children: cellSpans);
+
+              positionedCells.add(
+                pw.Positioned(
+                  left: columnOffsets[column],
+                  top: rowOffsets[row],
+                  child: pw.Container(
+                    width: mergedWidth,
+                    height: mergedHeight,
+                    padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 3,
+                    ),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(
+                        color: pdf.PdfColors.black,
+                        width: 1.4,
+                      ),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      mainAxisAlignment: switch (pdfVertAlign) {
+                        pw.CrossAxisAlignment.center =>
+                          pw.MainAxisAlignment.center,
+                        pw.CrossAxisAlignment.end => pw.MainAxisAlignment.end,
+                        _ => pw.MainAxisAlignment.start,
+                      },
+                      children: [
+                        pw.RichText(
+                          textAlign: pdfTextAlign,
+                          text: cellTextSpan,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+
+          children.add(
+            pw.Positioned(
+              left: tableLayer.offset.dx,
+              top: tableLayer.offset.dy + _tableHandleHeight,
+              child: pw.Container(
+                width: tableLayer.totalWidth,
+                height: tableLayer.totalBodyHeight,
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: pdf.PdfColors.black, width: 1.4),
+                ),
+                child: pw.Stack(children: positionedCells),
               ),
             ),
           );
@@ -2008,6 +2876,150 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
     );
   }
 
+  Widget _buildTableLayer(_NoticeTableLayer layer) {
+    final isSelected = _selectedLayerId == layer.id;
+    final borderWidth = isSelected ? 2.0 : 1.0;
+
+    return Positioned(
+      left: layer.offset.dx,
+      top: layer.offset.dy,
+      child: Container(
+        width: layer.totalWidth,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? _brandColor : const Color(0xFF9FB3AF),
+            width: borderWidth,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white,
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(borderWidth),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectLayer(layer.id),
+                onPanStart: _capturingNotice
+                    ? null
+                    : (_) => _selectLayer(layer.id),
+                onPanUpdate: _capturingNotice
+                    ? null
+                    : (details) => _moveTableLayer(layer, details.delta),
+                child: Container(
+                  height: _tableHandleHeight,
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFE2F3F0)
+                        : const Color(0xFFF3F8F7),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(5),
+                    ),
+                    border: const Border(
+                      bottom: BorderSide(color: Color(0xFFD5E4E1)),
+                    ),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: const Text(
+                    'Drag table',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: layer.totalWidth - (borderWidth * 2),
+                height: layer.totalBodyHeight,
+                child: Stack(children: _buildPositionedTableCells(layer)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableCell(_NoticeTableLayer layer, int row, int column) {
+    final cell = layer.cells[row][column];
+    if (cell.hidden) {
+      return const SizedBox.shrink();
+    }
+
+    final width = layer.spannedWidth(column, cell.columnSpan);
+    final height = layer.spannedHeight(row, cell.rowSpan);
+    final isSelected =
+        _selectedLayerId == layer.id &&
+        layer.selectedCells.contains(layer.cellKey(row, column));
+
+    final editor = quill.QuillEditor.basic(
+      key: ValueKey('${layer.id}-$row-$column'),
+      controller: cell.controller,
+      focusNode: cell.focusNode,
+      config: quill.QuillEditorConfig(
+        padding: EdgeInsets.zero,
+        scrollable: false,
+        autoFocus: false,
+        expands: false,
+        onTapOutsideEnabled: false,
+        customStyleBuilder: _buildQuillCustomStyle,
+      ),
+    );
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF8EA09D), width: 0.8),
+        color: isSelected ? const Color(0x1A0F8F82) : Colors.white,
+      ),
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _capturingNotice
+            ? null
+            : (_) => _selectTableCell(layer, row, column),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: switch (cell.verticalAlign) {
+              CrossAxisAlignment.center => MainAxisAlignment.center,
+              CrossAxisAlignment.end => MainAxisAlignment.end,
+              _ => MainAxisAlignment.start,
+            },
+            children: [Flexible(child: editor)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildPositionedTableCells(_NoticeTableLayer layer) {
+    final widgets = <Widget>[];
+    for (var row = 0; row < layer.rows; row++) {
+      for (var column = 0; column < layer.columns; column++) {
+        final cell = layer.cells[row][column];
+        if (cell.hidden) {
+          continue;
+        }
+
+        widgets.add(
+          Positioned(
+            left: layer.columnOffset(column),
+            top: layer.rowOffset(row),
+            child: _buildTableCell(layer, row, column),
+          ),
+        );
+      }
+    }
+    return widgets;
+  }
+
   Widget _buildLetterHeadCanvas() {
     if (_loadingLetterHead) {
       return const Center(child: CircularProgressIndicator());
@@ -2172,6 +3184,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
                                               ),
                                             ),
                                           )
+                                        else if (entry.tableLayer
+                                            case final tableLayer?)
+                                          _buildTableLayer(tableLayer)
                                         else
                                           _buildTextLayer(entry.textLayer!),
                                     ],
@@ -2268,6 +3283,274 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTableCellTextControls(_NoticeTableLayer tableLayer) {
+    final cell = tableLayer.cellAt(
+      tableLayer.selectedRow,
+      tableLayer.selectedColumn,
+    );
+    if (cell == null || cell.hidden) {
+      return const SizedBox.shrink();
+    }
+
+    final selectedFont =
+        _selectionValue(quill.Attribute.font.key) ?? _fontFamilies.first.value;
+    final selectedSize =
+        int.tryParse(_selectionValue(quill.Attribute.size.key) ?? '12') ?? 12;
+    final selectedColorValue = _selectionValue(quill.Attribute.color.key);
+    final selectedColor = selectedColorValue != null
+        ? _colorFromHex(selectedColorValue)
+        : Colors.black;
+    final selectedAlign = _selectionValue(quill.Attribute.align.key);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Cell Formatting',
+          style: TextStyle(
+            color: _brandTextColor,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          key: ValueKey(
+            'cell-font-${tableLayer.id}-${tableLayer.selectedRow}-${tableLayer.selectedColumn}-$selectedFont',
+          ),
+          initialValue: selectedFont,
+          decoration: const InputDecoration(
+            labelText: 'Font Family',
+            border: OutlineInputBorder(),
+          ),
+          selectedItemBuilder: (context) {
+            return _fontFamilies
+                .map(
+                  (option) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      option.label,
+                      style: _googleFontStyle(option.value),
+                    ),
+                  ),
+                )
+                .toList();
+          },
+          items: _fontFamilies
+              .map(
+                (option) => DropdownMenuItem<String>(
+                  value: option.value,
+                  child: Text(
+                    option.label,
+                    style: _googleFontStyle(option.value),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (value) {
+            if (value != null) {
+              _applyCellFontFamily(value);
+            }
+          },
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Font Size: $selectedSize',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        Slider(
+          value: selectedSize.toDouble().clamp(8, 48),
+          min: 8,
+          max: 48,
+          divisions: 20,
+          label: '$selectedSize pt',
+          activeColor: _brandColor,
+          onChanged: (value) => _applyCellFontSize(value.round()),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _toggleCellAttribute(quill.Attribute.bold),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: _selectionHas(quill.Attribute.bold)
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Text(
+                  'B',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _toggleCellAttribute(quill.Attribute.italic),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: _selectionHas(quill.Attribute.italic)
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Text(
+                  'I',
+                  style: TextStyle(fontStyle: FontStyle.italic, fontSize: 18),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _toggleCellAttribute(quill.Attribute.underline),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: _selectionHas(quill.Attribute.underline)
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Text(
+                  'U',
+                  style: TextStyle(
+                    decoration: TextDecoration.underline,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Text Alignment',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellAlignment(quill.Attribute.leftAlignment),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor:
+                      selectedAlign == quill.Attribute.leftAlignment.value
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.format_align_left_rounded),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellAlignment(quill.Attribute.centerAlignment),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor:
+                      selectedAlign == quill.Attribute.centerAlignment.value
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.format_align_center_rounded),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellAlignment(quill.Attribute.rightAlignment),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor:
+                      selectedAlign == quill.Attribute.rightAlignment.value
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.format_align_right_rounded),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Vertical Alignment',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellVerticalAlign(CrossAxisAlignment.start),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor:
+                      cell.verticalAlign == CrossAxisAlignment.start
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.vertical_align_top_rounded),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellVerticalAlign(CrossAxisAlignment.center),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor:
+                      cell.verticalAlign == CrossAxisAlignment.center
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.vertical_align_center_rounded),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () =>
+                    _setSelectedCellVerticalAlign(CrossAxisAlignment.end),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: cell.verticalAlign == CrossAxisAlignment.end
+                      ? const Color(0xFFE2F3F0)
+                      : null,
+                ),
+                child: const Icon(Icons.vertical_align_bottom_rounded),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Text('Font Color', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _textColors.map((color) {
+            final isSelected = selectedColor.toARGB32() == color.toARGB32();
+            return InkWell(
+              onTap: () => _applyCellTextColor(color),
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? Colors.black : Colors.white,
+                    width: isSelected ? 3 : 1,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -2600,6 +3883,10 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
   Widget _buildControls() {
     final selectedTextLayer = _selectedTextLayer();
     final selectedImageLayer = _selectedImageLayer();
+    final selectedTableLayer = _selectedTableLayer();
+    if (selectedTableLayer != null) {
+      _normalizeTableSelection(selectedTableLayer);
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -2729,6 +4016,15 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
             icon: const Icon(Icons.add_photo_alternate_rounded),
             label: const Text('Import Overlay Image'),
           ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: _showAddTableDialog,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF285E75),
+            ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Add Table'),
+          ),
           const SizedBox(height: 24),
           const Text(
             'Text Margins',
@@ -2818,7 +4114,133 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
             ),
             const SizedBox(height: 20),
           ],
-          if (selectedTextLayer == null && selectedImageLayer == null)
+          if (selectedTableLayer != null) ...[
+            const Text(
+              'Selected Table',
+              style: TextStyle(
+                color: _brandTextColor,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Rows: ${selectedTableLayer.rows}  |  Columns: ${selectedTableLayer.columns}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Table Width: ${selectedTableLayer.totalWidth.toStringAsFixed(0)} px',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Slider(
+              value: selectedTableLayer.totalWidth,
+              min: (_tableMinCellWidth * selectedTableLayer.columns)
+                  .clamp(120.0, 2400.0)
+                  .toDouble(),
+              max: (_canvasWidth * 0.95).clamp(240.0, 2400.0).toDouble(),
+              divisions: 100,
+              activeColor: _brandColor,
+              onChanged: _updateSelectedTableWidth,
+            ),
+            Text(
+              'Table Height: ${selectedTableLayer.totalBodyHeight.toStringAsFixed(0)} px',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Slider(
+              value: selectedTableLayer.totalBodyHeight,
+              min: (_tableMinRowHeight * selectedTableLayer.rows)
+                  .clamp(60.0, 1600.0)
+                  .toDouble(),
+              max: (_canvasHeight * 0.8).clamp(180.0, 1800.0).toDouble(),
+              divisions: 80,
+              activeColor: _brandColor,
+              onChanged: _updateSelectedTableHeight,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selected Cell: Row ${selectedTableLayer.selectedRow + 1}, Column ${selectedTableLayer.selectedColumn + 1}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selected Column Width: ${selectedTableLayer.columnWidths[selectedTableLayer.selectedColumn].toStringAsFixed(0)} px',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Slider(
+              value: selectedTableLayer
+                  .columnWidths[selectedTableLayer.selectedColumn],
+              min: _tableMinCellWidth,
+              max: (_canvasWidth * 0.65).clamp(150.0, 800.0).toDouble(),
+              divisions: 50,
+              activeColor: _brandColor,
+              onChanged: _updateSelectedTableColumnWidth,
+            ),
+            Text(
+              'Selected Row Height: ${selectedTableLayer.rowHeights[selectedTableLayer.selectedRow].toStringAsFixed(0)} px',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Slider(
+              value:
+                  selectedTableLayer.rowHeights[selectedTableLayer.selectedRow],
+              min: _tableMinRowHeight,
+              max: 180,
+              divisions: 50,
+              activeColor: _brandColor,
+              onChanged: _updateSelectedTableRowHeight,
+            ),
+            const SizedBox(height: 8),
+            _buildTableCellTextControls(selectedTableLayer),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _addRowAfterSelectedTableCell,
+                    icon: const Icon(Icons.add_box_outlined),
+                    label: const Text('Add Row'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _addColumnAfterSelectedTableCell,
+                    icon: const Icon(Icons.view_column_outlined),
+                    label: const Text('Add Column'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Tip: click a cell, then hold Ctrl and click more cells to multi-select. Merge works only when selected cells form one connected rectangular block.',
+              style: TextStyle(color: Colors.black54, height: 1.35),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _mergeSelectedTableRange,
+                    icon: const Icon(Icons.call_merge_rounded),
+                    label: const Text('Merge'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _unmergeSelectedTableCell,
+                    icon: const Icon(Icons.call_split_rounded),
+                    label: const Text('Unmerge'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+          if (selectedTextLayer == null &&
+              selectedImageLayer == null &&
+              selectedTableLayer == null)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -2831,7 +4253,9 @@ class _CreateNoticeDialogState extends State<CreateNoticeDialog> {
                 style: TextStyle(height: 1.45, color: Colors.black54),
               ),
             ),
-          if (selectedTextLayer != null || selectedImageLayer != null) ...[
+          if (selectedTextLayer != null ||
+              selectedImageLayer != null ||
+              selectedTableLayer != null) ...[
             const SizedBox(height: 8),
             Row(
               children: [
@@ -3048,11 +4472,13 @@ class _NoticePage {
     required this.backgroundBytes,
     required this.textLayers,
     required this.imageLayers,
+    required this.tableLayers,
   });
 
   Uint8List? backgroundBytes;
   final List<_NoticeTextLayer> textLayers;
   final List<_NoticeImageLayer> imageLayers;
+  final List<_NoticeTableLayer> tableLayers;
 }
 
 class _NoticeImageLayer {
@@ -3082,29 +4508,160 @@ class _LayerStackEntry {
     required this.id,
     required this.textLayer,
     required this.imageLayer,
+    required this.tableLayer,
   });
 
   factory _LayerStackEntry.text({required _NoticeTextLayer layer}) {
-    return _LayerStackEntry._(id: layer.id, textLayer: layer, imageLayer: null);
+    return _LayerStackEntry._(
+      id: layer.id,
+      textLayer: layer,
+      imageLayer: null,
+      tableLayer: null,
+    );
   }
 
   factory _LayerStackEntry.image({required _NoticeImageLayer layer}) {
-    return _LayerStackEntry._(id: layer.id, textLayer: null, imageLayer: layer);
+    return _LayerStackEntry._(
+      id: layer.id,
+      textLayer: null,
+      imageLayer: layer,
+      tableLayer: null,
+    );
+  }
+
+  factory _LayerStackEntry.table({required _NoticeTableLayer layer}) {
+    return _LayerStackEntry._(
+      id: layer.id,
+      textLayer: null,
+      imageLayer: null,
+      tableLayer: layer,
+    );
   }
 
   final String id;
   final _NoticeTextLayer? textLayer;
   final _NoticeImageLayer? imageLayer;
+  final _NoticeTableLayer? tableLayer;
 
-  int get zOrder => textLayer?.zOrder ?? imageLayer!.zOrder;
+  int get zOrder =>
+      textLayer?.zOrder ?? imageLayer?.zOrder ?? tableLayer!.zOrder;
 
   set zOrder(int value) {
     if (textLayer != null) {
       textLayer!.zOrder = value;
       return;
     }
-    imageLayer!.zOrder = value;
+    if (imageLayer != null) {
+      imageLayer!.zOrder = value;
+      return;
+    }
+    tableLayer!.zOrder = value;
   }
+}
+
+class _NoticeTableLayer {
+  _NoticeTableLayer({
+    required this.id,
+    required this.offset,
+    required this.columnWidths,
+    required this.rowHeights,
+    required this.cells,
+    required this.zOrder,
+  });
+
+  final String id;
+  Offset offset;
+  final List<double> columnWidths;
+  final List<double> rowHeights;
+  final List<List<_NoticeTableCell>> cells;
+  int zOrder;
+  int selectedRow = 0;
+  int selectedColumn = 0;
+  final Set<String> selectedCells = <String>{};
+
+  int get rows => cells.length;
+  int get columns => cells.isEmpty ? 0 : cells.first.length;
+  double get totalWidth => columnWidths.fold(0.0, (sum, width) => sum + width);
+  double get totalBodyHeight =>
+      rowHeights.fold(0.0, (sum, height) => sum + height);
+  double get totalHeight =>
+      totalBodyHeight + _CreateNoticeDialogState._tableHandleHeight;
+
+  _NoticeTableCell? cellAt(int row, int column) {
+    if (row < 0 || row >= rows || column < 0 || column >= columns) {
+      return null;
+    }
+    return cells[row][column];
+  }
+
+  String cellKey(int row, int column) => '$row:$column';
+
+  (int, int)? coordinateFromKey(String key) {
+    final parts = key.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+    final row = int.tryParse(parts[0]);
+    final column = int.tryParse(parts[1]);
+    if (row == null || column == null) {
+      return null;
+    }
+    return (row, column);
+  }
+
+  double columnOffset(int columnIndex) {
+    var offset = 0.0;
+    final safeIndex = columnIndex.clamp(0, columns);
+    for (var i = 0; i < safeIndex; i++) {
+      offset += columnWidths[i];
+    }
+    return offset;
+  }
+
+  double rowOffset(int rowIndex) {
+    var offset = 0.0;
+    final safeIndex = rowIndex.clamp(0, rows);
+    for (var i = 0; i < safeIndex; i++) {
+      offset += rowHeights[i];
+    }
+    return offset;
+  }
+
+  double spannedWidth(int startColumn, int span) {
+    var width = 0.0;
+    final endColumn = (startColumn + span).clamp(0, columns);
+    for (var column = startColumn; column < endColumn; column++) {
+      width += columnWidths[column];
+    }
+    return width;
+  }
+
+  double spannedHeight(int startRow, int span) {
+    var height = 0.0;
+    final endRow = (startRow + span).clamp(0, rows);
+    for (var row = startRow; row < endRow; row++) {
+      height += rowHeights[row];
+    }
+    return height;
+  }
+}
+
+class _NoticeTableCell {
+  _NoticeTableCell({required this.controller, required this.focusNode});
+
+  final quill.QuillController controller;
+  final FocusNode focusNode;
+  CrossAxisAlignment verticalAlign = CrossAxisAlignment.start;
+  int rowSpan = 1;
+  int columnSpan = 1;
+  bool hidden = false;
+}
+
+class _TableConfigResult {
+  const _TableConfigResult({required this.rows, required this.columns});
+
+  final int rows;
+  final int columns;
 }
 
 class _FontFamilyOption {

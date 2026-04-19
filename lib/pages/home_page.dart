@@ -2057,16 +2057,6 @@ class _PaymentDetailsModalState extends State<_PaymentDetailsModal> {
     return payment.hashCode.toString();
   }
 
-  double _parseAmount(dynamic rawAmount) {
-    final text = rawAmount?.toString().trim() ?? '';
-    if (text.isEmpty || text.toLowerCase() == 'null') {
-      return 0;
-    }
-
-    final normalized = text.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(normalized) ?? 0;
-  }
-
   String _formatAmountForRequest(double amount) {
     if (amount == amount.truncateToDouble()) {
       return amount.toInt().toString();
@@ -2364,7 +2354,7 @@ class _PaymentDetailsModalState extends State<_PaymentDetailsModal> {
 
     final order = createOrderResponse?['order'];
     final orderMap = order is Map
-        ? Map<String, dynamic>.from(order as Map)
+        ? Map<String, dynamic>.from(order)
         : <String, dynamic>{};
     final orderId = orderMap['id']?.toString().trim() ?? '';
     if (orderId.isEmpty) {

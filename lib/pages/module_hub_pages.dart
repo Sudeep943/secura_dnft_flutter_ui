@@ -12,7 +12,10 @@ import '../widgets/sidebar.dart';
 import 'app_shell.dart';
 import 'create_payment_page.dart';
 import 'create_notice_page.dart';
+import 'home_page.dart';
 import 'view_all_notices_page.dart';
+import 'view_update_payments_page.dart';
+import 'create_ledger_entry_page.dart';
 
 class MeetingAndNoticeManagementPage extends StatelessWidget {
   const MeetingAndNoticeManagementPage({super.key, this.embedded = false});
@@ -127,51 +130,6 @@ class GroupManagementPage extends StatelessWidget {
   }
 }
 
-class AdminSectionPage extends StatelessWidget {
-  const AdminSectionPage({super.key, this.embedded = false});
-
-  final bool embedded;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ModuleHubPage(
-      embedded: embedded,
-      section: AppSection.adminSection,
-      title: 'Admin Section',
-      subtitle:
-          'Choose one of the administration actions below for roles, staff, and flat operations.',
-      items: [
-        _ModuleHubItem(
-          'Role Management',
-          Icons.lock_person_outlined,
-          onTap: () => openAppShellSection(context, AppSection.roleAndAccess),
-        ),
-        _ModuleHubItem(
-          'Staff Management',
-          Icons.groups_outlined,
-          onTap: () => openAppShellSection(context, AppSection.staffManagement),
-        ),
-        _ModuleHubItem(
-          'Flat Management',
-          Icons.door_front_door_outlined,
-          onTap: () => openAppShellSection(context, AppSection.flatManagement),
-        ),
-        _ModuleHubItem(
-          'Update Society Details',
-          Icons.apartment_outlined,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const UpdateSocietyDetailsPage(),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
 class FlatManagementPage extends StatelessWidget {
   const FlatManagementPage({super.key, this.embedded = false});
 
@@ -218,6 +176,67 @@ class FlatManagementPage extends StatelessWidget {
   }
 }
 
+class AdminSectionPage extends StatefulWidget {
+  const AdminSectionPage({super.key, this.embedded = false});
+
+  final bool embedded;
+
+  @override
+  State<AdminSectionPage> createState() => _AdminSectionPageState();
+}
+
+class _AdminSectionPageState extends State<AdminSectionPage> {
+  bool _showUpdateSocietyDetails = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showUpdateSocietyDetails) {
+      return UpdateSocietyDetailsPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showUpdateSocietyDetails = false;
+          });
+        },
+      );
+    }
+
+    return _ModuleHubPage(
+      embedded: widget.embedded,
+      section: AppSection.adminSection,
+      title: 'Admin Section',
+      subtitle:
+          'Choose one of the administration actions below for roles, staff, and flat operations.',
+      items: [
+        _ModuleHubItem(
+          'Role Management',
+          Icons.lock_person_outlined,
+          onTap: () => openAppShellSection(context, AppSection.roleAndAccess),
+        ),
+        _ModuleHubItem(
+          'Staff Management',
+          Icons.groups_outlined,
+          onTap: () => openAppShellSection(context, AppSection.staffManagement),
+        ),
+        _ModuleHubItem(
+          'Flat Management',
+          Icons.door_front_door_outlined,
+          onTap: () => openAppShellSection(context, AppSection.flatManagement),
+        ),
+        _ModuleHubItem(
+          'Update Society Details',
+          Icons.apartment_outlined,
+          onTap: () {
+            setState(() {
+              _showUpdateSocietyDetails = true;
+            });
+          },
+        ),
+      ],
+    );
+  }
+}
+
 class StaffManagementPage extends StatelessWidget {
   const StaffManagementPage({super.key, this.embedded = false});
 
@@ -229,12 +248,11 @@ class StaffManagementPage extends StatelessWidget {
       embedded: embedded,
       section: AppSection.staffManagement,
       title: 'Staff Management',
-      subtitle: 'Choose one of the staff operations below.',
+      subtitle: 'Choose one of the staff management actions below.',
       items: const [
-        _ModuleHubItem('Attendance Management', Icons.fact_check),
-        _ModuleHubItem('Leave Management', Icons.beach_access),
-        _ModuleHubItem('Shift Management', Icons.schedule),
-        _ModuleHubItem('Payroll Management', Icons.payments),
+        _ModuleHubItem('Add Staff', Icons.person_add_alt_1),
+        _ModuleHubItem('Update Staff', Icons.manage_accounts_outlined),
+        _ModuleHubItem('View Staff', Icons.badge_outlined),
       ],
     );
   }
@@ -251,11 +269,11 @@ class VendorManagementPage extends StatelessWidget {
       embedded: embedded,
       section: AppSection.vendorManagement,
       title: 'Vendor Management',
-      subtitle: 'Choose one of the vendor actions below.',
+      subtitle: 'Choose one of the vendor management actions below.',
       items: const [
-        _ModuleHubItem('Add Vendor', Icons.person_add_alt_1),
-        _ModuleHubItem('Update Vendor', Icons.manage_accounts),
-        _ModuleHubItem('View Vendor Details', Icons.storefront),
+        _ModuleHubItem('Add Vendor', Icons.storefront_outlined),
+        _ModuleHubItem('Update Vendor', Icons.edit_note_outlined),
+        _ModuleHubItem('View Vendors', Icons.list_alt_outlined),
       ],
     );
   }
@@ -335,6 +353,101 @@ class FinanceManagementPage extends StatefulWidget {
 
 class _FinanceManagementPageState extends State<FinanceManagementPage> {
   bool _showCreatePayment = false;
+  bool _showViewPayments = false;
+  bool _showCreateLedgerEntry = false;
+  bool _loadingDueDetails = false;
+
+  String _formatCurrencyWithCommas(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '0';
+
+    final isNegative = trimmed.startsWith('-');
+    final unsignedValue = isNegative ? trimmed.substring(1) : trimmed;
+    final parts = unsignedValue.split('.');
+    final integerPart = parts.first.replaceAll(RegExp(r'[^0-9]'), '');
+    if (integerPart.isEmpty) return value;
+
+    final buffer = StringBuffer();
+    for (var index = 0; index < integerPart.length; index++) {
+      final reverseIndex = integerPart.length - index;
+      buffer.write(integerPart[index]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    final decimalPart = parts.length > 1
+        ? '.${parts.sublist(1).join().replaceAll(RegExp(r'[^0-9]'), '')}'
+        : '';
+    return '${isNegative ? '-' : ''}${buffer.toString()}$decimalPart';
+  }
+
+  String _formatAsCurrency(String amount) {
+    final cleaned = amount.trim();
+    if (cleaned.isEmpty) return '₹0';
+
+    final rawAmount = cleaned.startsWith('₹') ? cleaned.substring(1) : cleaned;
+    return '₹${_formatCurrencyWithCommas(rawAmount)}';
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? const Color(0xFFB3261E) : null,
+      ),
+    );
+  }
+
+  Future<void> _openDuePaymentsDialog() async {
+    if (_loadingDueDetails) {
+      return;
+    }
+
+    setState(() {
+      _loadingDueDetails = true;
+    });
+
+    try {
+      final response = await ApiService.getDueAmountForFlat();
+      final duePaymentList = response?['duePaymentList'];
+      if (!mounted) {
+        return;
+      }
+
+      final normalizedDueList = duePaymentList is List
+          ? duePaymentList
+          : const <dynamic>[];
+      if (normalizedDueList.isEmpty) {
+        _showSnack('No due payments found.');
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => PaymentDetailsModal(
+          duePaymentList: normalizedDueList,
+          formatAsCurrency: _formatAsCurrency,
+          onPaymentCompleted: () async {
+            if (!mounted) {
+              return;
+            }
+            _showSnack('Payment completed successfully.');
+          },
+        ),
+      );
+    } catch (_) {
+      _showSnack('Unable to load due payment details.', isError: true);
+    } finally {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadingDueDetails = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -349,14 +462,43 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       );
     }
 
+    if (_showViewPayments) {
+      return ViewUpdatePaymentsPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showViewPayments = false;
+          });
+        },
+      );
+    }
+
+    if (_showCreateLedgerEntry) {
+      return CreateLedgerEntryPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showCreateLedgerEntry = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
       embedded: widget.embedded,
       section: AppSection.finance,
       title: 'Finance',
       subtitle: 'Choose one of the finance actions below.',
       items: [
-        _ModuleHubItem('Add Credit', Icons.add_card),
-        _ModuleHubItem('Add Debit', Icons.credit_card_off),
+        _ModuleHubItem(
+          'Ledger Entry',
+          Icons.credit_card_off,
+          onTap: () {
+            setState(() {
+              _showCreateLedgerEntry = true;
+            });
+          },
+        ),
         _ModuleHubItem(
           'Create New Payment',
           Icons.payment,
@@ -366,8 +508,20 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
-        _ModuleHubItem('Add Bank Account', Icons.account_balance),
-        _ModuleHubItem('Pay Dues', Icons.currency_rupee),
+        _ModuleHubItem(
+          'View/Update Payments',
+          Icons.account_balance,
+          onTap: () {
+            setState(() {
+              _showViewPayments = true;
+            });
+          },
+        ),
+        _ModuleHubItem(
+          _loadingDueDetails ? 'Loading Dues...' : 'Pay Dues',
+          Icons.currency_rupee,
+          onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
+        ),
       ],
     );
   }
@@ -1066,7 +1220,14 @@ MimeType _mimeTypeForExtension(String extension) {
 }
 
 class UpdateSocietyDetailsPage extends StatefulWidget {
-  const UpdateSocietyDetailsPage({super.key});
+  const UpdateSocietyDetailsPage({
+    super.key,
+    this.embedded = false,
+    this.onBack,
+  });
+
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<UpdateSocietyDetailsPage> createState() =>
@@ -1799,82 +1960,136 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
     );
   }
 
+  Widget _buildFormContent({required bool embedded}) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF2F1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFF1C8C5)),
+          ),
+          child: Text(
+            _error!,
+            style: const TextStyle(
+              color: Color(0xFF8B1E1E),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Form(
+      key: _formKey,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  if (embedded && widget.onBack != null)
+                    IconButton(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Update Society Details',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildTopSection(),
+            _buildAddressSection(),
+            _buildExecutiveMembersSection(),
+            _buildBankAccountsSection(),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0F8F82),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _updating ? null : _submitUpdate,
+              icon: _updating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(
+                _updating ? 'Updating...' : 'Update Apartment Details',
+              ),
+            ),
+            if (embedded && widget.onBack != null) ...[
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: _updating ? null : widget.onBack,
+                child: const Text('Cancel'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final content = BrandBackground(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _buildFormContent(embedded: widget.embedded),
+          ),
+        ),
+      ),
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F8F82),
         title: const Text('Update Society Details'),
       ),
-      body: BrandBackground(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1120),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF2F1),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFF1C8C5)),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: Color(0xFF8B1E1E),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Form(
-                      key: _formKey,
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildTopSection(),
-                            _buildAddressSection(),
-                            _buildExecutiveMembersSection(),
-                            _buildBankAccountsSection(),
-                            const SizedBox(height: 4),
-                            FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F8F82),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                              ),
-                              onPressed: _updating ? null : _submitUpdate,
-                              icon: _updating
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.save_outlined),
-                              label: Text(
-                                _updating
-                                    ? 'Updating...'
-                                    : 'Update Apartment Details',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ),
-      ),
+      body: content,
     );
   }
 }

@@ -290,7 +290,7 @@ class _HomePageState extends State<HomePage> {
   void _showPaymentDetailsModal() {
     showDialog(
       context: context,
-      builder: (dialogContext) => _PaymentDetailsModal(
+      builder: (dialogContext) => PaymentDetailsModal(
         duePaymentList: dueAmountData?['duePaymentList'] ?? [],
         formatAsCurrency: _formatAsCurrency,
         onPaymentCompleted: fetchDashboardData,
@@ -1284,7 +1284,7 @@ class _DueSliderMetricCard extends StatelessWidget {
                 final parentContext = context;
                 showDialog(
                   context: parentContext,
-                  builder: (dialogContext) => _PaymentDetailsModal(
+                  builder: (dialogContext) => PaymentDetailsModal(
                     duePaymentList: [due.rawData],
                     formatAsCurrency: formatAmount,
                     onPaymentCompleted: onPaymentCompleted,
@@ -1778,8 +1778,8 @@ class _ProgressRow extends StatelessWidget {
   }
 }
 
-class _PaymentDetailsModal extends StatefulWidget {
-  const _PaymentDetailsModal({
+class PaymentDetailsModal extends StatefulWidget {
+  const PaymentDetailsModal({
     required this.duePaymentList,
     required this.formatAsCurrency,
     this.onPaymentCompleted,
@@ -1791,10 +1791,10 @@ class _PaymentDetailsModal extends StatefulWidget {
   final Future<void> Function()? onPaymentCompleted;
 
   @override
-  State<_PaymentDetailsModal> createState() => _PaymentDetailsModalState();
+  State<PaymentDetailsModal> createState() => _PaymentDetailsModalState();
 }
 
-class _PaymentDetailsModalState extends State<_PaymentDetailsModal> {
+class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   static const String _razorpayKey = 'rzp_test_SRxceBfBqGmeGy';
 
   final Map<String, bool> _submittingRows = <String, bool>{};

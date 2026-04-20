@@ -1315,6 +1315,69 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getPayment(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/payment/getPayment"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> updateDiscfin(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/updateDiscfin"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> ledgerEntry(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/payment/ledgerEntry"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> getAllFlats() async {
     final genericHeader = _buildLoginResponseHeader();
     if (genericHeader == null) {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../services/receipt_downloader.dart';
 
 class CreateLedgerEntryPage extends StatefulWidget {
   const CreateLedgerEntryPage({super.key, this.embedded = false, this.onBack});
@@ -329,6 +330,111 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
     });
   }
 
+  String? _extractLedgerReceiptBase64(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['receipt'],
+      response?['receiptBase64'],
+      response?['base64Receipt'],
+      response?['trnsReceipt'],
+      response?['data'] is Map ? (response?['data'] as Map)['receipt'] : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['receiptBase64']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['trnsReceipt']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  String _extractLedgerTransactionId(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['transactionId'],
+      response?['trnsId'],
+      response?['ledgerId'],
+      response?['data'] is Map
+          ? (response?['data'] as Map)['transactionId']
+          : null,
+      response?['data'] is Map ? (response?['data'] as Map)['trnsId'] : null,
+      response?['data'] is Map ? (response?['data'] as Map)['ledgerId'] : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return DateTime.now().millisecondsSinceEpoch.toString();
+  }
+
+  Future<void> _showLedgerEntrySuccessDialog({
+    required String message,
+    required String? receiptBase64,
+    required String transactionId,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Ledger Entry Created'),
+          content: SizedBox(
+            width: 420,
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: _brandTextColor,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+            if (receiptBase64 != null)
+              FilledButton(
+                onPressed: () async {
+                  final downloaded = await downloadBase64Receipt(
+                    base64Data: receiptBase64,
+                    fileName: 'ledger_receipt_$transactionId.pdf',
+                  );
+                  if (!dialogContext.mounted) return;
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        downloaded
+                            ? 'Receipt downloaded successfully.'
+                            : 'Unable to download receipt.',
+                      ),
+                      backgroundColor: downloaded
+                          ? null
+                          : const Color(0xFFB3261E),
+                    ),
+                  );
+                },
+                child: const Text('Download Receipt'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   // ── submit ───────────────────────────────────────────────────────────────
 
   Future<void> _submitLedgerEntry() async {
@@ -388,7 +494,7 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
         'trnsAmt': totalAmount.toString(),
         'trnsStatus': 'SUCCESS',
         'cause': _ledgerNameController.text.trim(),
-        'paymentTenderDataList': _tendersList,
+        'trnsTenderList': _tendersList,
         'supportedFileList': _documentsList,
         'requiredReceiptFlag': _receiptRequired,
       };
@@ -399,13 +505,16 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
 
       final code = response?['messageCode']?.toString() ?? '';
       if (code.toUpperCase().startsWith('SUCC')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              response?['message']?.toString() ??
-                  'Ledger entry created successfully.',
-            ),
-          ),
+        final successMessage =
+            response?['message']?.toString() ??
+            'Ledger entry created successfully.';
+        final receiptBase64 = _extractLedgerReceiptBase64(response);
+        final transactionId = _extractLedgerTransactionId(response);
+
+        await _showLedgerEntrySuccessDialog(
+          message: successMessage,
+          receiptBase64: receiptBase64,
+          transactionId: transactionId,
         );
 
         // Reset form

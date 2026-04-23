@@ -693,7 +693,7 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
       padding: const EdgeInsets.all(20),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1160),
+          constraints: const BoxConstraints(maxWidth: 1400),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

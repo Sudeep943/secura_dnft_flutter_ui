@@ -11,7 +11,10 @@ import '../services/api_service.dart';
 import '../services/notice_models.dart';
 
 class ViewAllNoticesPage extends StatefulWidget {
-  const ViewAllNoticesPage({super.key});
+  const ViewAllNoticesPage({super.key, this.embedded = false, this.onBack});
+
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<ViewAllNoticesPage> createState() => _ViewAllNoticesPageState();
@@ -544,6 +547,60 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final pageContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (widget.embedded && widget.onBack != null) ...[
+                    IconButton(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back, color: _brandColor),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  const Expanded(
+                    child: Text(
+                      'Notices',
+                      style: TextStyle(
+                        color: _brandTextColor,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (widget.embedded)
+                    IconButton(
+                      onPressed: _loadNotices,
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: _brandColor,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Browse the full notice list and open any notice on its own page for document preview and download.',
+                style: TextStyle(color: Colors.black54, height: 1.45),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(child: _buildBody()),
+      ],
+    );
+
+    if (widget.embedded) {
+      return pageContent;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F4FB),
       appBar: AppBar(
@@ -557,34 +614,7 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
           ),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Notices',
-                  style: TextStyle(
-                    color: _brandTextColor,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  'Browse the full notice list and open any notice on its own page for document preview and download.',
-                  style: TextStyle(color: Colors.black54, height: 1.45),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(child: _buildBody()),
-        ],
-      ),
+      body: pageContent,
     );
   }
 }

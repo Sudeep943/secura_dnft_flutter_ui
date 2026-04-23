@@ -35,8 +35,18 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
 
   // Tenders list
   List<Map<String, String>> _tendersList = [];
+  List<Map<String, dynamic>> _bankInstrumentTenderDetails = [];
   String? _selectedTender;
   late TextEditingController _tenderAmountController;
+  late TextEditingController _chequeNumberController;
+  late TextEditingController _chequeDateController;
+  late TextEditingController _chequeBankNameController;
+  late TextEditingController _chequeAccountHolderController;
+  late TextEditingController _chequeAccountNumberController;
+  late TextEditingController _ddBankNameController;
+  late TextEditingController _ddPayableAtController;
+  late TextEditingController _ddNumberController;
+  late TextEditingController _ddIssueDateController;
 
   // Causes list
   List<String> _causesList = ['MAINTENANCE', 'RENT', 'EVENT'];
@@ -58,7 +68,13 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
     'SBI_BUSINESS',
   ];
 
-  final List<String> _tenderOptions = ['CASH', 'UPI', 'CHEQUE', 'NEFT', 'RTGS'];
+  final List<String> _tenderOptions = [
+    'CASH',
+    'UPI',
+    'CHEQUE',
+    'BANK_TRANSFER',
+    'DEMAND_DRAFT',
+  ];
 
   @override
   void initState() {
@@ -70,6 +86,15 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
     _descriptionController = TextEditingController();
     _amountController = TextEditingController();
     _tenderAmountController = TextEditingController();
+    _chequeNumberController = TextEditingController();
+    _chequeDateController = TextEditingController();
+    _chequeBankNameController = TextEditingController();
+    _chequeAccountHolderController = TextEditingController();
+    _chequeAccountNumberController = TextEditingController();
+    _ddBankNameController = TextEditingController();
+    _ddPayableAtController = TextEditingController();
+    _ddNumberController = TextEditingController();
+    _ddIssueDateController = TextEditingController();
     _docNameController = TextEditingController();
     _selectedBankAccount = _bankAccounts.first;
     _selectedTender = _tenderOptions.first;
@@ -83,6 +108,15 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
     _descriptionController.dispose();
     _amountController.dispose();
     _tenderAmountController.dispose();
+    _chequeNumberController.dispose();
+    _chequeDateController.dispose();
+    _chequeBankNameController.dispose();
+    _chequeAccountHolderController.dispose();
+    _chequeAccountNumberController.dispose();
+    _ddBankNameController.dispose();
+    _ddPayableAtController.dispose();
+    _ddNumberController.dispose();
+    _ddIssueDateController.dispose();
     _docNameController.dispose();
     super.dispose();
   }
@@ -109,6 +143,44 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
 
   String _toIso(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}T${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:00';
+
+  String _toSimpleDate(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  String _tenderLabel(String tender) => tender.replaceAll('_', ' ');
+
+  String _requestTenderType(String tender) {
+    if (tender == 'DEMAND_DRAFT') {
+      return 'DEMAND DRAFT';
+    }
+    return tender;
+  }
+
+  Future<void> _pickChequeDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2101),
+    );
+    if (picked == null) return;
+    setState(() {
+      _chequeDateController.text = _toSimpleDate(picked);
+    });
+  }
+
+  Future<void> _pickDdIssueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2101),
+    );
+    if (picked == null) return;
+    setState(() {
+      _ddIssueDateController.text = _toSimpleDate(picked);
+    });
+  }
 
   // ── date picker ──────────────────────────────────────────────────────────
 
@@ -176,8 +248,9 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
   }
 
   void _addTender() {
+    final tenderType = _selectedTender;
     final amount = _tenderAmountController.text.trim();
-    if (_selectedTender == null || amount.isEmpty) {
+    if (tenderType == null || amount.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select tender and enter amount')),
       );
@@ -192,21 +265,112 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
       return;
     }
 
+    if (tenderType == 'CHEQUE') {
+      final missingChequeDetails =
+          _chequeNumberController.text.trim().isEmpty ||
+          _chequeDateController.text.trim().isEmpty ||
+          _chequeBankNameController.text.trim().isEmpty ||
+          _chequeAccountHolderController.text.trim().isEmpty ||
+          _chequeAccountNumberController.text.trim().isEmpty;
+      if (missingChequeDetails) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all cheque details')),
+        );
+        return;
+      }
+    }
+
+    if (tenderType == 'DEMAND_DRAFT') {
+      final missingDdDetails =
+          _ddBankNameController.text.trim().isEmpty ||
+          _ddPayableAtController.text.trim().isEmpty ||
+          _ddNumberController.text.trim().isEmpty ||
+          _ddIssueDateController.text.trim().isEmpty;
+      if (missingDdDetails) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all demand draft details')),
+        );
+        return;
+      }
+    }
+
     setState(() {
-      _tendersList.add({'tenderName': _selectedTender!, 'amountPaid': amount});
+      if (tenderType == 'CASH') {
+        final cashIndex = _tendersList.indexWhere(
+          (tender) => tender['tenderName'] == 'CASH',
+        );
+        if (cashIndex >= 0) {
+          _tendersList[cashIndex]['amountPaid'] = amount;
+        } else {
+          _tendersList.add({'tenderName': 'CASH', 'amountPaid': amount});
+        }
+      } else {
+        _tendersList.add({
+          'tenderName': _requestTenderType(tenderType),
+          'amountPaid': amount,
+        });
+      }
+
+      if (tenderType == 'CHEQUE') {
+        _bankInstrumentTenderDetails.add({
+          'tenderType': 'CHEQUE',
+          'chequeNumber': _chequeNumberController.text.trim(),
+          'chequeDate': _chequeDateController.text.trim(),
+          'bankName': _chequeBankNameController.text.trim(),
+          'accountHolderName': _chequeAccountHolderController.text.trim(),
+          'accountNumber': _chequeAccountNumberController.text.trim(),
+          'amount': amount,
+          'remarks': _descriptionController.text.trim(),
+        });
+        _chequeNumberController.clear();
+        _chequeDateController.clear();
+        _chequeBankNameController.clear();
+        _chequeAccountHolderController.clear();
+        _chequeAccountNumberController.clear();
+      }
+
+      if (tenderType == 'DEMAND_DRAFT') {
+        _bankInstrumentTenderDetails.add({
+          'tenderType': _requestTenderType(tenderType),
+          'ddNumber': _ddNumberController.text.trim(),
+          'ddIssueDate': _ddIssueDateController.text.trim(),
+          'bankName': _ddBankNameController.text.trim(),
+          'ddPayAtBranch': _ddPayableAtController.text.trim(),
+          'amount': amount,
+          'remarks': _descriptionController.text.trim(),
+        });
+        _ddBankNameController.clear();
+        _ddPayableAtController.clear();
+        _ddNumberController.clear();
+        _ddIssueDateController.clear();
+      }
+
       _tenderAmountController.clear();
       _selectedTender = _tenderOptions.first;
       _updateTotalAmount();
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added $_selectedTender - ₹$amount')),
+      SnackBar(content: Text('Added ${_tenderLabel(tenderType)} - ₹$amount')),
     );
   }
 
   void _removeTender(int index) {
+    final tender = _tendersList[index];
     setState(() {
       _tendersList.removeAt(index);
+
+      final tenderType = tender['tenderName'] ?? '';
+      final amount = tender['amou button for eeantPaid'] ?? '';
+      final instrumentIndex = _bankInstrumentTenderDetails.indexWhere(
+        (detail) =>
+            detail['tenderType']?.toString() == tenderType &&
+            detail['amount']?.toString() == amount,
+      );
+      if (instrumentIndex >= 0) {
+        _bankInstrumentTenderDetails.removeAt(instrumentIndex);
+      }
+
       _updateTotalAmount();
     });
   }
@@ -487,14 +651,15 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
       final requestBody = {
         'genericHeader': Map<String, dynamic>.from(header),
         'trnsDate': _toIso(transDate),
-        'ledgerfor': _selectedCause ?? 'MAINTENANCE',
+        'ledgerfor': _ledgerNameController.text.trim(),
         'trnsType': _transactionType,
         'trnsShrtDesc': _descriptionController.text.trim(),
         'trnsBnkAccnt': _selectedBankAccount ?? _bankAccounts.first,
         'trnsAmt': totalAmount.toString(),
         'trnsStatus': 'SUCCESS',
-        'cause': _ledgerNameController.text.trim(),
+        'cause': _selectedCause ?? 'MAINTENANCE',
         'trnsTenderList': _tendersList,
+        'bankInstrumentTenderDetails': _bankInstrumentTenderDetails,
         'supportedFileList': _documentsList,
         'requiredReceiptFlag': _receiptRequired,
       };
@@ -522,6 +687,7 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
         setState(() {
           _submitting = false;
           _tendersList.clear();
+          _bankInstrumentTenderDetails.clear();
           _documentsList.clear();
           _transactionType = 'DEBIT';
           _receiptRequired = false;
@@ -529,6 +695,15 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
           _ledgerNameController.clear();
           _descriptionController.clear();
           _amountController.clear();
+          _chequeNumberController.clear();
+          _chequeDateController.clear();
+          _chequeBankNameController.clear();
+          _chequeAccountHolderController.clear();
+          _chequeAccountNumberController.clear();
+          _ddBankNameController.clear();
+          _ddPayableAtController.clear();
+          _ddNumberController.clear();
+          _ddIssueDateController.clear();
         });
 
         if (widget.onBack != null) {
@@ -580,7 +755,7 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
       padding: const EdgeInsets.all(24),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
+          constraints: const BoxConstraints(maxWidth: 1240),
           child: Form(
             key: _formKey,
             child: Column(
@@ -773,7 +948,7 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
                                 .map(
                                   (t) => DropdownMenuItem(
                                     value: t,
-                                    child: Text(t),
+                                    child: Text(_tenderLabel(t)),
                                   ),
                                 )
                                 .toList(),
@@ -812,6 +987,111 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
                         ),
                       ],
                     ),
+
+                    if (_selectedTender == 'CHEQUE') ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _chequeNumberController,
+                              decoration: _dec(label: 'Cheque Number'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _chequeDateController,
+                              readOnly: true,
+                              decoration: _dec(
+                                label: 'Cheque Date',
+                                suffix: const Icon(
+                                  Icons.calendar_today_rounded,
+                                ),
+                              ),
+                              onTap: _pickChequeDate,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _chequeBankNameController,
+                              decoration: _dec(label: 'Bank Name'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _chequeAccountHolderController,
+                              decoration: _dec(label: 'Account Holder Name'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _chequeAccountNumberController,
+                              decoration: _dec(label: 'Account Number'),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const Expanded(child: SizedBox.shrink()),
+                        ],
+                      ),
+                    ],
+
+                    if (_selectedTender == 'DEMAND_DRAFT') ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _ddBankNameController,
+                              decoration: _dec(label: 'Bank Name'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _ddPayableAtController,
+                              decoration: _dec(label: 'Payable At'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _ddNumberController,
+                              decoration: _dec(label: 'Demand Draft Number'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _ddIssueDateController,
+                              readOnly: true,
+                              decoration: _dec(
+                                label: 'Demand Draft Issue Date',
+                                suffix: const Icon(
+                                  Icons.calendar_today_rounded,
+                                ),
+                              ),
+                              onTap: _pickDdIssueDate,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
 
                     // Tenders list
                     if (_tendersList.isNotEmpty) ...[
@@ -871,7 +1151,7 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              tenderName,
+                                              _tenderLabel(tenderName),
                                               style: const TextStyle(
                                                 color: _brandTextColor,
                                                 fontWeight: FontWeight.w700,
@@ -941,43 +1221,32 @@ class _CreateLedgerEntryPageState extends State<CreateLedgerEntryPage> {
 
                 // ── Cause Section ──────────────────────────────────────
                 _buildSectionCard(
-                  title: 'Transaction Details',
+                  title: 'Cause Of Transaction',
                   icon: Icons.category_outlined,
                   children: [
-                    // Cause dropdown with Add button
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedCause,
-                            decoration: _dec(label: 'Cause Of Transaction'),
-                            items: _causesList
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(c.replaceAll('_', ' ')),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedCause = v),
-                          ),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCause,
+                      decoration: _dec(label: 'Cause Of Transaction'),
+                      items: [
+                        const DropdownMenuItem(
+                          value: '__ADD_NEW_CAUSE__',
+                          child: Text('+ Add New Cause'),
                         ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _brandColor,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 18,
-                            ),
+                        ..._causesList.map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(c.replaceAll('_', ' ')),
                           ),
-                          onPressed: _showAddCauseModal,
-                          icon: const Icon(Icons.add, size: 20),
-                          label: const Text('Add'),
                         ),
                       ],
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        if (v == '__ADD_NEW_CAUSE__') {
+                          await _showAddCauseModal();
+                          return;
+                        }
+                        setState(() => _selectedCause = v);
+                      },
                     ),
                   ],
                 ),

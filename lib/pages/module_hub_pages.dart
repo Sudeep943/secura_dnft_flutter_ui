@@ -17,15 +17,35 @@ import 'view_all_notices_page.dart';
 import 'view_update_payments_page.dart';
 import 'create_ledger_entry_page.dart';
 
-class MeetingAndNoticeManagementPage extends StatelessWidget {
+class MeetingAndNoticeManagementPage extends StatefulWidget {
   const MeetingAndNoticeManagementPage({super.key, this.embedded = false});
 
   final bool embedded;
 
   @override
+  State<MeetingAndNoticeManagementPage> createState() =>
+      _MeetingAndNoticeManagementPageState();
+}
+
+class _MeetingAndNoticeManagementPageState
+    extends State<MeetingAndNoticeManagementPage> {
+  bool _showViewAllNotices = false;
+
+  @override
   Widget build(BuildContext context) {
+    if (_showViewAllNotices) {
+      return ViewAllNoticesPage(
+        embedded: true,
+        onBack: () {
+          setState(() {
+            _showViewAllNotices = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
-      embedded: embedded,
+      embedded: widget.embedded,
       section: AppSection.meetingAndNotice,
       title: 'Meeting And Notice Management',
       subtitle:
@@ -49,9 +69,9 @@ class MeetingAndNoticeManagementPage extends StatelessWidget {
           'View All Notice',
           Icons.notifications_active,
           onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ViewAllNoticesPage()),
-            );
+            setState(() {
+              _showViewAllNotices = true;
+            });
           },
         ),
         _ModuleHubItem('Create Event', Icons.event),
@@ -522,6 +542,8 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
           Icons.currency_rupee,
           onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
         ),
+        _ModuleHubItem('Create Receipt', Icons.receipt_long_outlined),
+        _ModuleHubItem('View Transactions', Icons.receipt_outlined),
       ],
     );
   }
@@ -1259,6 +1281,10 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
   bool _loading = true;
   bool _updating = false;
   String? _error;
+  bool _expandApartmentIdentity = false;
+  bool _expandAddress = false;
+  bool _expandExecutiveMembers = false;
+  bool _expandBankAccounts = false;
   String _apartmentLogoData = '';
   String _apartmentLetterHeadData = '';
   String? _apartmentLogoName;
@@ -1517,7 +1543,12 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
     }
   }
 
-  Widget _buildSection(String title, Widget child) {
+  Widget _buildSection({
+    required String title,
+    required Widget child,
+    required bool expanded,
+    required ValueChanged<bool> onExpansionChanged,
+  }) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
@@ -1534,10 +1565,16 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: expanded,
+          onExpansionChanged: onExpansionChanged,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(top: 14),
+          collapsedShape: const RoundedRectangleBorder(),
+          shape: const RoundedRectangleBorder(),
+          title: Text(
             title,
             style: const TextStyle(
               color: Color(0xFF124B45),
@@ -1545,9 +1582,8 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
-          child,
-        ],
+          children: [child],
+        ),
       ),
     );
   }
@@ -1568,11 +1604,129 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
     );
   }
 
+  Uint8List? _tryDecodeBase64(String data) {
+    if (data.trim().isEmpty) {
+      return null;
+    }
+
+    final payload = data.contains(',') ? data.split(',').last.trim() : data;
+    try {
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isLikelyHttpUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) {
+      return false;
+    }
+    return uri.hasScheme &&
+        (uri.scheme.toLowerCase() == 'http' ||
+            uri.scheme.toLowerCase() == 'https');
+  }
+
+  Widget _buildDocumentPreview({
+    required String data,
+    required IconData fallbackIcon,
+  }) {
+    final bytes = _tryDecodeBase64(data);
+
+    Widget preview;
+    if (bytes != null && bytes.isNotEmpty) {
+      preview = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          bytes,
+          width: 150,
+          height: 110,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: 150,
+            height: 110,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4F3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(fallbackIcon, color: const Color(0xFF0F8F82)),
+          ),
+        ),
+      );
+    } else if (_isLikelyHttpUrl(data)) {
+      preview = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          data,
+          width: 150,
+          height: 110,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: 150,
+            height: 110,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4F3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(fallbackIcon, color: const Color(0xFF0F8F82)),
+          ),
+        ),
+      );
+    } else {
+      preview = Container(
+        width: 150,
+        height: 110,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4F3),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(fallbackIcon, color: const Color(0xFF0F8F82)),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFDFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD9E8E4)),
+      ),
+      child: Center(child: preview),
+    );
+  }
+
   Widget _buildTopSection() {
     return _buildSection(
-      'Apartment Identity',
-      Column(
+      title: 'Apartment Identity',
+      expanded: _expandApartmentIdentity,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandApartmentIdentity = expanded;
+        });
+      },
+      child: Column(
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildDocumentPreview(
+                  data: _apartmentLogoData,
+                  fallbackIcon: Icons.image_outlined,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDocumentPreview(
+                  data: _apartmentLetterHeadData,
+                  fallbackIcon: Icons.description_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -1633,8 +1787,14 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
 
   Widget _buildAddressSection() {
     return _buildSection(
-      'Address',
-      Column(
+      title: 'Address',
+      expanded: _expandAddress,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandAddress = expanded;
+        });
+      },
+      child: Column(
         children: [
           TextFormField(
             controller: _addressLine1Controller,
@@ -1812,8 +1972,14 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
 
   Widget _buildExecutiveMembersSection() {
     return _buildSection(
-      'Executive Member List',
-      Column(
+      title: 'Executive Member List',
+      expanded: _expandExecutiveMembers,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandExecutiveMembers = expanded;
+        });
+      },
+      child: Column(
         children: [
           ..._executiveMembers.asMap().entries.map(
             (entry) => _buildExecutiveMemberCard(entry.value, entry.key),
@@ -1935,8 +2101,14 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
 
   Widget _buildBankAccountsSection() {
     return _buildSection(
-      'Bank Account Details',
-      Column(
+      title: 'Bank Account Details',
+      expanded: _expandBankAccounts,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandBankAccounts = expanded;
+        });
+      },
+      child: Column(
         children: [
           ..._bankAccounts.asMap().entries.map(
             (entry) => _buildBankAccountCard(entry.value, entry.key),

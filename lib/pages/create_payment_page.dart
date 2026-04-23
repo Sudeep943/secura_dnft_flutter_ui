@@ -49,6 +49,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 
   static const List<_PaymentChoice> _allowedPaymentModeOptions = [
     _PaymentChoice(label: 'CASH', value: 'CASH'),
+    _PaymentChoice(label: 'CHEQUE', value: 'CHEQUE'),
     _PaymentChoice(
       label: 'OFFLINE BANK TRANSFER',
       value: 'OFFLINE_BANK_TRANSFER',
@@ -126,6 +127,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   final List<_AppliedDiscountFine> _appliedDiscountFines = [];
   final Set<String> _deletingDiscountFineIds = <String>{};
   final Set<String> _loadingDiscountFineIds = <String>{};
+  bool _expandPaymentDetails = true;
+  bool _expandCollectionSetup = true;
+  bool _expandChargesAndAdjustments = true;
+  bool _expandAudienceAndSettlement = true;
 
   bool get _isPerHeadCapita => _paymentCapita == 'PER_HEAD';
 
@@ -1864,6 +1869,32 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     );
   }
 
+  Widget _buildCollapsibleFormSection({
+    required String title,
+    required String subtitle,
+    required bool expanded,
+    required ValueChanged<bool> onExpansionChanged,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDCEAE7)),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: expanded,
+        onExpansionChanged: onExpansionChanged,
+        collapsedShape: const RoundedRectangleBorder(),
+        shape: const RoundedRectangleBorder(),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        title: _buildSectionTitle(title, subtitle),
+        children: [child],
+      ),
+    );
+  }
+
   Widget _buildThreeFieldRow({
     required Widget first,
     required Widget second,
@@ -2237,297 +2268,346 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSectionTitle(
-              'Payment Details',
-              'These values are sent to create the new apartment payment.',
-            ),
-            const SizedBox(height: 22),
-            TextFormField(
-              controller: _paymentNameController,
-              textInputAction: TextInputAction.next,
-              decoration: _inputDecoration(
-                label: 'Payment Name',
-                hintText: 'e.g. Maintenance Charges Q1',
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Payment name is required';
-                }
-                return null;
+            _buildCollapsibleFormSection(
+              title: 'Payment Details',
+              subtitle:
+                  'These values are sent to create the new apartment payment.',
+              expanded: _expandPaymentDetails,
+              onExpansionChanged: (expanded) {
+                setState(() {
+                  _expandPaymentDetails = expanded;
+                });
               },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _shortDetailsController,
-              minLines: 3,
-              maxLines: 4,
-              decoration: _inputDecoration(
-                label: 'Short Details',
-                hintText: 'e.g. Quarterly maintenance charges for society',
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Short details are required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 22),
-            _buildSectionTitle(
-              'Collection Setup',
-              'These fields drive the live due amount preview on the right.',
-            ),
-            const SizedBox(height: 22),
-            _buildThreeFieldRow(
-              first: DropdownButtonFormField<String>(
-                initialValue: _paymentCapita,
-                decoration: _inputDecoration(label: 'Payment Capita'),
-                items: _capitaOptions
-                    .map(
-                      (option) => DropdownMenuItem<String>(
-                        value: option.value,
-                        child: Text(option.label),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _paymentCapita = value;
-                    if (_isPerHeadCapita) {
-                      _paymentType = 'OPTIONAL';
-                    }
-                  });
-                  _scheduleDueDetailsRefresh();
-                },
-                validator: (value) =>
-                    value == null ? 'Payment capita is required' : null,
-              ),
-              second: TextFormField(
-                controller: _paymentAmountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                ],
-                decoration: _inputDecoration(
-                  label: 'Amount Per Cycle',
-                  prefix: const Icon(Icons.currency_rupee_rounded),
-                ),
-                validator: (value) {
-                  final normalized = _normalizeNumericValue(value ?? '');
-                  final number = double.tryParse(normalized);
-                  if (normalized.isEmpty || number == null || number <= 0) {
-                    return 'Enter a valid amount';
-                  }
-                  return null;
-                },
-              ),
-              third: TextFormField(
-                controller: _gstController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                ],
-                decoration: _inputDecoration(
-                  label: 'GST',
-                  suffix: const Padding(
-                    padding: EdgeInsets.only(right: 14),
-                    child: Icon(Icons.percent_rounded),
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _paymentNameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration(
+                      label: 'Payment Name',
+                      hintText: 'e.g. Maintenance Charges Q1',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Payment name is required';
+                      }
+                      return null;
+                    },
                   ),
-                ),
-                validator: (value) {
-                  final normalized = _normalizeNumericValue(value ?? '');
-                  final number = double.tryParse(normalized);
-                  if (normalized.isEmpty || number == null || number < 0) {
-                    return 'Enter GST';
-                  }
-                  if (number > 100) {
-                    return 'GST cannot exceed 100';
-                  }
-                  return null;
-                },
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _shortDetailsController,
+                    minLines: 3,
+                    maxLines: 4,
+                    decoration: _inputDecoration(
+                      label: 'Short Details',
+                      hintText:
+                          'e.g. Quarterly maintenance charges for society',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Short details are required';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _buildTwoFieldRow(
-              first: TextFormField(
-                controller: _collectionStartController,
-                readOnly: true,
-                decoration: _inputDecoration(
-                  label: 'Collection Start Date',
-                  suffix: const Icon(Icons.calendar_today_rounded),
-                ),
-                onTap: _pickStartDate,
-                validator: (_) => _collectionStartDate == null
-                    ? 'Start date is required'
-                    : null,
-              ),
-              second: TextFormField(
-                controller: _collectionEndController,
-                readOnly: true,
-                decoration: _inputDecoration(
-                  label: 'Collection End Date',
-                  suffix: const Icon(Icons.calendar_today_rounded),
-                ),
-                onTap: _pickEndDate,
-                validator: (_) =>
-                    _collectionEndDate == null ? 'End date is required' : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildThreeFieldRow(
-              first: DropdownButtonFormField<String>(
-                initialValue: _paymentCollectionCycle,
-                decoration: _inputDecoration(label: 'Collection Cycle'),
-                items: _cycleOptions
-                    .map(
-                      (option) => DropdownMenuItem<String>(
-                        value: option.value,
-                        child: Text(option.label),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  _paymentCollectionCycle = value;
-                  _onDueFieldChanged();
-                },
-                validator: (value) =>
-                    value == null ? 'Collection cycle is required' : null,
-              ),
-              second: DropdownButtonFormField<String>(
-                initialValue: _paymentCollectionMode,
-                decoration: _inputDecoration(label: 'Collection Mode'),
-                items: _modeOptions
-                    .map(
-                      (option) => DropdownMenuItem<String>(
-                        value: option.value,
-                        child: Text(option.label),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  _paymentCollectionMode = value;
-                  _onDueFieldChanged();
-                },
-                validator: (value) =>
-                    value == null ? 'Collection mode is required' : null,
-              ),
-              third: _buildAllowedPaymentModesField(),
             ),
             const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: CheckboxListTile(
-                    value: _maintenancePayment,
-                    contentPadding: EdgeInsets.zero,
-                    activeColor: _brandColor,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('Its Maintenance Payment'),
-                    onChanged: _eventPayment
-                        ? null
-                        : (value) {
-                            setState(() {
-                              _maintenancePayment = value ?? false;
-                              if (_maintenancePayment) {
-                                _eventPayment = false;
-                              }
-                            });
-                          },
+            _buildCollapsibleFormSection(
+              title: 'Collection Setup',
+              subtitle:
+                  'These fields drive the live due amount preview on the right.',
+              expanded: _expandCollectionSetup,
+              onExpansionChanged: (expanded) {
+                setState(() {
+                  _expandCollectionSetup = expanded;
+                });
+              },
+              child: Column(
+                children: [
+                  _buildThreeFieldRow(
+                    first: DropdownButtonFormField<String>(
+                      initialValue: _paymentCapita,
+                      decoration: _inputDecoration(label: 'Payment Capita'),
+                      items: _capitaOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.value,
+                              child: Text(option.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _paymentCapita = value;
+                          if (_isPerHeadCapita) {
+                            _paymentType = 'OPTIONAL';
+                          }
+                        });
+                        _scheduleDueDetailsRefresh();
+                      },
+                      validator: (value) =>
+                          value == null ? 'Payment capita is required' : null,
+                    ),
+                    second: TextFormField(
+                      controller: _paymentAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      decoration: _inputDecoration(
+                        label: 'Amount Per Cycle',
+                        prefix: const Icon(Icons.currency_rupee_rounded),
+                      ),
+                      validator: (value) {
+                        final normalized = _normalizeNumericValue(value ?? '');
+                        final number = double.tryParse(normalized);
+                        if (normalized.isEmpty ||
+                            number == null ||
+                            number <= 0) {
+                          return 'Enter a valid amount';
+                        }
+                        return null;
+                      },
+                    ),
+                    third: TextFormField(
+                      controller: _gstController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      decoration: _inputDecoration(
+                        label: 'GST',
+                        suffix: const Padding(
+                          padding: EdgeInsets.only(right: 14),
+                          child: Icon(Icons.percent_rounded),
+                        ),
+                      ),
+                      validator: (value) {
+                        final normalized = _normalizeNumericValue(value ?? '');
+                        final number = double.tryParse(normalized);
+                        if (normalized.isEmpty ||
+                            number == null ||
+                            number < 0) {
+                          return 'Enter GST';
+                        }
+                        if (number > 100) {
+                          return 'GST cannot exceed 100';
+                        }
+                        return null;
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: CheckboxListTile(
-                    value: _eventPayment,
-                    contentPadding: EdgeInsets.zero,
-                    activeColor: _brandColor,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('Its Event Payment'),
-                    onChanged: _maintenancePayment
-                        ? null
-                        : (value) {
-                            setState(() {
-                              _eventPayment = value ?? false;
-                              if (_eventPayment) {
-                                _maintenancePayment = false;
-                              }
-                            });
-                          },
+                  const SizedBox(height: 16),
+                  _buildTwoFieldRow(
+                    first: TextFormField(
+                      controller: _collectionStartController,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        label: 'Collection Start Date',
+                        suffix: const Icon(Icons.calendar_today_rounded),
+                      ),
+                      onTap: _pickStartDate,
+                      validator: (_) => _collectionStartDate == null
+                          ? 'Start date is required'
+                          : null,
+                    ),
+                    second: TextFormField(
+                      controller: _collectionEndController,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        label: 'Collection End Date',
+                        suffix: const Icon(Icons.calendar_today_rounded),
+                      ),
+                      onTap: _pickEndDate,
+                      validator: (_) => _collectionEndDate == null
+                          ? 'End date is required'
+                          : null,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  _buildThreeFieldRow(
+                    first: DropdownButtonFormField<String>(
+                      initialValue: _paymentCollectionCycle,
+                      decoration: _inputDecoration(label: 'Collection Cycle'),
+                      items: _cycleOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.value,
+                              child: Text(option.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        _paymentCollectionCycle = value;
+                        _onDueFieldChanged();
+                      },
+                      validator: (value) =>
+                          value == null ? 'Collection cycle is required' : null,
+                    ),
+                    second: DropdownButtonFormField<String>(
+                      initialValue: _paymentCollectionMode,
+                      decoration: _inputDecoration(label: 'Collection Mode'),
+                      items: _modeOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.value,
+                              child: Text(option.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        _paymentCollectionMode = value;
+                        _onDueFieldChanged();
+                      },
+                      validator: (value) =>
+                          value == null ? 'Collection mode is required' : null,
+                    ),
+                    third: _buildAllowedPaymentModesField(),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 18),
-            _buildAdditionalChargesSection(),
-            const SizedBox(height: 22),
-            _buildDiscountFineSection(),
-            const SizedBox(height: 22),
-            _buildSectionTitle(
-              'Audience And Settlement',
-              'Select who the payment applies to and where the amount is collected.',
-            ),
-            const SizedBox(height: 22),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                SizedBox(
-                  width: mobile ? double.infinity : 320,
-                  child: _buildApplicableForField(),
-                ),
-                SizedBox(
-                  width: mobile ? double.infinity : 220,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _isPerHeadCapita ? 'OPTIONAL' : _paymentType,
-                    decoration: _inputDecoration(label: 'Payment Type'),
-                    items: _paymentTypeOptions
-                        .map(
-                          (option) => DropdownMenuItem<String>(
-                            value: option.value,
-                            child: Text(option.label),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _isPerHeadCapita
-                        ? null
-                        : (value) {
-                            setState(() {
-                              _paymentType = value;
-                            });
-                          },
-                    validator: (value) =>
-                        value == null ? 'Payment type is required' : null,
+            const SizedBox(height: 14),
+            _buildCollapsibleFormSection(
+              title: 'Charges And Adjustments',
+              subtitle:
+                  'Maintenance/Event flags, additional charges, and discount/fine rules.',
+              expanded: _expandChargesAndAdjustments,
+              onExpansionChanged: (expanded) {
+                setState(() {
+                  _expandChargesAndAdjustments = expanded;
+                });
+              },
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CheckboxListTile(
+                          value: _maintenancePayment,
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: _brandColor,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Its Maintenance Payment'),
+                          onChanged: _eventPayment
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _maintenancePayment = value ?? false;
+                                    if (_maintenancePayment) {
+                                      _eventPayment = false;
+                                    }
+                                  });
+                                },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CheckboxListTile(
+                          value: _eventPayment,
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: _brandColor,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Its Event Payment'),
+                          onChanged: _maintenancePayment
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _eventPayment = value ?? false;
+                                    if (_eventPayment) {
+                                      _maintenancePayment = false;
+                                    }
+                                  });
+                                },
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                SizedBox(
-                  width: mobile ? double.infinity : 260,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _bankAccountId,
-                    decoration: _inputDecoration(label: 'Bank Account'),
-                    items: _bankAccountOptions
-                        .map(
-                          (option) => DropdownMenuItem<String>(
-                            value: option.value,
-                            child: Text(option.label),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _bankAccountId = value;
-                      });
-                    },
-                    validator: (value) =>
-                        value == null ? 'Bank account is required' : null,
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 18),
+                  _buildAdditionalChargesSection(),
+                  const SizedBox(height: 22),
+                  _buildDiscountFineSection(),
+                ],
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 14),
+            _buildCollapsibleFormSection(
+              title: 'Audience And Settlement',
+              subtitle:
+                  'Select who the payment applies to and where the amount is collected.',
+              expanded: _expandAudienceAndSettlement,
+              onExpansionChanged: (expanded) {
+                setState(() {
+                  _expandAudienceAndSettlement = expanded;
+                });
+              },
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SizedBox(
+                    width: mobile ? double.infinity : 360,
+                    child: _buildApplicableForField(),
+                  ),
+                  SizedBox(
+                    width: mobile ? double.infinity : 260,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _isPerHeadCapita
+                          ? 'OPTIONAL'
+                          : _paymentType,
+                      decoration: _inputDecoration(label: 'Payment Type'),
+                      items: _paymentTypeOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.value,
+                              child: Text(option.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _isPerHeadCapita
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _paymentType = value;
+                              });
+                            },
+                      validator: (value) =>
+                          value == null ? 'Payment type is required' : null,
+                    ),
+                  ),
+                  SizedBox(
+                    width: mobile ? double.infinity : 320,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _bankAccountId,
+                      decoration: _inputDecoration(label: 'Bank Account'),
+                      items: _bankAccountOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.value,
+                              child: Text(option.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _bankAccountId = value;
+                        });
+                      },
+                      validator: (value) =>
+                          value == null ? 'Bank account is required' : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -3080,7 +3160,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       padding: EdgeInsets.all(mobile ? 16 : 24),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1280),
+          constraints: const BoxConstraints(maxWidth: 1440),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

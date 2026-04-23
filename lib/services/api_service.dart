@@ -1378,6 +1378,36 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> getTransactions(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    const paths = [
+      '/transactionAndReports/getTransaction',
+      '/payment/getTransaction',
+      '/payment/getTransactions',
+    ];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> getAllFlats() async {
     final genericHeader = _buildLoginResponseHeader();
     if (genericHeader == null) {

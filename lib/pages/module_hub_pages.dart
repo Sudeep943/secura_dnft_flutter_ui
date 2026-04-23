@@ -14,6 +14,7 @@ import 'create_payment_page.dart';
 import 'create_notice_page.dart';
 import 'home_page.dart';
 import 'view_all_notices_page.dart';
+import 'view_transactions_page.dart';
 import 'view_update_payments_page.dart';
 import 'create_ledger_entry_page.dart';
 
@@ -375,6 +376,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
   bool _showCreatePayment = false;
   bool _showViewPayments = false;
   bool _showCreateLedgerEntry = false;
+  bool _showViewTransactions = false;
   bool _loadingDueDetails = false;
 
   String _formatCurrencyWithCommas(String value) {
@@ -504,6 +506,17 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       );
     }
 
+    if (_showViewTransactions) {
+      return ViewTransactionsPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showViewTransactions = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
       embedded: widget.embedded,
       section: AppSection.finance,
@@ -543,7 +556,15 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
           onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
         ),
         _ModuleHubItem('Create Receipt', Icons.receipt_long_outlined),
-        _ModuleHubItem('View Transactions', Icons.receipt_outlined),
+        _ModuleHubItem(
+          'View Transactions',
+          Icons.receipt_outlined,
+          onTap: () {
+            setState(() {
+              _showViewTransactions = true;
+            });
+          },
+        ),
       ],
     );
   }

@@ -583,20 +583,24 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
-          build: (context) {
-            return [
+          header: (context) => pw.Column(
+            children: [
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
                   if (logoImage != null)
                     pw.Container(
-                      width: 42,
-                      height: 42,
+                      width: 84,
+                      height: 84,
                       child: pw.Image(logoImage!, fit: pw.BoxFit.contain),
                     ),
                 ],
               ),
-              pw.SizedBox(height: 8),
+              pw.SizedBox(height: context.pageNumber == 1 ? 0 : 24),
+            ],
+          ),
+          build: (context) {
+            return [
               pw.Text(
                 'Transaction Details',
                 style: pw.TextStyle(
@@ -698,20 +702,20 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         final logoBytes = await _loadSecuraLogoBytes();
         if (logoBytes != null) {
           final picture = sheet.pictures.addStream(1, 1, logoBytes);
-          picture.height = 56;
-          picture.width = 56;
+          picture.height = 112;
+          picture.width = 112;
         }
       } catch (_) {
         // Ignore logo failures and continue export.
       }
 
       var row = 1;
-      sheet.getRangeByName('C$row').setText('Transaction Details');
+      sheet.getRangeByName('F$row').setText('Transaction Details');
       row++;
-      sheet.getRangeByName('C$row').setText('Apartment Name: $_apartmentName');
+      sheet.getRangeByName('F$row').setText('Apartment Name: $_apartmentName');
       row++;
-      sheet.getRangeByName('C$row').setText('Generated on: ${DateTime.now()}');
-      row += 2;
+      sheet.getRangeByName('F$row').setText('Generated on: ${DateTime.now()}');
+      row += 4;
 
       final filterLines = _filterLinesForExport(activeFilterTokens);
       for (final line in filterLines) {

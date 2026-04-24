@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
@@ -392,6 +394,13 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   }
 
   Future<Uint8List?> _loadSecuraLogoBytes() async {
+    try {
+      final data = await rootBundle.load('secura_logo.png');
+      return data.buffer.asUint8List();
+    } catch (_) {
+      // Fall back to file search for non-bundled execution contexts.
+    }
+
     final candidates = <File>[];
     var dir = Directory.current;
     for (var i = 0; i < 8; i++) {
@@ -469,22 +478,85 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         .toList();
   }
 
+  String _fileNameWithoutExtension(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0) {
+      return fileName;
+    }
+    return fileName.substring(0, dotIndex);
+  }
+
+  String _fileExtensionFromName(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0 || dotIndex == fileName.length - 1) {
+      return '';
+    }
+    return fileName.substring(dotIndex + 1).toLowerCase();
+  }
+
+  MimeType _mimeTypeForExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        return MimeType.pdf;
+      case 'xlsx':
+        return MimeType.microsoftExcel;
+      default:
+        return MimeType.other;
+    }
+  }
+
   Future<bool> _saveBytesToFile({
     required String fileName,
     required Uint8List bytes,
     required String dialogTitle,
     required List<String> allowedExtensions,
   }) async {
-    final savedPath = await FilePicker.platform.saveFile(
-      dialogTitle: dialogTitle,
-      fileName: fileName,
-      type: FileType.custom,
-      allowedExtensions: allowedExtensions,
-      bytes: bytes,
-      lockParentWindow: true,
-    );
+    try {
+      final extension = _fileExtensionFromName(fileName);
+      final baseName = _fileNameWithoutExtension(fileName);
 
-    return savedPath != null;
+      await FileSaver.instance.saveFile(
+        name: baseName.isEmpty ? fileName : baseName,
+        bytes: bytes,
+        fileExtension: extension,
+        mimeType: _mimeTypeForExtension(extension),
+      );
+      return true;
+    } catch (_) {
+      // Fall back to explicit path selection when FileSaver is unavailable.
+    }
+
+    try {
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: allowedExtensions,
+        lockParentWindow: true,
+      );
+
+      if (savedPath == null || savedPath.trim().isEmpty) {
+        return false;
+      }
+
+      try {
+        final file = File(savedPath);
+        await file.writeAsBytes(bytes, flush: true);
+        return true;
+      } catch (_) {
+        final fallbackPath = await FilePicker.platform.saveFile(
+          dialogTitle: dialogTitle,
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: allowedExtensions,
+          bytes: bytes,
+          lockParentWindow: true,
+        );
+        return fallbackPath != null;
+      }
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _downloadFilteredAsPdf(
@@ -514,7 +586,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
           build: (context) {
             return [
               pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
+                mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
                   if (logoImage != null)
                     pw.Container(
@@ -603,7 +675,9 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
           ),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('PDF export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to generate PDF right now.')),
@@ -702,7 +776,9 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
           ),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Excel export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to generate Excel right now.')),

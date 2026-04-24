@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../services/api_service.dart';
 import '../services/receipt_downloader.dart';
@@ -249,6 +254,311 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
   String _money(double value) {
     return value.toStringAsFixed(2);
+  }
+
+  String _flattenTenderText(Map<String, dynamic> txn) {
+    final tenders = txn['trnsTender'];
+    final list = tenders is List
+        ? tenders
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    if (list.isEmpty) {
+      return '--';
+    }
+
+    return list
+        .map((t) => '${t['tenderName'] ?? '--'}: ${t['amountPaid'] ?? '0'}')
+        .join(' | ');
+  }
+
+  List<String> _appliedFilterLines() {
+    final lines = <String>[];
+
+    lines.add(
+      _searchController.text.trim().isEmpty
+          ? 'Search: All'
+          : 'Search: ${_searchController.text.trim()}',
+    );
+    lines.add(
+      _fromDate == null
+          ? 'From Date: Any'
+          : 'From Date: ${_fromDate!.day}-${_fromDate!.month}-${_fromDate!.year}',
+    );
+    lines.add(
+      _toDate == null
+          ? 'To Date: Any'
+          : 'To Date: ${_toDate!.day}-${_toDate!.month}-${_toDate!.year}',
+    );
+    lines.add(
+      _selectedTypes.isEmpty
+          ? 'Transaction Type: All'
+          : 'Transaction Type: ${_selectedTypes.join(', ')}',
+    );
+    lines.add(
+      _selectedCauses.isEmpty
+          ? 'Cause: All'
+          : 'Cause: ${_selectedCauses.join(', ')}',
+    );
+    lines.add(
+      _selectedTenders.isEmpty
+          ? 'Tenders: All'
+          : 'Tenders: ${_selectedTenders.join(', ')}',
+    );
+    lines.add(
+      _selectedDoneBy.isEmpty
+          ? 'Done By: All'
+          : 'Done By: ${_selectedDoneBy.join(', ')}',
+    );
+
+    return lines;
+  }
+
+  List<String> _exportHeaders() {
+    return const [
+      'Transaction ID',
+      'Transaction Date',
+      'Done By',
+      'Tenders',
+      'Type',
+      'Bank Account',
+      'Amount',
+      'Payment ID',
+      'Status',
+      'Cause',
+      'Receipt Number',
+    ];
+  }
+
+  List<List<String>> _exportRows(List<Map<String, dynamic>> rows) {
+    return rows
+        .map(
+          (txn) => [
+            txn['trnscId']?.toString() ?? '--',
+            _fmtDate(txn),
+            txn['trnsBy']?.toString() ?? '--',
+            _flattenTenderText(txn),
+            txn['trnsType']?.toString() ?? '--',
+            txn['trnsBnkAccnt']?.toString() ?? '--',
+            txn['trnsAmt']?.toString() ?? '0',
+            txn['pymntId']?.toString() ?? '--',
+            txn['trnsStatus']?.toString() ?? '--',
+            txn['cause']?.toString() ?? '--',
+            txn['receiptNumber']?.toString() ?? '--',
+          ],
+        )
+        .toList();
+  }
+
+  Future<bool> _saveBytesToFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String dialogTitle,
+    required List<String> allowedExtensions,
+  }) async {
+    final savedPath = await FilePicker.platform.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: allowedExtensions,
+      bytes: bytes,
+      lockParentWindow: true,
+    );
+
+    return savedPath != null;
+  }
+
+  Future<void> _downloadFilteredAsPdf(
+    List<Map<String, dynamic>> rows,
+    List<String> filters,
+  ) async {
+    final document = pw.Document();
+    final headers = _exportHeaders();
+    final tableRows = _exportRows(rows);
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        build: (context) {
+          return [
+            pw.Text(
+              'View Transactions Report',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Generated on: ${DateTime.now()}',
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Applied Filters',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            ...filters.map(
+              (line) => pw.Text(line, style: const pw.TextStyle(fontSize: 10)),
+            ),
+            pw.SizedBox(height: 12),
+            pw.Table.fromTextArray(
+              headers: headers,
+              data: tableRows,
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFEAF5F2),
+              ),
+              cellAlignment: pw.Alignment.centerLeft,
+            ),
+          ];
+        },
+      ),
+    );
+
+    final bytes = Uint8List.fromList(await document.save());
+    final saved = await _saveBytesToFile(
+      fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      bytes: bytes,
+      dialogTitle: 'Download Transactions PDF',
+      allowedExtensions: const ['pdf'],
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          saved ? 'PDF downloaded successfully.' : 'Download was cancelled.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadFilteredAsExcel(
+    List<Map<String, dynamic>> rows,
+    List<String> filters,
+  ) async {
+    final workbook = xlsio.Workbook();
+    final sheet = workbook.worksheets[0];
+    sheet.name = 'Transactions';
+
+    var row = 1;
+    sheet.getRangeByName('A$row').setText('View Transactions Report');
+    row++;
+    sheet.getRangeByName('A$row').setText('Generated on: ${DateTime.now()}');
+    row += 2;
+    sheet.getRangeByName('A$row').setText('Applied Filters');
+    row++;
+
+    for (final filter in filters) {
+      sheet.getRangeByName('A$row').setText(filter);
+      row++;
+    }
+
+    row++;
+    final headers = _exportHeaders();
+    for (var c = 0; c < headers.length; c++) {
+      sheet.getRangeByIndex(row, c + 1).setText(headers[c]);
+    }
+    row++;
+
+    final dataRows = _exportRows(rows);
+    for (final data in dataRows) {
+      for (var c = 0; c < data.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(data[c]);
+      }
+      row++;
+    }
+
+    final bytes = Uint8List.fromList(workbook.saveSync());
+    workbook.dispose();
+
+    final saved = await _saveBytesToFile(
+      fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+      bytes: bytes,
+      dialogTitle: 'Download Transactions Excel',
+      allowedExtensions: const ['xlsx'],
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          saved ? 'Excel downloaded successfully.' : 'Download was cancelled.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDownloadOptionsDialog() async {
+    final rows = _filteredTransactions;
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No rows available to download.')),
+      );
+      return;
+    }
+
+    var selected = 'excel';
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Download Transactions'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    value: 'excel',
+                    groupValue: selected,
+                    title: const Text('Excel'),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selected = value);
+                    },
+                  ),
+                  RadioListTile<String>(
+                    value: 'pdf',
+                    groupValue: selected,
+                    title: const Text('PDF'),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selected = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(selected),
+                  child: const Text('Download'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (choice == null) return;
+
+    final filters = _appliedFilterLines();
+    if (choice == 'pdf') {
+      await _downloadFilteredAsPdf(rows, filters);
+      return;
+    }
+
+    await _downloadFilteredAsExcel(rows, filters);
   }
 
   List<String> get _typeOptions {
@@ -1157,6 +1467,12 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
               onPressed: _loading ? null : _showFilterDialog,
               icon: const Icon(Icons.filter_alt_outlined),
               label: const Text('Filter'),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _showDownloadOptionsDialog,
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Download'),
             ),
           ],
         ),

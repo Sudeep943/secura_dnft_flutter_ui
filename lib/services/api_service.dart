@@ -1408,6 +1408,78 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> previewReceipt(
+    Map<String, dynamic> requestBody,
+  ) async {
+    const paths = ['/receipt/previewReceipt'];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> createReceipt(
+    Map<String, dynamic> requestBody,
+  ) async {
+    const paths = ['/receipt/createReceipt'];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> generateReceipt(
+    Map<String, dynamic> requestBody,
+  ) async {
+    const paths = ['/receipt/generateReceipt'];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> getAllFlats() async {
     final genericHeader = _buildLoginResponseHeader();
     if (genericHeader == null) {

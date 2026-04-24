@@ -12,6 +12,7 @@ import '../widgets/sidebar.dart';
 import 'app_shell.dart';
 import 'create_payment_page.dart';
 import 'create_notice_page.dart';
+import 'create_receipt_page.dart';
 import 'home_page.dart';
 import 'view_all_notices_page.dart';
 import 'view_transactions_page.dart';
@@ -376,6 +377,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
   bool _showCreatePayment = false;
   bool _showViewPayments = false;
   bool _showCreateLedgerEntry = false;
+  bool _showCreateReceipt = false;
   bool _showViewTransactions = false;
   bool _loadingDueDetails = false;
 
@@ -506,6 +508,17 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       );
     }
 
+    if (_showCreateReceipt) {
+      return CreateReceiptPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showCreateReceipt = false;
+          });
+        },
+      );
+    }
+
     if (_showViewTransactions) {
       return ViewTransactionsPage(
         embedded: widget.embedded,
@@ -555,7 +568,15 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
           Icons.currency_rupee,
           onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
         ),
-        _ModuleHubItem('Create Receipt', Icons.receipt_long_outlined),
+        _ModuleHubItem(
+          'Create Receipt',
+          Icons.receipt_long_outlined,
+          onTap: () {
+            setState(() {
+              _showCreateReceipt = true;
+            });
+          },
+        ),
         _ModuleHubItem(
           'View Transactions',
           Icons.receipt_outlined,

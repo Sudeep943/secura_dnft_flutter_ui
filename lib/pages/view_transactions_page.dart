@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../services/api_service.dart';
+import '../services/receipt_downloader.dart';
 
 class ViewTransactionsPage extends StatefulWidget {
   const ViewTransactionsPage({super.key, this.embedded = false, this.onBack});
@@ -637,38 +636,54 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   }
 
   Future<void> _downloadReceipt(Map<String, dynamic> txn) async {
-    final files = txn['trnsFiles'];
-    final fileList = files is List
-        ? files.map((e) => e.toString()).toList()
-        : <String>[];
-    final url = fileList.isNotEmpty ? fileList.first.trim() : '';
-    if (url.isEmpty) {
+    final receiptNumber = (txn['receiptNumber']?.toString().trim() ?? '');
+    if (receiptNumber.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No receipt file URL found for this transaction.'),
+          content: Text('No receipt number found for this transaction.'),
         ),
       );
       return;
     }
 
+    final genericHeader = ApiService.userHeader;
+    if (genericHeader == null || genericHeader.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session expired. Please login again.')),
+      );
+      return;
+    }
+
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
-        throw Exception('Download failed');
+      final response = await ApiService.generateReceipt({
+        'genericHeader': Map<String, dynamic>.from(genericHeader),
+        'receiptNumber': receiptNumber,
+      });
+
+      final messageCode =
+          (response?['messageCode']?.toString().trim().toUpperCase() ?? '');
+      if (!messageCode.startsWith('SUCC')) {
+        throw Exception('Receipt generation failed');
       }
 
-      final trnscId = txn['trnscId']?.toString().trim();
-      final ext = url.toLowerCase().contains('.pdf') ? 'pdf' : 'bin';
-      final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Download Receipt',
-        fileName:
-            'receipt_${trnscId?.isNotEmpty == true ? trnscId : DateTime.now().millisecondsSinceEpoch}.$ext',
-        bytes: response.bodyBytes,
-        lockParentWindow: true,
-      );
+      final receipt =
+          (response?['receipt']?.toString().trim() ??
+          (response?['data'] is Map
+              ? (response?['data']['receipt']?.toString().trim() ?? '')
+              : ''));
+      if (receipt.isEmpty || receipt.toLowerCase() == 'null') {
+        throw Exception('Receipt data missing');
+      }
 
-      if (!mounted || savedPath == null) {
-        return;
+      final fileName =
+          'receipt_${receiptNumber.isNotEmpty ? receiptNumber : DateTime.now().millisecondsSinceEpoch}.pdf';
+      final downloaded = await downloadBase64Receipt(
+        base64Data: receipt,
+        fileName: fileName,
+      );
+      if (!mounted) return;
+      if (!downloaded) {
+        throw Exception('Download failed');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(

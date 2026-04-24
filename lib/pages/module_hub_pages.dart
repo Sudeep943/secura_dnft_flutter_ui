@@ -13,6 +13,7 @@ import 'app_shell.dart';
 import 'create_payment_page.dart';
 import 'create_notice_page.dart';
 import 'create_receipt_page.dart';
+import 'reports_dashboard_page.dart';
 import 'home_page.dart';
 import 'view_all_notices_page.dart';
 import 'view_transactions_page.dart';
@@ -329,17 +330,7 @@ class ReportsManagementPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _ModuleHubPage(
-      embedded: embedded,
-      section: AppSection.reports,
-      title: 'Reports',
-      subtitle: 'Choose one of the report categories below.',
-      items: const [
-        _ModuleHubItem('Financial Reports', Icons.bar_chart),
-        _ModuleHubItem('Booking Reports', Icons.insert_chart_outlined),
-        _ModuleHubItem('Employee Reports', Icons.analytics),
-      ],
-    );
+    return ReportsDashboardPage(embedded: embedded);
   }
 }
 

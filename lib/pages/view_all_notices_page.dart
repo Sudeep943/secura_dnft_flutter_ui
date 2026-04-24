@@ -127,8 +127,9 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
 
   List<DataColumn> _buildColumns() {
     const headingStyle = TextStyle(
-      color: Colors.white,
+      color: Color(0xFF124B45),
       fontWeight: FontWeight.bold,
+      fontSize: 12,
     );
 
     return const [
@@ -333,12 +334,17 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
 
   List<DataRow> _buildRows() {
     final notices = _filteredNotices;
-    return notices.map((notice) {
+    return notices.asMap().entries.map((entry) {
+      final rowIndex = entry.key;
+      final notice = entry.value;
       final shortDescription = notice.shortDescription.length > 80
           ? '${notice.shortDescription.substring(0, 80)}...'
           : notice.shortDescription;
 
       return DataRow(
+        color: WidgetStateProperty.all(
+          rowIndex.isEven ? const Color(0xFFFAFAFA) : Colors.white,
+        ),
         cells: [
           DataCell(Text(notice.noticeId)),
           DataCell(Text(_formatDate(notice.publishingDate))),
@@ -460,12 +466,13 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE0F0EE)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -520,8 +527,18 @@ class _ViewAllNoticesPageState extends State<ViewAllNoticesPage> {
                                       child: DataTable(
                                         headingRowColor:
                                             const WidgetStatePropertyAll(
-                                              _brandColor,
+                                              Color(0xFFE8F7F5),
                                             ),
+                                        headingTextStyle: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: Color(0xFF124B45),
+                                        ),
+                                        dataTextStyle: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                        dividerThickness: 0.6,
                                         dataRowMinHeight: 72,
                                         dataRowMaxHeight: 96,
                                         columnSpacing: 40,

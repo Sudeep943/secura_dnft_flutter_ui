@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -30,6 +31,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
   bool _loading = true;
   String? _error;
+  String _apartmentName = '--';
   List<Map<String, dynamic>> _transactions = [];
   Timer? _searchDebounce;
   double _loadingProgress = 0.0;
@@ -62,6 +64,36 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     if (response == null) return false;
     final code = response['messageCode']?.toString().trim().toUpperCase() ?? '';
     return code.startsWith('SUCC') || code.contains('SUCCESS');
+  }
+
+  String _extractApartmentName(Map<String, dynamic>? response) {
+    if (response == null) {
+      return '--';
+    }
+
+    final genericHeader = response['genericHeader'];
+    if (genericHeader is Map) {
+      final header = Map<String, dynamic>.from(genericHeader);
+      final fromHeader = (header['apartmentName']?.toString().trim() ?? '');
+      if (fromHeader.isNotEmpty) {
+        return fromHeader;
+      }
+    }
+
+    final fromRoot = (response['apartmentName']?.toString().trim() ?? '');
+    if (fromRoot.isNotEmpty) {
+      return fromRoot;
+    }
+
+    final userHeader = ApiService.userHeader;
+    if (userHeader != null) {
+      final fallback = (userHeader['apartmentName']?.toString().trim() ?? '');
+      if (fallback.isNotEmpty) {
+        return fallback;
+      }
+    }
+
+    return '--';
   }
 
   void _startProgressTimer() {
@@ -131,6 +163,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       setState(() {
         _loading = false;
         _transactions = list;
+        _apartmentName = _extractApartmentName(response);
         _loadingProgress = 0.0;
       });
     } catch (_) {
@@ -274,46 +307,130 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         .join(' | ');
   }
 
-  List<String> _appliedFilterLines() {
-    final lines = <String>[];
+  List<String> _activeFilterTokens() {
+    final tokens = <String>[];
+    final search = _searchController.text.trim();
+    if (search.isNotEmpty) {
+      tokens.add('Search: $search');
+    }
+    if (_fromDate != null) {
+      tokens.add(
+        'From: ${_fromDate!.day}-${_fromDate!.month}-${_fromDate!.year}',
+      );
+    }
+    if (_toDate != null) {
+      tokens.add('To: ${_toDate!.day}-${_toDate!.month}-${_toDate!.year}');
+    }
+    if (_selectedTypes.isNotEmpty) {
+      tokens.add('Type: ${_selectedTypes.join(', ')}');
+    }
+    if (_selectedCauses.isNotEmpty) {
+      tokens.add('Credit/Debit Head: ${_selectedCauses.join(', ')}');
+    }
+    if (_selectedTenders.isNotEmpty) {
+      tokens.add('Tenders: ${_selectedTenders.join(', ')}');
+    }
+    if (_selectedDoneBy.isNotEmpty) {
+      tokens.add('Done By: ${_selectedDoneBy.join(', ')}');
+    }
+    return tokens;
+  }
 
-    lines.add(
-      _searchController.text.trim().isEmpty
-          ? 'Search: All'
-          : 'Search: ${_searchController.text.trim()}',
-    );
-    lines.add(
-      _fromDate == null
-          ? 'From Date: Any'
-          : 'From Date: ${_fromDate!.day}-${_fromDate!.month}-${_fromDate!.year}',
-    );
-    lines.add(
-      _toDate == null
-          ? 'To Date: Any'
-          : 'To Date: ${_toDate!.day}-${_toDate!.month}-${_toDate!.year}',
-    );
-    lines.add(
-      _selectedTypes.isEmpty
-          ? 'Transaction Type: All'
-          : 'Transaction Type: ${_selectedTypes.join(', ')}',
-    );
-    lines.add(
-      _selectedCauses.isEmpty
-          ? 'Cause: All'
-          : 'Cause: ${_selectedCauses.join(', ')}',
-    );
-    lines.add(
-      _selectedTenders.isEmpty
-          ? 'Tenders: All'
-          : 'Tenders: ${_selectedTenders.join(', ')}',
-    );
-    lines.add(
-      _selectedDoneBy.isEmpty
-          ? 'Done By: All'
-          : 'Done By: ${_selectedDoneBy.join(', ')}',
-    );
+  List<String> _filterLinesForExport(List<String> tokens) {
+    if (tokens.isEmpty) {
+      return const [];
+    }
+
+    const maxCharsPerLine = 135;
+    final lines = <String>[];
+    var current = '';
+
+    for (final token in tokens) {
+      if (current.isEmpty) {
+        current = token;
+        continue;
+      }
+
+      final candidate = '$current   |   $token';
+      if (candidate.length <= maxCharsPerLine) {
+        current = candidate;
+      } else {
+        lines.add(current);
+        current = token;
+      }
+    }
+
+    if (current.isNotEmpty) {
+      lines.add(current);
+    }
+
+    if (lines.length > 2) {
+      final mergedSecondLine = lines.sublist(1).join('   |   ');
+      return [lines.first, mergedSecondLine];
+    }
 
     return lines;
+  }
+
+  String _pdfHeaderLabel(String label) {
+    switch (label) {
+      case 'Transaction ID':
+        return 'Transaction\nID';
+      case 'Transaction Date':
+        return 'Transaction\nDate';
+      case 'Bank Account':
+        return 'Bank\nAccount';
+      case 'Payment ID':
+        return 'Payment\nID';
+      case 'Credit/Debit Head':
+        return 'Credit/Debit\nHead';
+      case 'Receipt Number':
+        return 'Receipt\nNumber';
+      default:
+        return label;
+    }
+  }
+
+  Future<Uint8List?> _loadSecuraLogoBytes() async {
+    final candidates = <File>[];
+    var dir = Directory.current;
+    for (var i = 0; i < 8; i++) {
+      final base = dir.path;
+      candidates.add(File('$base${Platform.pathSeparator}secura_logo.png'));
+      candidates.add(
+        File(
+          '$base${Platform.pathSeparator}web${Platform.pathSeparator}secura_logo.png',
+        ),
+      );
+      candidates.add(
+        File(
+          '$base${Platform.pathSeparator}assets${Platform.pathSeparator}branding${Platform.pathSeparator}secura_logo.png',
+        ),
+      );
+
+      final parent = dir.parent;
+      if (parent.path == dir.path) {
+        break;
+      }
+      dir = parent;
+    }
+
+    final seen = <String>{};
+
+    for (final file in candidates) {
+      try {
+        if (!seen.add(file.path)) {
+          continue;
+        }
+        if (await file.exists()) {
+          return await file.readAsBytes();
+        }
+      } catch (_) {
+        // Ignore and try next path.
+      }
+    }
+
+    return null;
   }
 
   List<String> _exportHeaders() {
@@ -327,7 +444,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       'Amount',
       'Payment ID',
       'Status',
-      'Cause',
+      'Credit/Debit Head',
       'Receipt Number',
     ];
   }
@@ -372,125 +489,227 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
   Future<void> _downloadFilteredAsPdf(
     List<Map<String, dynamic>> rows,
-    List<String> filters,
+    List<String> activeFilterTokens,
   ) async {
-    final document = pw.Document();
-    final headers = _exportHeaders();
-    final tableRows = _exportRows(rows);
+    try {
+      final document = pw.Document();
+      final headers = _exportHeaders();
+      final pdfHeaders = headers.map(_pdfHeaderLabel).toList();
+      final tableRows = _exportRows(rows);
+      final filterLines = _filterLinesForExport(activeFilterTokens);
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          logoImage = pw.MemoryImage(logoBytes);
+        }
+      } catch (_) {
+        logoImage = null;
+      }
 
-    document.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        build: (context) {
-          return [
-            pw.Text(
-              'View Transactions Report',
-              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Text(
-              'Generated on: ${DateTime.now()}',
-              style: const pw.TextStyle(fontSize: 10),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Text(
-              'Applied Filters',
-              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-            ),
-            ...filters.map(
-              (line) => pw.Text(line, style: const pw.TextStyle(fontSize: 10)),
-            ),
-            pw.SizedBox(height: 12),
-            pw.Table.fromTextArray(
-              headers: headers,
-              data: tableRows,
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 9,
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
+          build: (context) {
+            return [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                children: [
+                  if (logoImage != null)
+                    pw.Container(
+                      width: 42,
+                      height: 42,
+                      child: pw.Image(logoImage!, fit: pw.BoxFit.contain),
+                    ),
+                ],
               ),
-              cellStyle: const pw.TextStyle(fontSize: 8),
-              headerDecoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFFEAF5F2),
+              pw.SizedBox(height: 8),
+              pw.Text(
+                'Transaction Details',
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
-              cellAlignment: pw.Alignment.centerLeft,
-            ),
-          ];
-        },
-      ),
-    );
-
-    final bytes = Uint8List.fromList(await document.save());
-    final saved = await _saveBytesToFile(
-      fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.pdf',
-      bytes: bytes,
-      dialogTitle: 'Download Transactions PDF',
-      allowedExtensions: const ['pdf'],
-    );
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          saved ? 'PDF downloaded successfully.' : 'Download was cancelled.',
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Apartment Name: $_apartmentName',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Generated on: ${DateTime.now()}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              if (filterLines.isNotEmpty) ...[
+                pw.SizedBox(height: 6),
+                ...filterLines.map(
+                  (line) => pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 2),
+                    child: pw.Text(
+                      line,
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ),
+              ],
+              pw.SizedBox(height: 28),
+              pw.Table.fromTextArray(
+                headers: pdfHeaders,
+                data: tableRows,
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 9,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFFEAF5F2),
+                ),
+                headerAlignment: pw.Alignment.center,
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(1.2),
+                  1: pw.FlexColumnWidth(1.35),
+                  2: pw.FlexColumnWidth(1.45),
+                  3: pw.FlexColumnWidth(1.5),
+                  4: pw.FlexColumnWidth(0.9),
+                  5: pw.FlexColumnWidth(1.5),
+                  6: pw.FlexColumnWidth(0.9),
+                  7: pw.FlexColumnWidth(1.1),
+                  8: pw.FlexColumnWidth(0.9),
+                  9: pw.FlexColumnWidth(1.4),
+                  10: pw.FlexColumnWidth(1.2),
+                },
+                cellAlignment: pw.Alignment.centerLeft,
+              ),
+            ];
+          },
         ),
-      ),
-    );
+      );
+
+      final bytes = Uint8List.fromList(await document.save());
+      final saved = await _saveBytesToFile(
+        fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        bytes: bytes,
+        dialogTitle: 'Download Transactions PDF',
+        allowedExtensions: const ['pdf'],
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved ? 'PDF downloaded successfully.' : 'Download was cancelled.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to generate PDF right now.')),
+      );
+    }
   }
 
   Future<void> _downloadFilteredAsExcel(
     List<Map<String, dynamic>> rows,
-    List<String> filters,
+    List<String> activeFilterTokens,
   ) async {
     final workbook = xlsio.Workbook();
-    final sheet = workbook.worksheets[0];
-    sheet.name = 'Transactions';
+    try {
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Transactions';
 
-    var row = 1;
-    sheet.getRangeByName('A$row').setText('View Transactions Report');
-    row++;
-    sheet.getRangeByName('A$row').setText('Generated on: ${DateTime.now()}');
-    row += 2;
-    sheet.getRangeByName('A$row').setText('Applied Filters');
-    row++;
-
-    for (final filter in filters) {
-      sheet.getRangeByName('A$row').setText(filter);
-      row++;
-    }
-
-    row++;
-    final headers = _exportHeaders();
-    for (var c = 0; c < headers.length; c++) {
-      sheet.getRangeByIndex(row, c + 1).setText(headers[c]);
-    }
-    row++;
-
-    final dataRows = _exportRows(rows);
-    for (final data in dataRows) {
-      for (var c = 0; c < data.length; c++) {
-        sheet.getRangeByIndex(row, c + 1).setText(data[c]);
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          final picture = sheet.pictures.addStream(1, 1, logoBytes);
+          picture.height = 56;
+          picture.width = 56;
+        }
+      } catch (_) {
+        // Ignore logo failures and continue export.
       }
+
+      var row = 1;
+      sheet.getRangeByName('C$row').setText('Transaction Details');
       row++;
-    }
+      sheet.getRangeByName('C$row').setText('Apartment Name: $_apartmentName');
+      row++;
+      sheet.getRangeByName('C$row').setText('Generated on: ${DateTime.now()}');
+      row += 2;
 
-    final bytes = Uint8List.fromList(workbook.saveSync());
-    workbook.dispose();
+      final filterLines = _filterLinesForExport(activeFilterTokens);
+      for (final line in filterLines) {
+        sheet.getRangeByIndex(row, 1, row, _exportHeaders().length).merge();
+        sheet.getRangeByIndex(row, 1).setText(line);
+        row++;
+      }
 
-    final saved = await _saveBytesToFile(
-      fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.xlsx',
-      bytes: bytes,
-      dialogTitle: 'Download Transactions Excel',
-      allowedExtensions: const ['xlsx'],
-    );
+      row++;
+      final headers = _exportHeaders();
+      final headerRow = row;
+      for (var c = 0; c < headers.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(headers[c]);
+      }
+      final headerRange = sheet.getRangeByIndex(
+        headerRow,
+        1,
+        headerRow,
+        headers.length,
+      );
+      headerRange.cellStyle.backColor = '#E8F7F5';
+      headerRange.cellStyle.bold = true;
+      headerRange.cellStyle.hAlign = xlsio.HAlignType.center;
+      headerRange.cellStyle.vAlign = xlsio.VAlignType.center;
+      row++;
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          saved ? 'Excel downloaded successfully.' : 'Download was cancelled.',
+      final dataRows = _exportRows(rows);
+      for (final data in dataRows) {
+        for (var c = 0; c < data.length; c++) {
+          sheet.getRangeByIndex(row, c + 1).setText(data[c]);
+        }
+        row++;
+      }
+
+      if (row - 1 >= headerRow) {
+        final tableRange = sheet.getRangeByIndex(
+          headerRow,
+          1,
+          row - 1,
+          headers.length,
+        );
+        tableRange.autoFitColumns();
+        tableRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
+        tableRange.cellStyle.borders.all.color = '#B7D8D2';
+      }
+
+      final bytes = Uint8List.fromList(workbook.saveSync());
+      final saved = await _saveBytesToFile(
+        fileName: 'transactions_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+        bytes: bytes,
+        dialogTitle: 'Download Transactions Excel',
+        allowedExtensions: const ['xlsx'],
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Excel downloaded successfully.'
+                : 'Download was cancelled.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to generate Excel right now.')),
+      );
+    } finally {
+      workbook.dispose();
+    }
   }
 
   Future<void> _showDownloadOptionsDialog() async {
@@ -552,13 +771,13 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
     if (choice == null) return;
 
-    final filters = _appliedFilterLines();
+    final activeFilters = _activeFilterTokens();
     if (choice == 'pdf') {
-      await _downloadFilteredAsPdf(rows, filters);
+      await _downloadFilteredAsPdf(rows, activeFilters);
       return;
     }
 
-    await _downloadFilteredAsExcel(rows, filters);
+    await _downloadFilteredAsExcel(rows, activeFilters);
   }
 
   List<String> get _typeOptions {
@@ -790,13 +1009,13 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                         },
                       ),
                       _buildDropdownSelectorField(
-                        title: 'Cause',
+                        title: 'Credit/Debit Head',
                         options: _causeOptions,
                         selected: localCauses,
                         onTap: () async {
                           await _openMultiSelectPicker(
                             context: dialogContext,
-                            title: 'Cause',
+                            title: 'Credit/Debit Head',
                             options: _causeOptions,
                             selected: localCauses,
                           );
@@ -1028,6 +1247,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
             (t) => SelectableText(
               '${t['tenderName'] ?? '--'}: ${t['amountPaid'] ?? '0'}',
               textAlign: TextAlign.left,
+              maxLines: 1,
               style: const TextStyle(fontSize: 12.5, height: 1.3),
             ),
           )
@@ -1116,11 +1336,18 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDCEAE7)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE0F0EE)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Scrollbar(
           controller: _tableHorizontalController,
           thumbVisibility: true,
@@ -1142,10 +1369,20 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                   controller: _tableVerticalController,
                   child: DataTable(
                     headingRowColor: WidgetStateProperty.all(
-                      const Color(0xFFEAF5F2),
+                      const Color(0xFFE8F7F5),
                     ),
-                    dataRowMinHeight: 55,
-                    dataRowMaxHeight: 65,
+                    headingTextStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: _brandTextColor,
+                    ),
+                    dataTextStyle: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black87,
+                    ),
+                    dividerThickness: 0.6,
+                    dataRowMinHeight: 68,
+                    dataRowMaxHeight: 80,
                     columnSpacing: 22,
                     horizontalMargin: 14,
                     columns: [
@@ -1178,7 +1415,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       ),
                       DataColumn(
                         label: SizedBox(
-                          width: 250,
+                          width: 210,
                           child: const Text(
                             'Tenders',
                             textAlign: TextAlign.center,
@@ -1234,7 +1471,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                         label: SizedBox(
                           width: 170,
                           child: const Text(
-                            'Cause',
+                            'Credit/Debit Head',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -1258,19 +1495,27 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                         ),
                       ),
                     ],
-                    rows: rows.map((txn) {
+                    rows: rows.asMap().entries.map((entry) {
+                      final rowIndex = entry.key;
+                      final txn = entry.value;
                       final receiptNo =
                           (txn['receiptNumber']?.toString().trim() ?? '');
                       return DataRow(
+                        color: WidgetStateProperty.all(
+                          rowIndex.isEven
+                              ? const Color(0xFFFAFAFA)
+                              : Colors.white,
+                        ),
                         cells: [
                           DataCell(
                             SizedBox(
+                              width: 140,
                               height: double.infinity,
                               child: Container(
-                                alignment: Alignment.center,
+                                alignment: Alignment.centerLeft,
                                 child: SelectableText(
                                   txn['trnscId']?.toString() ?? '--',
-                                  textAlign: TextAlign.center,
+                                  textAlign: TextAlign.left,
                                 ),
                               ),
                             ),
@@ -1303,10 +1548,11 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                           ),
                           DataCell(
                             SizedBox(
-                              width: 250,
+                              width: 210,
                               height: double.infinity,
                               child: Container(
                                 alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.only(left: 12),
                                 child: _buildTenderCell(txn),
                               ),
                             ),

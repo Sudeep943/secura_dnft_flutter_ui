@@ -442,8 +442,9 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
 
   List<DataColumn> _buildColumns() {
     const headingStyle = TextStyle(
-      color: Colors.white,
+      color: Color(0xFF124B45),
       fontWeight: FontWeight.bold,
+      fontSize: 12,
     );
 
     return const [
@@ -722,11 +723,16 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
   }
 
   List<DataRow> _buildRows() {
-    return bookings.map((booking) {
+    return bookings.asMap().entries.map((entry) {
+      final rowIndex = entry.key;
+      final booking = entry.value;
       final status = booking['bkngSts'] as String?;
       final statusColor = _statusColor(status);
 
       return DataRow(
+        color: WidgetStateProperty.all(
+          rowIndex.isEven ? const Color(0xFFFAFAFA) : Colors.white,
+        ),
         cells: [
           DataCell(Text(_bookingId(booking))),
           DataCell(
@@ -903,12 +909,13 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE0F0EE)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
@@ -954,8 +961,18 @@ class _ViewBookingsPageState extends State<ViewBookingsPage> {
                                         child: DataTable(
                                           headingRowColor:
                                               const WidgetStatePropertyAll(
-                                                _brandColor,
+                                                Color(0xFFE8F7F5),
                                               ),
+                                          headingTextStyle: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Color(0xFF124B45),
+                                          ),
+                                          dataTextStyle: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black87,
+                                          ),
+                                          dividerThickness: 0.6,
                                           dataRowMinHeight: 70,
                                           dataRowMaxHeight: 96,
                                           columns: _buildColumns(),

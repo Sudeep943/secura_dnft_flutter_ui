@@ -1888,10 +1888,56 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         collapsedShape: const RoundedRectangleBorder(),
         shape: const RoundedRectangleBorder(),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         title: _buildSectionTitle(title, subtitle),
         children: [child],
       ),
+    );
+  }
+
+  Widget _buildPaymentTypeFlagsRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: CheckboxListTile(
+            value: _maintenancePayment,
+            contentPadding: EdgeInsets.zero,
+            activeColor: _brandColor,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('Its Maintenance Payment'),
+            onChanged: _eventPayment
+                ? null
+                : (value) {
+                    setState(() {
+                      _maintenancePayment = value ?? false;
+                      if (_maintenancePayment) {
+                        _eventPayment = false;
+                      }
+                    });
+                  },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: CheckboxListTile(
+            value: _eventPayment,
+            contentPadding: EdgeInsets.zero,
+            activeColor: _brandColor,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('Its Event Payment'),
+            onChanged: _maintenancePayment
+                ? null
+                : (value) {
+                    setState(() {
+                      _eventPayment = value ?? false;
+                      if (_eventPayment) {
+                        _maintenancePayment = false;
+                      }
+                    });
+                  },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1946,7 +1992,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               ),
             ),
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Charges'),
+            label: const Text('Add Tax'),
           ),
         ),
         if (_additionalChargeInputs.isNotEmpty) ...[
@@ -2055,20 +2101,23 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OutlinedButton.icon(
-          onPressed: _canAddDiscountFine
-              ? () => _openDiscountFineDialog('DISCOUNT')
-              : null,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _brandColor,
-            side: const BorderSide(color: _brandColor),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _canAddDiscountFine
+                ? () => _openDiscountFineDialog('DISCOUNT')
+                : null,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _brandColor,
+              side: const BorderSide(color: _brandColor),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
+            icon: const Icon(Icons.local_offer_outlined),
+            label: Text(_discountFineButtonLabel),
           ),
-          icon: const Icon(Icons.local_offer_outlined),
-          label: Text(_discountFineButtonLabel),
         ),
         if (_appliedDiscountFines.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -2474,11 +2523,13 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            _buildPaymentTypeFlagsRow(),
             const SizedBox(height: 14),
             _buildCollapsibleFormSection(
-              title: 'Charges And Adjustments',
+              title: 'Add Other Taxes',
               subtitle:
-                  'Maintenance/Event flags, additional charges, and discount/fine rules.',
+                  'Add additional tax or charge entries that will be included in this payment.',
               expanded: _expandChargesAndAdjustments,
               onExpansionChanged: (expanded) {
                 setState(() {
@@ -2487,50 +2538,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               },
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CheckboxListTile(
-                          value: _maintenancePayment,
-                          contentPadding: EdgeInsets.zero,
-                          activeColor: _brandColor,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Its Maintenance Payment'),
-                          onChanged: _eventPayment
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _maintenancePayment = value ?? false;
-                                    if (_maintenancePayment) {
-                                      _eventPayment = false;
-                                    }
-                                  });
-                                },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CheckboxListTile(
-                          value: _eventPayment,
-                          contentPadding: EdgeInsets.zero,
-                          activeColor: _brandColor,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Its Event Payment'),
-                          onChanged: _maintenancePayment
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _eventPayment = value ?? false;
-                                    if (_eventPayment) {
-                                      _maintenancePayment = false;
-                                    }
-                                  });
-                                },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
                   _buildAdditionalChargesSection(),
                   const SizedBox(height: 22),
                   _buildDiscountFineSection(),

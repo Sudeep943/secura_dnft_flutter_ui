@@ -577,6 +577,11 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
+        const _ModuleHubItem(
+          'Upload Other Due Payments',
+          Icons.upload_file_rounded,
+        ),
+        const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
       ],
     );
   }

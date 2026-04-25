@@ -667,35 +667,35 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           .map(
             (item) => [
               item.incomeHead,
-              _formatInr(item.unitAmount),
-              _formatInr(item.totalExcludingTax),
-              _formatInr(item.totalTax),
-              _formatInr(item.totalIncludingTax),
-              _formatInr(_creditDiscrepancy(item)),
+              _formatInrForPdf(item.unitAmount),
+              _formatInrForPdf(item.totalExcludingTax),
+              _formatInrForPdf(item.totalTax),
+              _formatInrForPdf(item.totalIncludingTax),
+              _formatInrForPdf(_creditDiscrepancy(item)),
             ],
           )
-          .toList(growable: false);
+          .toList();
       incomeRows.add([
         'Total',
-        _formatInr(
+        _formatInrForPdf(
           _creditRows.fold<double>(0, (sum, row) => sum + row.unitAmount),
         ),
-        _formatInr(
+        _formatInrForPdf(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + row.totalExcludingTax,
           ),
         ),
-        _formatInr(
+        _formatInrForPdf(
           _creditRows.fold<double>(0, (sum, row) => sum + row.totalTax),
         ),
-        _formatInr(
+        _formatInrForPdf(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + row.totalIncludingTax,
           ),
         ),
-        _formatInr(
+        _formatInrForPdf(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + _creditDiscrepancy(row),
@@ -704,9 +704,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       ]);
 
       final expenseRows = _debitRows
-          .map((item) => [item.expenseHead, _formatInr(item.totalAmount)])
-          .toList(growable: false);
-      expenseRows.add(['Total', _formatInr(_totalExpenseAmount())]);
+          .map((item) => [item.expenseHead, _formatInrForPdf(item.totalAmount)])
+          .toList();
+      expenseRows.add(['Total', _formatInrForPdf(_totalExpenseAmount())]);
 
       document.addPage(
         pw.MultiPage(
@@ -762,19 +762,19 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 children: [
                   _pdfSummaryCard(
                     'Total Income(Excluding Tax)',
-                    _formatInr(_totalIncomeExcludingTax()),
+                    _formatInrForPdf(_totalIncomeExcludingTax()),
                     PdfColor.fromInt(0xFF0F8F82),
                   ),
                   pw.SizedBox(width: 10),
                   _pdfSummaryCard(
                     'Total Expence',
-                    _formatInr(_totalExpenseAmount()),
+                    _formatInrForPdf(_totalExpenseAmount()),
                     PdfColor.fromInt(0xFF124B45),
                   ),
                   pw.SizedBox(width: 10),
                   _pdfSummaryCard(
                     'Net Surplus',
-                    _formatInr(_netSurplusAmount()),
+                    _formatInrForPdf(_netSurplusAmount()),
                     PdfColor.fromInt(0xFF26C6AD),
                   ),
                 ],
@@ -872,7 +872,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to generate PDF right now.')),
+        SnackBar(
+          content: Text(
+            'Unable to generate PDF right now. ${error.toString()}',
+          ),
+        ),
       );
     }
   }
@@ -1147,38 +1151,42 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   }
 
   pw.Widget _pdfSummaryCard(String label, String value, PdfColor color) {
+    final resolvedValue = value.trim().isEmpty ? 'INR 0' : value;
     return pw.Expanded(
       child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: pw.BoxDecoration(
-          color: _pdfColorWithOpacity(color, 0.08),
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-          border: pw.Border.all(color: _pdfColorWithOpacity(color, 0.3)),
+          color: PdfColors.white,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
+          border: pw.Border.all(color: PdfColor.fromInt(0xFFDCEEEA)),
         ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(
-              label,
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            pw.Padding(
+              padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: pw.Text(
+                label,
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey700,
+                ),
+              ),
             ),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              value,
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: color,
+            pw.Padding(
+              padding: const pw.EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: pw.Text(
+                resolvedValue,
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromInt(0xFF1F2937),
+                ),
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  PdfColor _pdfColorWithOpacity(PdfColor color, double opacity) {
-    return PdfColor(color.red, color.green, color.blue, opacity);
   }
 
   double _excelColumnWidth(List<String> values) {
@@ -1191,6 +1199,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     }
     final estimated = (longest * 1.15).clamp(12, 42);
     return estimated.toDouble();
+  }
+
+  String _formatInrForPdf(double value) {
+    // Default PDF fonts can fail with the ₹ glyph in some environments.
+    return _formatInr(value).replaceFirst('₹', 'INR ');
   }
 
   @override

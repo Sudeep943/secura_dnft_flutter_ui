@@ -172,6 +172,7 @@ class _SideBarState extends State<SideBar> {
             section: AppSection.ticketManagement,
           ),
           item("Security", Icons.security, section: AppSection.security),
+          item("Forms And Responses", Icons.list),
           item(
             "Group Management",
             Icons.groups,
@@ -185,7 +186,6 @@ class _SideBarState extends State<SideBar> {
           item("Reports", Icons.assessment, section: AppSection.reports),
           item("Others", Icons.more_horiz, section: AppSection.others),
           item("Create Skill Class", Icons.school),
-          item("View Classes", Icons.list),
         ],
       ),
     );

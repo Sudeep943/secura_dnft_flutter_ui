@@ -596,7 +596,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                     ),
                 ],
               ),
-              pw.SizedBox(height: context.pageNumber == 1 ? 0 : 24),
+              pw.SizedBox(height: context.pageNumber == 1 ? -10 : 24),
             ],
           ),
           build: (context) {

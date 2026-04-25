@@ -592,7 +592,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                     pw.Container(
                       width: 84,
                       height: 84,
-                      child: pw.Image(logoImage!, fit: pw.BoxFit.contain),
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
                     ),
                 ],
               ),

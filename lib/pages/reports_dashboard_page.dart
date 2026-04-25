@@ -1,7 +1,17 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../navigation/app_section.dart';
+import '../services/api_service.dart';
 import '../widgets/sidebar.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,21 +156,6 @@ class _PieDatum {
 // Report Sheet Dummy Data (tables)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _balanceSheetRows = [
-  ['Assets', '', ''],
-  ['Cash & Bank Balance', '₹4,85,000', '₹3,92,000'],
-  ['Fixed Deposits', '₹12,00,000', '₹10,50,000'],
-  ['Receivable from Owners', '₹1,20,500', '₹98,200'],
-  ['Prepaid Expenses', '₹22,000', '₹18,500'],
-  ['Total Assets', '₹18,27,500', '₹15,58,700'],
-  ['Liabilities', '', ''],
-  ['Advance from Owners', '₹2,40,000', '₹1,95,000'],
-  ['Outstanding Expenses', '₹85,000', '₹72,000'],
-  ['Reserve Fund', '₹8,50,000', '₹7,20,000'],
-  ['Corpus Fund', '₹6,52,500', '₹5,71,700'],
-  ['Total Liabilities', '₹18,27,500', '₹15,58,700'],
-];
-
 const _taxSheetRows = [
   ['Income Head', 'Gross (₹)', 'Taxable (₹)', 'Tax (₹)'],
   ['Maintenance Collection', '18,00,000', '0', '0'],
@@ -230,20 +225,972 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   static const Color _panelBg = Color(0xFFF5FBF9);
 
   late TabController _tabController;
+  int _activeTabIndex = 0;
 
   // Pie chart touch state
   int _expensePieTouched = -1;
   int _incomePieTouched = -1;
+
+  bool _isBalanceSheetLoading = false;
+  String? _balanceSheetError;
+  String _balanceSheetFromDate = '';
+  String _balanceSheetToDate = '';
+  List<_BalanceSheetCreditRow> _creditRows = const [];
+  List<_BalanceSheetDebitRow> _debitRows = const [];
+
+  String get _balanceSheetApartmentName {
+    final header = ApiService.userHeader;
+    final value = header?['apartmentName']?.toString().trim() ?? '';
+    return value.isEmpty ? 'Apartment' : value;
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(() {
+      if (_tabController.index != _activeTabIndex) {
+        _activeTabIndex = _tabController.index;
+        if (_activeTabIndex == 1) {
+          _loadBalanceSheet();
+        }
+      }
       if (mounted) {
         setState(() {});
       }
     });
+  }
+
+  Future<void> _loadBalanceSheet() async {
+    if (_isBalanceSheetLoading) {
+      return;
+    }
+
+    setState(() {
+      _isBalanceSheetLoading = true;
+      _balanceSheetError = null;
+    });
+
+    try {
+      final response = await ApiService.getBalanceSheet();
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        setState(() {
+          _balanceSheetError =
+              'Unable to load balance sheet. Please try again.';
+          _creditRows = const [];
+          _debitRows = const [];
+          _balanceSheetFromDate = '';
+          _balanceSheetToDate = '';
+        });
+        return;
+      }
+
+      setState(() {
+        _balanceSheetFromDate = response['fromDate']?.toString() ?? '';
+        _balanceSheetToDate = response['toDate']?.toString() ?? '';
+        _creditRows = _toCreditRows(response['creditPaymentData']);
+        _debitRows = _toDebitRows(response['debitPaymentData']);
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _balanceSheetError = 'Unable to load balance sheet. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBalanceSheetLoading = false;
+        });
+      }
+    }
+  }
+
+  List<_BalanceSheetCreditRow> _toCreditRows(dynamic raw) {
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final row = Map<String, dynamic>.from(item);
+          return _BalanceSheetCreditRow(
+            incomeHead: row['paymentName']?.toString() ?? '-',
+            unitAmount: _toAmount(row['paymentAmount']),
+            totalExcludingTax: _toAmount(row['totalAmountExcludingTax']),
+            totalTax: _toAmount(row['taxCollected']),
+            totalIncludingTax: _toAmount(row['totalAmountIncludingTax']),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  List<_BalanceSheetDebitRow> _toDebitRows(dynamic raw) {
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final row = Map<String, dynamic>.from(item);
+          return _BalanceSheetDebitRow(
+            expenseHead: row['paymentName']?.toString() ?? '-',
+            totalAmount: _toAmount(row['totalAmountIncludingTax']),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  double _toAmount(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) {
+      return 0;
+    }
+    final normalized = raw.replaceAll(RegExp(r'[^0-9.-]'), '');
+    return double.tryParse(normalized) ?? 0;
+  }
+
+  String _formatInr(double value) {
+    if (value.isNaN || value.isInfinite) {
+      return '₹0';
+    }
+    final rounded = value.round();
+    final sign = rounded < 0 ? '-' : '';
+    final digits = rounded.abs().toString();
+    if (digits.length <= 3) {
+      return '$sign₹$digits';
+    }
+
+    final last3 = digits.substring(digits.length - 3);
+    var prefix = digits.substring(0, digits.length - 3);
+    final parts = <String>[];
+    while (prefix.length > 2) {
+      parts.insert(0, prefix.substring(prefix.length - 2));
+      prefix = prefix.substring(0, prefix.length - 2);
+    }
+    if (prefix.isNotEmpty) {
+      parts.insert(0, prefix);
+    }
+    return '$sign₹${parts.join(',')},$last3';
+  }
+
+  List<_BalanceSheetCreditRow> _orderedCreditRows() {
+    final nonOthers = _creditRows
+        .where((row) => row.incomeHead.trim().toLowerCase() != 'others')
+        .toList(growable: false);
+    final others = _creditRows
+        .where((row) => row.incomeHead.trim().toLowerCase() == 'others')
+        .toList(growable: false);
+    return [...nonOthers, ...others];
+  }
+
+  double _creditDiscrepancy(_BalanceSheetCreditRow row) {
+    return row.totalIncludingTax - row.totalTax - row.totalExcludingTax;
+  }
+
+  double _totalIncomeExcludingTax() {
+    return _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalExcludingTax,
+    );
+  }
+
+  double _totalExpenseAmount() {
+    return _debitRows.fold<double>(0, (sum, row) => sum + row.totalAmount);
+  }
+
+  double _netSurplusAmount() {
+    return _totalIncomeExcludingTax() - _totalExpenseAmount();
+  }
+
+  Future<Uint8List?> _loadSecuraLogoBytes() async {
+    try {
+      final data = await rootBundle.load('secura_logo.png');
+      return data.buffer.asUint8List();
+    } catch (_) {}
+
+    final candidates = <File>[];
+    var dir = Directory.current;
+    for (var i = 0; i < 8; i++) {
+      final base = dir.path;
+      candidates.add(File('$base${Platform.pathSeparator}secura_logo.png'));
+      candidates.add(
+        File(
+          '$base${Platform.pathSeparator}web${Platform.pathSeparator}secura_logo.png',
+        ),
+      );
+      candidates.add(
+        File(
+          '$base${Platform.pathSeparator}assets${Platform.pathSeparator}branding${Platform.pathSeparator}secura_logo.png',
+        ),
+      );
+
+      final parent = dir.parent;
+      if (parent.path == dir.path) {
+        break;
+      }
+      dir = parent;
+    }
+
+    final seen = <String>{};
+    for (final file in candidates) {
+      try {
+        if (!seen.add(file.path)) {
+          continue;
+        }
+        if (await file.exists()) {
+          return await file.readAsBytes();
+        }
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  String _fileNameWithoutExtension(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0) {
+      return fileName;
+    }
+    return fileName.substring(0, dotIndex);
+  }
+
+  String _fileExtensionFromName(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0 || dotIndex == fileName.length - 1) {
+      return '';
+    }
+    return fileName.substring(dotIndex + 1).toLowerCase();
+  }
+
+  MimeType _mimeTypeForExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        return MimeType.pdf;
+      case 'xlsx':
+        return MimeType.microsoftExcel;
+      default:
+        return MimeType.other;
+    }
+  }
+
+  Future<bool> _saveBytesToFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String dialogTitle,
+    required List<String> allowedExtensions,
+  }) async {
+    try {
+      final extension = _fileExtensionFromName(fileName);
+      final baseName = _fileNameWithoutExtension(fileName);
+
+      await FileSaver.instance.saveFile(
+        name: baseName.isEmpty ? fileName : baseName,
+        bytes: bytes,
+        fileExtension: extension,
+        mimeType: _mimeTypeForExtension(extension),
+      );
+      return true;
+    } catch (_) {}
+
+    try {
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: allowedExtensions,
+        lockParentWindow: true,
+      );
+
+      if (savedPath == null || savedPath.trim().isEmpty) {
+        return false;
+      }
+
+      try {
+        final file = File(savedPath);
+        await file.writeAsBytes(bytes, flush: true);
+        return true;
+      } catch (_) {
+        final fallbackPath = await FilePicker.platform.saveFile(
+          dialogTitle: dialogTitle,
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: allowedExtensions,
+          bytes: bytes,
+          lockParentWindow: true,
+        );
+        return fallbackPath != null;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _handleBalanceSheetExport() async {
+    if (_isBalanceSheetLoading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Balance Sheet is still loading.')),
+      );
+      return;
+    }
+
+    if (_balanceSheetError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to export Balance Sheet right now.'),
+        ),
+      );
+      return;
+    }
+
+    final choice = await showDialog<_BalanceSheetExportType>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 460),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 28,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _brandColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: _brandColor,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Export Balance Sheet',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: _brandTextColor,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Choose the format for downloading the current balance sheet with logo, dates, totals, and table data.',
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 20),
+                  _ExportOptionTile(
+                    icon: Icons.picture_as_pdf_rounded,
+                    title: 'PDF Report',
+                    subtitle: 'Best for sharing and printing',
+                    accentColor: const Color(0xFFE57373),
+                    onTap: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_BalanceSheetExportType.pdf),
+                  ),
+                  const SizedBox(height: 12),
+                  _ExportOptionTile(
+                    icon: Icons.table_chart_rounded,
+                    title: 'Excel Workbook',
+                    subtitle: 'Best for editing and analysis',
+                    accentColor: const Color(0xFF0F8F82),
+                    onTap: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_BalanceSheetExportType.excel),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (choice == null) {
+      return;
+    }
+
+    if (choice == _BalanceSheetExportType.pdf) {
+      await _downloadBalanceSheetAsPdf();
+      return;
+    }
+
+    await _downloadBalanceSheetAsExcel();
+  }
+
+  Future<void> _downloadBalanceSheetAsPdf() async {
+    try {
+      final document = pw.Document();
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          logoImage = pw.MemoryImage(logoBytes);
+        }
+      } catch (_) {
+        logoImage = null;
+      }
+
+      final orderedCreditRows = _orderedCreditRows();
+      final incomeRows = orderedCreditRows
+          .map(
+            (item) => [
+              item.incomeHead,
+              _formatInr(item.unitAmount),
+              _formatInr(item.totalExcludingTax),
+              _formatInr(item.totalTax),
+              _formatInr(item.totalIncludingTax),
+              _formatInr(_creditDiscrepancy(item)),
+            ],
+          )
+          .toList(growable: false);
+      incomeRows.add([
+        'Total',
+        _formatInr(
+          _creditRows.fold<double>(0, (sum, row) => sum + row.unitAmount),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(
+            0,
+            (sum, row) => sum + row.totalExcludingTax,
+          ),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(0, (sum, row) => sum + row.totalTax),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(
+            0,
+            (sum, row) => sum + row.totalIncludingTax,
+          ),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(
+            0,
+            (sum, row) => sum + _creditDiscrepancy(row),
+          ),
+        ),
+      ]);
+
+      final expenseRows = _debitRows
+          .map((item) => [item.expenseHead, _formatInr(item.totalAmount)])
+          .toList(growable: false);
+      expenseRows.add(['Total', _formatInr(_totalExpenseAmount())]);
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
+          header: (pdfContext) => pw.Column(
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  if (logoImage != null)
+                    pw.Container(
+                      width: 84,
+                      height: 84,
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: pdfContext.pageNumber == 1 ? 0 : 24),
+            ],
+          ),
+          build: (pdfContext) {
+            return [
+              pw.Text(
+                'Balance Sheet',
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Apartment Name: $_balanceSheetApartmentName',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'From Date: ${_balanceSheetFromDate.isEmpty ? '--' : _balanceSheetFromDate}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'To Date: ${_balanceSheetToDate.isEmpty ? '--' : _balanceSheetToDate}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Generated on: ${DateTime.now()}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Row(
+                children: [
+                  _pdfSummaryCard(
+                    'Total Income(Excluding Tax)',
+                    _formatInr(_totalIncomeExcludingTax()),
+                    PdfColor.fromInt(0xFF0F8F82),
+                  ),
+                  pw.SizedBox(width: 10),
+                  _pdfSummaryCard(
+                    'Total Expence',
+                    _formatInr(_totalExpenseAmount()),
+                    PdfColor.fromInt(0xFF124B45),
+                  ),
+                  pw.SizedBox(width: 10),
+                  _pdfSummaryCard(
+                    'Net Surplus',
+                    _formatInr(_netSurplusAmount()),
+                    PdfColor.fromInt(0xFF26C6AD),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 18),
+              pw.Text(
+                'Income',
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Table.fromTextArray(
+                headers: const [
+                  'Income Head',
+                  'Unit Amount',
+                  'Total Income(Excluding Tax)',
+                  'Total Tax',
+                  'Total Income(Including Tax)',
+                  'Discripancy',
+                ],
+                data: incomeRows,
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 8.5,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFFEAF5F2),
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2),
+                  1: pw.FlexColumnWidth(1.1),
+                  2: pw.FlexColumnWidth(1.5),
+                  3: pw.FlexColumnWidth(1),
+                  4: pw.FlexColumnWidth(1.5),
+                  5: pw.FlexColumnWidth(1.1),
+                },
+              ),
+              pw.SizedBox(height: 18),
+              pw.Text(
+                'Expense',
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Table.fromTextArray(
+                headers: const ['Expense Head', 'Total Amount'],
+                data: expenseRows,
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 8.5,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFFEAF5F2),
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(2.5),
+                  1: pw.FlexColumnWidth(1.2),
+                },
+              ),
+            ];
+          },
+        ),
+      );
+
+      final bytes = Uint8List.fromList(await document.save());
+      final saved = await _saveBytesToFile(
+        fileName: 'balance_sheet_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        bytes: bytes,
+        dialogTitle: 'Download Balance Sheet PDF',
+        allowedExtensions: const ['pdf'],
+      );
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved ? 'PDF downloaded successfully.' : 'Download was cancelled.',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Balance Sheet PDF export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to generate PDF right now.')),
+      );
+    }
+  }
+
+  Future<void> _downloadBalanceSheetAsExcel() async {
+    final workbook = xlsio.Workbook();
+    try {
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Balance Sheet';
+
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          final picture = sheet.pictures.addStream(1, 1, logoBytes);
+          picture.height = 112;
+          picture.width = 112;
+        }
+      } catch (_) {}
+
+      var row = 1;
+      sheet.getRangeByName('F$row').setText('Balance Sheet');
+      row++;
+      sheet
+          .getRangeByName('F$row')
+          .setText('Apartment Name: $_balanceSheetApartmentName');
+      row++;
+      sheet
+          .getRangeByName('F$row')
+          .setText(
+            'From Date: ${_balanceSheetFromDate.isEmpty ? '--' : _balanceSheetFromDate}',
+          );
+      row++;
+      sheet
+          .getRangeByName('F$row')
+          .setText(
+            'To Date: ${_balanceSheetToDate.isEmpty ? '--' : _balanceSheetToDate}',
+          );
+      row++;
+      sheet.getRangeByName('F$row').setText('Generated on: ${DateTime.now()}');
+      row += 3;
+
+      final summaryRows = [
+        ['Total Income(Excluding Tax)', _formatInr(_totalIncomeExcludingTax())],
+        ['Total Expence', _formatInr(_totalExpenseAmount())],
+        ['Net Surplus', _formatInr(_netSurplusAmount())],
+      ];
+      for (final summary in summaryRows) {
+        sheet.getRangeByIndex(row, 1).setText(summary[0]);
+        sheet.getRangeByIndex(row, 2).setText(summary[1]);
+        row++;
+      }
+
+      row++;
+      sheet.getRangeByIndex(row, 1).setText('Income');
+      sheet.getRangeByIndex(row, 1, row, 6).merge();
+      sheet.getRangeByIndex(row, 1).cellStyle.bold = true;
+      row++;
+
+      final incomeHeaders = const [
+        'Income Head',
+        'Unit Amount',
+        'Total Income(Excluding Tax)',
+        'Total Tax',
+        'Total Income(Including Tax)',
+        'Discripancy',
+      ];
+      for (var c = 0; c < incomeHeaders.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(incomeHeaders[c]);
+      }
+      final incomeHeaderRow = row;
+      row++;
+
+      for (final item in _orderedCreditRows()) {
+        final values = [
+          item.incomeHead,
+          _formatInr(item.unitAmount),
+          _formatInr(item.totalExcludingTax),
+          _formatInr(item.totalTax),
+          _formatInr(item.totalIncludingTax),
+          _formatInr(_creditDiscrepancy(item)),
+        ];
+        for (var c = 0; c < values.length; c++) {
+          sheet.getRangeByIndex(row, c + 1).setText(values[c]);
+        }
+        row++;
+      }
+
+      final incomeTotals = [
+        'Total',
+        _formatInr(
+          _creditRows.fold<double>(0, (sum, item) => sum + item.unitAmount),
+        ),
+        _formatInr(_totalIncomeExcludingTax()),
+        _formatInr(
+          _creditRows.fold<double>(0, (sum, item) => sum + item.totalTax),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(
+            0,
+            (sum, item) => sum + item.totalIncludingTax,
+          ),
+        ),
+        _formatInr(
+          _creditRows.fold<double>(
+            0,
+            (sum, item) => sum + _creditDiscrepancy(item),
+          ),
+        ),
+      ];
+      for (var c = 0; c < incomeTotals.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(incomeTotals[c]);
+      }
+      final incomeEndRow = row;
+      row += 2;
+
+      sheet.getRangeByIndex(row, 1).setText('Expense');
+      sheet.getRangeByIndex(row, 1, row, 2).merge();
+      sheet.getRangeByIndex(row, 1).cellStyle.bold = true;
+      row++;
+
+      const expenseHeaders = ['Expense Head', 'Total Amount'];
+      for (var c = 0; c < expenseHeaders.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(expenseHeaders[c]);
+      }
+      final expenseHeaderRow = row;
+      row++;
+
+      for (final item in _debitRows) {
+        sheet.getRangeByIndex(row, 1).setText(item.expenseHead);
+        sheet.getRangeByIndex(row, 2).setText(_formatInr(item.totalAmount));
+        row++;
+      }
+
+      sheet.getRangeByIndex(row, 1).setText('Total');
+      sheet.getRangeByIndex(row, 2).setText(_formatInr(_totalExpenseAmount()));
+      final expenseEndRow = row;
+
+      final incomeHeaderRange = sheet.getRangeByIndex(
+        incomeHeaderRow,
+        1,
+        incomeHeaderRow,
+        incomeHeaders.length,
+      );
+      incomeHeaderRange.cellStyle.backColor = '#E8F7F5';
+      incomeHeaderRange.cellStyle.bold = true;
+      incomeHeaderRange.cellStyle.hAlign = xlsio.HAlignType.center;
+
+      final incomeTableRange = sheet.getRangeByIndex(
+        incomeHeaderRow,
+        1,
+        incomeEndRow,
+        incomeHeaders.length,
+      );
+      incomeTableRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
+      incomeTableRange.cellStyle.borders.all.color = '#B7D8D2';
+      final incomeColumnTexts = <List<String>>[
+        [
+          'Income',
+          ..._orderedCreditRows().map((item) => item.incomeHead),
+          'Total',
+        ],
+        [
+          ...summaryRows.map((row) => row[1]),
+          incomeHeaders[1],
+          ..._orderedCreditRows().map((item) => _formatInr(item.unitAmount)),
+          incomeTotals[1],
+        ],
+        [
+          summaryRows[0][0],
+          incomeHeaders[2],
+          ..._orderedCreditRows().map(
+            (item) => _formatInr(item.totalExcludingTax),
+          ),
+          incomeTotals[2],
+        ],
+        [
+          incomeHeaders[3],
+          ..._orderedCreditRows().map((item) => _formatInr(item.totalTax)),
+          incomeTotals[3],
+        ],
+        [
+          incomeHeaders[4],
+          ..._orderedCreditRows().map(
+            (item) => _formatInr(item.totalIncludingTax),
+          ),
+          incomeTotals[4],
+        ],
+        [
+          incomeHeaders[5],
+          ..._orderedCreditRows().map(
+            (item) => _formatInr(_creditDiscrepancy(item)),
+          ),
+          incomeTotals[5],
+        ],
+      ];
+      for (var i = 0; i < incomeColumnTexts.length; i++) {
+        sheet.getRangeByIndex(1, i + 1).columnWidth = _excelColumnWidth(
+          incomeColumnTexts[i],
+        );
+      }
+
+      final expenseHeaderRange = sheet.getRangeByIndex(
+        expenseHeaderRow,
+        1,
+        expenseHeaderRow,
+        expenseHeaders.length,
+      );
+      expenseHeaderRange.cellStyle.backColor = '#E8F7F5';
+      expenseHeaderRange.cellStyle.bold = true;
+      expenseHeaderRange.cellStyle.hAlign = xlsio.HAlignType.center;
+
+      final expenseTableRange = sheet.getRangeByIndex(
+        expenseHeaderRow,
+        1,
+        expenseEndRow,
+        expenseHeaders.length,
+      );
+      expenseTableRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
+      expenseTableRange.cellStyle.borders.all.color = '#B7D8D2';
+      final expenseColumnTexts = <List<String>>[
+        [
+          'Expense',
+          expenseHeaders[0],
+          ..._debitRows.map((item) => item.expenseHead),
+          'Total',
+        ],
+        [
+          ...summaryRows.map((row) => row[1]),
+          expenseHeaders[1],
+          ..._debitRows.map((item) => _formatInr(item.totalAmount)),
+          _formatInr(_totalExpenseAmount()),
+        ],
+      ];
+      for (var i = 0; i < expenseColumnTexts.length; i++) {
+        sheet.getRangeByIndex(1, i + 1).columnWidth = _excelColumnWidth(
+          expenseColumnTexts[i],
+        );
+      }
+
+      final bytes = Uint8List.fromList(workbook.saveSync());
+      final saved = await _saveBytesToFile(
+        fileName: 'balance_sheet_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+        bytes: bytes,
+        dialogTitle: 'Download Balance Sheet Excel',
+        allowedExtensions: const ['xlsx'],
+      );
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Excel downloaded successfully.'
+                : 'Download was cancelled.',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Balance Sheet Excel export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to generate Excel right now.')),
+      );
+    } finally {
+      workbook.dispose();
+    }
+  }
+
+  pw.Widget _pdfSummaryCard(String label, String value, PdfColor color) {
+    return pw.Expanded(
+      child: pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: pw.BoxDecoration(
+          color: _pdfColorWithOpacity(color, 0.08),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+          border: pw.Border.all(color: _pdfColorWithOpacity(color, 0.3)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              label,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PdfColor _pdfColorWithOpacity(PdfColor color, double opacity) {
+    return PdfColor(color.red, color.green, color.blue, opacity);
+  }
+
+  double _excelColumnWidth(List<String> values) {
+    var longest = 0;
+    for (final value in values) {
+      final length = value.trim().length;
+      if (length > longest) {
+        longest = length;
+      }
+    }
+    final estimated = (longest * 1.15).clamp(12, 42);
+    return estimated.toDouble();
   }
 
   @override
@@ -340,7 +1287,12 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     final isSelected = _tabController.index == option.tabIndex;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _tabController.animateTo(option.tabIndex),
+      onTap: () {
+        if (option.tabIndex == 1) {
+          _loadBalanceSheet();
+        }
+        _tabController.animateTo(option.tabIndex);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -938,31 +1890,187 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   // ── Tab: Balance Sheet ─────────────────────────────────────────────────────
 
   Widget _buildBalanceSheetTab() {
+    final totalIncomeExcludingTax = _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalExcludingTax,
+    );
+    final totalExpense = _debitRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalAmount,
+    );
+    final netSurplus = totalIncomeExcludingTax - totalExpense;
+
+    final subtitle =
+        (_balanceSheetFromDate.isNotEmpty && _balanceSheetToDate.isNotEmpty)
+        ? '$_balanceSheetFromDate to $_balanceSheetToDate'
+        : 'As on current date';
+
     return _ReportSheetScaffold(
       title: 'Balance Sheet',
-      subtitle: 'As on 31st March 2026',
+      subtitle: subtitle,
       icon: Icons.account_balance_rounded,
+      onExport: _handleBalanceSheetExport,
       summaryCards: [
         _SummaryCard(
-          label: 'Total Assets',
-          value: '₹18,27,500',
+          label: 'Total Income(Excluding Tax)',
+          value: _formatInr(totalIncomeExcludingTax),
           color: const Color(0xFF0F8F82),
         ),
         _SummaryCard(
-          label: 'Total Liabilities',
-          value: '₹18,27,500',
+          label: 'Total Expence',
+          value: _formatInr(totalExpense),
           color: const Color(0xFF124B45),
         ),
         _SummaryCard(
-          label: 'Reserve Fund',
-          value: '₹8,50,000',
+          label: 'Net Surplus',
+          value: _formatInr(netSurplus),
           color: const Color(0xFF26C6AD),
         ),
       ],
-      headers: const ['Particulars', 'Current Year (₹)', 'Previous Year (₹)'],
-      rows: _balanceSheetRows,
-      sectionRows: const {0, 6},
+      headers: const ['Category', 'Details'],
+      rows: const [],
+      topSection: _buildBalanceSheetContent(),
+      sectionRows: const {},
       statusCol: -1,
+      showTable: false,
+    );
+  }
+
+  Widget _buildBalanceSheetContent() {
+    if (_isBalanceSheetLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_balanceSheetError != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7F7),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFFFD6D6)),
+        ),
+        child: Text(
+          _balanceSheetError!,
+          style: const TextStyle(color: Color(0xFFB71C1C), fontSize: 12),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBalanceSectionTitle('Income'),
+        _buildAssetsTable(),
+        const SizedBox(height: 16),
+        _buildBalanceSectionTitle('Expense'),
+        _buildLiabilitiesTable(),
+      ],
+    );
+  }
+
+  Widget _buildBalanceSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: _brandTextColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssetsTable() {
+    final nonOthers = _creditRows
+        .where((row) => row.incomeHead.trim().toLowerCase() != 'others')
+        .toList(growable: false);
+    final others = _creditRows
+        .where((row) => row.incomeHead.trim().toLowerCase() == 'others')
+        .toList(growable: false);
+    final orderedRows = [...nonOthers, ...others];
+
+    final rows = orderedRows
+        .map(
+          (item) => [
+            item.incomeHead,
+            _formatInr(item.unitAmount),
+            _formatInr(item.totalExcludingTax),
+            _formatInr(item.totalTax),
+            _formatInr(item.totalIncludingTax),
+            _formatInr(
+              item.totalIncludingTax - item.totalTax - item.totalExcludingTax,
+            ),
+          ],
+        )
+        .toList(growable: false);
+
+    final unitAmountTotal = _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.unitAmount,
+    );
+    final excludingTaxTotal = _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalExcludingTax,
+    );
+    final taxTotal = _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalTax,
+    );
+    final includingTaxTotal = _creditRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalIncludingTax,
+    );
+    final discrepancyTotal = _creditRows.fold<double>(
+      0,
+      (sum, row) =>
+          sum + (row.totalIncludingTax - row.totalTax - row.totalExcludingTax),
+    );
+
+    return _BalanceTableCard(
+      headers: const [
+        'Income Head',
+        'Unit Amount',
+        'Total Income(Excluding Tax)',
+        'Total Tax',
+        'Total Income(Including Tax)',
+        'Discripancy',
+      ],
+      rows: rows,
+      totalsRow: [
+        'Total',
+        _formatInr(unitAmountTotal),
+        _formatInr(excludingTaxTotal),
+        _formatInr(taxTotal),
+        _formatInr(includingTaxTotal),
+        _formatInr(discrepancyTotal),
+      ],
+      firstColumnFlex: 2,
+    );
+  }
+
+  Widget _buildLiabilitiesTable() {
+    final rows = _debitRows
+        .map((item) => [item.expenseHead, _formatInr(item.totalAmount)])
+        .toList(growable: false);
+
+    final totalExpense = _debitRows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalAmount,
+    );
+
+    return _BalanceTableCard(
+      headers: const ['Expense Head', 'Total Amount'],
+      rows: rows,
+      totalsRow: ['Total', _formatInr(totalExpense)],
+      firstColumnFlex: 2,
     );
   }
 
@@ -1088,36 +2196,6 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   // ── Tab: Budget vs Actual ──────────────────────────────────────────────────
 
-  Widget _buildBudgetVsActualTab() {
-    return _ReportSheetScaffold(
-      title: 'Budget vs Actual Report',
-      subtitle: 'FY 2025-26 – Expense comparison',
-      icon: Icons.compare_arrows_rounded,
-      summaryCards: [
-        _SummaryCard(
-          label: 'Total Budget',
-          value: '₹5,40,000',
-          color: const Color(0xFF0F8F82),
-        ),
-        _SummaryCard(
-          label: 'Total Actual',
-          value: '₹5,57,500',
-          color: const Color(0xFFE57373),
-        ),
-        _SummaryCard(
-          label: 'Variance',
-          value: '-₹17,500',
-          color: const Color(0xFFFFB300),
-        ),
-      ],
-      headers: _budgetVsActualRows[0].cast<String>(),
-      rows: _budgetVsActualRows.sublist(1),
-      sectionRows: const {},
-      statusCol: 4,
-      budgetChart: _buildBudgetVsActualLineChart(),
-    );
-  }
-
   // ── Chart: Budget vs Actual ────────────────────────────────────────────────
 
   Widget _buildBudgetVsActualLineChart() {
@@ -1195,11 +2273,227 @@ class _LegendItem {
   final String label;
 }
 
+class _ExportOptionTile extends StatelessWidget {
+  const _ExportOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: accentColor.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: accentColor.withOpacity(0.25)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: accentColor, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _ReportsDashboardPageState._brandTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_rounded, color: accentColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _BalanceSheetExportType { pdf, excel }
+
 class _ReportOptionItem {
   const _ReportOptionItem(this.title, this.icon, this.tabIndex);
   final String title;
   final IconData icon;
   final int tabIndex;
+}
+
+class _BalanceSheetCreditRow {
+  const _BalanceSheetCreditRow({
+    required this.incomeHead,
+    required this.unitAmount,
+    required this.totalExcludingTax,
+    required this.totalTax,
+    required this.totalIncludingTax,
+  });
+
+  final String incomeHead;
+  final double unitAmount;
+  final double totalExcludingTax;
+  final double totalTax;
+  final double totalIncludingTax;
+}
+
+class _BalanceSheetDebitRow {
+  const _BalanceSheetDebitRow({
+    required this.expenseHead,
+    required this.totalAmount,
+  });
+
+  final String expenseHead;
+  final double totalAmount;
+}
+
+class _BalanceTableCard extends StatelessWidget {
+  const _BalanceTableCard({
+    required this.headers,
+    required this.rows,
+    required this.totalsRow,
+    this.firstColumnFlex = 2,
+  });
+
+  final List<String> headers;
+  final List<List<String>> rows;
+  final List<String> totalsRow;
+  final int firstColumnFlex;
+
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE0F0EE)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Table(
+          border: TableBorder(
+            horizontalInside: BorderSide(color: Colors.grey.shade100),
+            bottom: BorderSide(color: Colors.grey.shade200),
+          ),
+          columnWidths: {
+            if (headers.length > 1)
+              0: FlexColumnWidth(firstColumnFlex.toDouble()),
+          },
+          children: [
+            TableRow(
+              decoration: const BoxDecoration(color: Color(0xFFE8F7F5)),
+              children: headers
+                  .map(
+                    (h) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        h,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: _brandTextColor,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+            ...List.generate(rows.length, (i) {
+              final row = rows[i];
+              return TableRow(
+                decoration: BoxDecoration(
+                  color: i.isOdd ? Colors.white : const Color(0xFFFAFAFA),
+                ),
+                children: List.generate(row.length, (j) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      row[j],
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: j == 0 ? Colors.black87 : Colors.black54,
+                        fontWeight: j == 0
+                            ? FontWeight.w500
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  );
+                }),
+              );
+            }),
+            TableRow(
+              decoration: const BoxDecoration(color: Color(0xFFF0FAF9)),
+              children: List.generate(totalsRow.length, (j) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  child: Text(
+                    totalsRow[j],
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _brandTextColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Chart Card wrapper ─────────────────────────────────────────────────────
@@ -1295,6 +2589,7 @@ class _ChartCard extends StatelessWidget {
 class _ReportSheetScaffold extends StatelessWidget {
   const _ReportSheetScaffold({
     this.topSection,
+    this.onExport,
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -1304,9 +2599,11 @@ class _ReportSheetScaffold extends StatelessWidget {
     required this.sectionRows,
     required this.statusCol,
     this.budgetChart,
+    this.showTable = true,
   });
 
   final Widget? topSection;
+  final VoidCallback? onExport;
   final String title;
   final String subtitle;
   final IconData icon;
@@ -1316,6 +2613,7 @@ class _ReportSheetScaffold extends StatelessWidget {
   final Set<int> sectionRows;
   final int statusCol; // column index to apply status colour, or -1
   final Widget? budgetChart;
+  final bool showTable;
 
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
@@ -1327,16 +2625,16 @@ class _ReportSheetScaffold extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (topSection != null) ...[topSection!, const SizedBox(height: 20)],
           _buildTitleRow(),
           const SizedBox(height: 16),
           _buildSummaryRow(),
           const SizedBox(height: 20),
+          if (topSection != null) ...[topSection!, const SizedBox(height: 20)],
           if (budgetChart != null) ...[
             budgetChart!,
             const SizedBox(height: 20),
           ],
-          _buildTable(),
+          if (showTable) _buildTable(),
         ],
       ),
     );
@@ -1373,7 +2671,7 @@ class _ReportSheetScaffold extends StatelessWidget {
         ),
         const Spacer(),
         OutlinedButton.icon(
-          onPressed: () {},
+          onPressed: onExport ?? () {},
           icon: const Icon(Icons.download_outlined, size: 16),
           label: const Text('Export'),
           style: OutlinedButton.styleFrom(

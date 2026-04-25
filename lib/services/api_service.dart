@@ -1408,6 +1408,29 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> getBalanceSheet() async {
+    final genericHeader = _buildLoginResponseHeader();
+    if (genericHeader == null || genericHeader.isEmpty) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/transactionAndReports/getBalanceSheet',
+      requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> previewReceipt(
     Map<String, dynamic> requestBody,
   ) async {

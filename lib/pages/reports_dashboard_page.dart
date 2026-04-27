@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../navigation/app_section.dart';
@@ -651,7 +652,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   Future<void> _downloadBalanceSheetAsPdf() async {
     try {
-      final document = pw.Document();
+      final pdfBaseFont = await PdfGoogleFonts.notoSansRegular();
+      final pdfBoldFont = await PdfGoogleFonts.notoSansBold();
+      final document = pw.Document(
+        theme: pw.ThemeData.withFont(base: pdfBaseFont, bold: pdfBoldFont),
+      );
       pw.MemoryImage? logoImage;
       try {
         final logoBytes = await _loadSecuraLogoBytes();
@@ -667,35 +672,35 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           .map(
             (item) => [
               item.incomeHead,
-              _formatInrForPdf(item.unitAmount),
-              _formatInrForPdf(item.totalExcludingTax),
-              _formatInrForPdf(item.totalTax),
-              _formatInrForPdf(item.totalIncludingTax),
-              _formatInrForPdf(_creditDiscrepancy(item)),
+              _formatInr(item.unitAmount),
+              _formatInr(item.totalExcludingTax),
+              _formatInr(item.totalTax),
+              _formatInr(item.totalIncludingTax),
+              _formatInr(_creditDiscrepancy(item)),
             ],
           )
           .toList();
       incomeRows.add([
         'Total',
-        _formatInrForPdf(
+        _formatInr(
           _creditRows.fold<double>(0, (sum, row) => sum + row.unitAmount),
         ),
-        _formatInrForPdf(
+        _formatInr(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + row.totalExcludingTax,
           ),
         ),
-        _formatInrForPdf(
+        _formatInr(
           _creditRows.fold<double>(0, (sum, row) => sum + row.totalTax),
         ),
-        _formatInrForPdf(
+        _formatInr(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + row.totalIncludingTax,
           ),
         ),
-        _formatInrForPdf(
+        _formatInr(
           _creditRows.fold<double>(
             0,
             (sum, row) => sum + _creditDiscrepancy(row),
@@ -704,9 +709,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       ]);
 
       final expenseRows = _debitRows
-          .map((item) => [item.expenseHead, _formatInrForPdf(item.totalAmount)])
+          .map((item) => [item.expenseHead, _formatInr(item.totalAmount)])
           .toList();
-      expenseRows.add(['Total', _formatInrForPdf(_totalExpenseAmount())]);
+      expenseRows.add(['Total', _formatInr(_totalExpenseAmount())]);
 
       document.addPage(
         pw.MultiPage(
@@ -762,19 +767,19 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 children: [
                   _pdfSummaryCard(
                     'Total Income(Excluding Tax)',
-                    _formatInrForPdf(_totalIncomeExcludingTax()),
+                    _formatInr(_totalIncomeExcludingTax()),
                     PdfColor.fromInt(0xFF0F8F82),
                   ),
                   pw.SizedBox(width: 10),
                   _pdfSummaryCard(
                     'Total Expence',
-                    _formatInrForPdf(_totalExpenseAmount()),
+                    _formatInr(_totalExpenseAmount()),
                     PdfColor.fromInt(0xFF124B45),
                   ),
                   pw.SizedBox(width: 10),
                   _pdfSummaryCard(
                     'Net Surplus',
-                    _formatInrForPdf(_netSurplusAmount()),
+                    _formatInr(_netSurplusAmount()),
                     PdfColor.fromInt(0xFF26C6AD),
                   ),
                 ],
@@ -916,12 +921,17 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           );
       row++;
       sheet.getRangeByName('F$row').setText('Generated on: ${DateTime.now()}');
+      row++;
+      sheet.getRangeByName('F$row').setText('Currency: INR');
       row += 3;
 
       final summaryRows = [
-        ['Total Income(Excluding Tax)', _formatInr(_totalIncomeExcludingTax())],
-        ['Total Expence', _formatInr(_totalExpenseAmount())],
-        ['Net Surplus', _formatInr(_netSurplusAmount())],
+        [
+          'Total Income(Excluding Tax)',
+          _formatAmountWithoutCurrency(_totalIncomeExcludingTax()),
+        ],
+        ['Total Expence', _formatAmountWithoutCurrency(_totalExpenseAmount())],
+        ['Net Surplus', _formatAmountWithoutCurrency(_netSurplusAmount())],
       ];
       for (final summary in summaryRows) {
         sheet.getRangeByIndex(row, 1).setText(summary[0]);
@@ -952,11 +962,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       for (final item in _orderedCreditRows()) {
         final values = [
           item.incomeHead,
-          _formatInr(item.unitAmount),
-          _formatInr(item.totalExcludingTax),
-          _formatInr(item.totalTax),
-          _formatInr(item.totalIncludingTax),
-          _formatInr(_creditDiscrepancy(item)),
+          _formatAmountWithoutCurrency(item.unitAmount),
+          _formatAmountWithoutCurrency(item.totalExcludingTax),
+          _formatAmountWithoutCurrency(item.totalTax),
+          _formatAmountWithoutCurrency(item.totalIncludingTax),
+          _formatAmountWithoutCurrency(_creditDiscrepancy(item)),
         ];
         for (var c = 0; c < values.length; c++) {
           sheet.getRangeByIndex(row, c + 1).setText(values[c]);
@@ -966,20 +976,20 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
       final incomeTotals = [
         'Total',
-        _formatInr(
+        _formatAmountWithoutCurrency(
           _creditRows.fold<double>(0, (sum, item) => sum + item.unitAmount),
         ),
-        _formatInr(_totalIncomeExcludingTax()),
-        _formatInr(
+        _formatAmountWithoutCurrency(_totalIncomeExcludingTax()),
+        _formatAmountWithoutCurrency(
           _creditRows.fold<double>(0, (sum, item) => sum + item.totalTax),
         ),
-        _formatInr(
+        _formatAmountWithoutCurrency(
           _creditRows.fold<double>(
             0,
             (sum, item) => sum + item.totalIncludingTax,
           ),
         ),
-        _formatInr(
+        _formatAmountWithoutCurrency(
           _creditRows.fold<double>(
             0,
             (sum, item) => sum + _creditDiscrepancy(item),
@@ -1006,12 +1016,16 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
       for (final item in _debitRows) {
         sheet.getRangeByIndex(row, 1).setText(item.expenseHead);
-        sheet.getRangeByIndex(row, 2).setText(_formatInr(item.totalAmount));
+        sheet
+            .getRangeByIndex(row, 2)
+            .setText(_formatAmountWithoutCurrency(item.totalAmount));
         row++;
       }
 
       sheet.getRangeByIndex(row, 1).setText('Total');
-      sheet.getRangeByIndex(row, 2).setText(_formatInr(_totalExpenseAmount()));
+      sheet
+          .getRangeByIndex(row, 2)
+          .setText(_formatAmountWithoutCurrency(_totalExpenseAmount()));
       final expenseEndRow = row;
 
       final incomeHeaderRange = sheet.getRangeByIndex(
@@ -1041,33 +1055,37 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         [
           ...summaryRows.map((row) => row[1]),
           incomeHeaders[1],
-          ..._orderedCreditRows().map((item) => _formatInr(item.unitAmount)),
+          ..._orderedCreditRows().map(
+            (item) => _formatAmountWithoutCurrency(item.unitAmount),
+          ),
           incomeTotals[1],
         ],
         [
           summaryRows[0][0],
           incomeHeaders[2],
           ..._orderedCreditRows().map(
-            (item) => _formatInr(item.totalExcludingTax),
+            (item) => _formatAmountWithoutCurrency(item.totalExcludingTax),
           ),
           incomeTotals[2],
         ],
         [
           incomeHeaders[3],
-          ..._orderedCreditRows().map((item) => _formatInr(item.totalTax)),
+          ..._orderedCreditRows().map(
+            (item) => _formatAmountWithoutCurrency(item.totalTax),
+          ),
           incomeTotals[3],
         ],
         [
           incomeHeaders[4],
           ..._orderedCreditRows().map(
-            (item) => _formatInr(item.totalIncludingTax),
+            (item) => _formatAmountWithoutCurrency(item.totalIncludingTax),
           ),
           incomeTotals[4],
         ],
         [
           incomeHeaders[5],
           ..._orderedCreditRows().map(
-            (item) => _formatInr(_creditDiscrepancy(item)),
+            (item) => _formatAmountWithoutCurrency(_creditDiscrepancy(item)),
           ),
           incomeTotals[5],
         ],
@@ -1106,8 +1124,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         [
           ...summaryRows.map((row) => row[1]),
           expenseHeaders[1],
-          ..._debitRows.map((item) => _formatInr(item.totalAmount)),
-          _formatInr(_totalExpenseAmount()),
+          ..._debitRows.map(
+            (item) => _formatAmountWithoutCurrency(item.totalAmount),
+          ),
+          _formatAmountWithoutCurrency(_totalExpenseAmount()),
         ],
       ];
       for (var i = 0; i < expenseColumnTexts.length; i++) {
@@ -1201,9 +1221,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return estimated.toDouble();
   }
 
-  String _formatInrForPdf(double value) {
-    // Default PDF fonts can fail with the ₹ glyph in some environments.
-    return _formatInr(value).replaceFirst('₹', 'INR ');
+  String _formatAmountWithoutCurrency(double value) {
+    final formatted = _formatInr(value);
+    if (formatted.startsWith('-₹')) {
+      return '-${formatted.substring(2)}';
+    }
+    if (formatted.startsWith('₹')) {
+      return formatted.substring(1);
+    }
+    return formatted;
   }
 
   @override

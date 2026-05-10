@@ -30,7 +30,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   static const List<_PaymentChoice> _capitaOptions = [
     _PaymentChoice(label: 'Per Flat', value: 'PER_FLAT'),
     _PaymentChoice(label: 'Per Head', value: 'PER_HEAD'),
-    _PaymentChoice(label: 'Per Sqft', value: 'PER_SQFT'),
+    _PaymentChoice(label: 'Build Up Area', value: 'PER_SQFT'),
     _PaymentChoice(label: 'Per BHK', value: 'PER_BHK'),
   ];
 
@@ -55,6 +55,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       value: 'OFFLINE_BANK_TRANSFER',
     ),
     _PaymentChoice(label: 'ONLINE', value: 'ONLINE'),
+    _PaymentChoice(label: 'Credit Note', value: 'CREDIT_NOTE'),
   ];
 
   static const List<_PaymentChoice> _chargeTypeOptions = [
@@ -100,16 +101,22 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       TextEditingController();
   final TextEditingController _collectionEndController =
       TextEditingController();
+  final TextEditingController _customPaymentCauseController =
+      TextEditingController();
   final List<_AdditionalChargeInput> _additionalChargeInputs = [];
 
+  List<_SocietyCollectionType> _societyCollectionTypes = [];
+  Map<String, _SocietyCollectionType> _societyCollectionTypeMap = {};
+  bool _loadingSocietyCollectionTypes = false;
+  String? _paymentCauseTypeConstant;
+  bool _isCustomPaymentCause = false;
   String? _paymentCapita;
-  String? _paymentCollectionCycle;
+  Set<String> _paymentCollectionCycles = <String>{};
   String? _paymentCollectionMode;
   Set<String> _allowedPaymentModes = <String>{};
   String? _paymentType;
   String? _bankAccountId;
-  bool _maintenancePayment = false;
-  bool _eventPayment = false;
+  bool _isPartialPaymentAllowed = false;
   DateTime? _collectionStartDate;
   DateTime? _collectionEndDate;
   Set<String> _applicableFor = <String>{};
@@ -131,19 +138,63 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   bool _expandCollectionSetup = true;
   bool _expandChargesAndAdjustments = true;
   bool _expandAudienceAndSettlement = true;
+  String? _discountCycleNoticeText;
+  bool _showDiscountCycleNotice = false;
+  Timer? _discountCycleNoticeTimer;
 
   bool get _isPerHeadCapita => _paymentCapita == 'PER_HEAD';
+
+  String? get _primaryPaymentCollectionCycle {
+    for (final option in _cycleOptions) {
+      if (_paymentCollectionCycles.contains(option.value)) {
+        return option.value;
+      }
+    }
+    return null;
+  }
+
+  bool get _isPaymentDetailsComplete {
+    return _paymentNameController.text.trim().isNotEmpty &&
+        _shortDetailsController.text.trim().isNotEmpty &&
+        (_isCustomPaymentCause
+            ? _customPaymentCauseController.text.trim().isNotEmpty
+            : _paymentCauseTypeConstant != null) &&
+        _paymentCapita != null;
+  }
+
+  bool get _isCollectionDetailsComplete {
+    final amount = double.tryParse(
+      _normalizeNumericValue(_paymentAmountController.text),
+    );
+    final gst = double.tryParse(_normalizeNumericValue(_gstController.text));
+    return _isPaymentDetailsComplete &&
+        _collectionStartDate != null &&
+        _collectionEndDate != null &&
+        !_collectionEndDate!.isBefore(_collectionStartDate!) &&
+        amount != null &&
+        amount > 0 &&
+        gst != null &&
+        gst >= 0 &&
+        gst <= 100 &&
+        _paymentCollectionCycles.isNotEmpty &&
+        _paymentCollectionMode != null &&
+        _allowedPaymentModes.isNotEmpty;
+  }
 
   @override
   void initState() {
     super.initState();
     _paymentAmountController.addListener(_scheduleDueDetailsRefresh);
     _gstController.addListener(_scheduleDueDetailsRefresh);
+    _paymentNameController.addListener(_onSectionProgressChanged);
+    _shortDetailsController.addListener(_onSectionProgressChanged);
+    _fetchSocietyCollectionTypes();
   }
 
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _discountCycleNoticeTimer?.cancel();
     for (final charge in _additionalChargeInputs) {
       charge.dispose();
     }
@@ -153,6 +204,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _gstController.dispose();
     _collectionStartController.dispose();
     _collectionEndController.dispose();
+    _customPaymentCauseController.dispose();
     super.dispose();
   }
 
@@ -341,6 +393,77 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     final integerPart = cleaned.substring(0, firstDot + 1);
     final decimalPart = cleaned.substring(firstDot + 1).replaceAll('.', '');
     return '$integerPart$decimalPart';
+  }
+
+  void _onSectionProgressChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _fetchSocietyCollectionTypes() async {
+    if (_loadingSocietyCollectionTypes) {
+      return;
+    }
+
+    setState(() {
+      _loadingSocietyCollectionTypes = true;
+    });
+
+    try {
+      final response = await ApiService.getSocietyCollectionTypes();
+      if (!mounted) return;
+
+      if (response != null && _isSuccessResponse(response)) {
+        final rawList = response['societyCollectionTypes'];
+        if (rawList is List) {
+          final types = rawList.whereType<Map>().map((item) {
+            final map = Map<String, dynamic>.from(item);
+            return _SocietyCollectionType(
+              collectionType: map['collectionType']?.toString() ?? '',
+              purposeOfCollection: map['purposeOfCollection']?.toString() ?? '',
+              sacCode: map['sacCode']?.toString() ?? '',
+              taxable: map['taxable'] == true,
+              typeConstant: map['typeConstant']?.toString() ?? '',
+            );
+          }).toList();
+
+          final typeMap = <String, _SocietyCollectionType>{};
+          for (final type in types) {
+            typeMap[type.typeConstant] = type;
+          }
+
+          setState(() {
+            _societyCollectionTypes = types;
+            _societyCollectionTypeMap = typeMap;
+          });
+        }
+      }
+    } catch (_) {
+      // Handle error silently or log it
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingSocietyCollectionTypes = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildPaymentCauseDropdownItem(String collectionType, String sacCode) {
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(collectionType, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 8),
+          Text('SAC CODE: $sacCode', style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
   }
 
   String _formatCurrencyValueOrDash(dynamic rawValue) {
@@ -654,6 +777,112 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return selected;
   }
 
+  List<String> _buildPaymentCollectionCyclesRequestValue() {
+    return _cycleOptions
+        .where((option) => _paymentCollectionCycles.contains(option.value))
+        .map((option) => _mapCollectionCycleForRequest(option.value))
+        .toList();
+  }
+
+  List<_DiscountCycleOption> _buildDiscountCycleOptionsForSelection(
+    Set<String> selectedCollectionCycles,
+  ) {
+    final selectedOptions = _cycleOptions
+        .where((option) => selectedCollectionCycles.contains(option.value))
+        .toList();
+
+    return [
+      for (final option in selectedOptions)
+        _DiscountCycleOption(
+          cycle: option.value,
+          sourceCycle: option.value,
+          label: option.value,
+        ),
+    ];
+  }
+
+  List<_DiscountCycleOption> _buildDiscountCycleOptionsForCurrentSelection() {
+    return _buildDiscountCycleOptionsForSelection(_paymentCollectionCycles);
+  }
+
+  void _syncDiscountCyclesAfterCollectionCycleChange(
+    Set<String> previousSelection,
+    Set<String> updatedSelection,
+  ) {
+    if (previousSelection.length == updatedSelection.length &&
+        previousSelection.containsAll(updatedSelection)) {
+      return;
+    }
+
+    final discount = _appliedDiscountFineByKind('DISCOUNT');
+    if (discount == null || discount.cycleDiscounts.isEmpty) {
+      return;
+    }
+
+    final allowedCycles = _buildDiscountCycleOptionsForSelection(
+      updatedSelection,
+    ).map((entry) => entry.cycle).toSet();
+    final removedCycles = discount.cycleDiscounts
+        .where((entry) => !allowedCycles.contains(entry.cycle))
+        .map((entry) => entry.cycle)
+        .toSet();
+    final retainedRows = discount.cycleDiscounts
+        .where((entry) => allowedCycles.contains(entry.cycle))
+        .toList();
+    final removedCount = discount.cycleDiscounts.length - retainedRows.length;
+    if (removedCount <= 0) {
+      return;
+    }
+
+    setState(() {
+      _appliedDiscountFines.removeWhere((entry) => entry.kind == 'DISCOUNT');
+      _appliedDiscountFines.add(
+        discount.copyWith(cycleDiscounts: retainedRows),
+      );
+      _appliedDiscountFines.sort(
+        (left, right) => left.kind.compareTo(right.kind),
+      );
+    });
+
+    final removedCycleLabels = removedCycles.map(_collectionCycleLabel).toList()
+      ..sort();
+    final noticeText = removedCycleLabels.length == 1
+        ? '${removedCycleLabels.first} removed from discount because the cycle was unselected.'
+        : '${removedCycleLabels.join(', ')} removed from discount because these cycles were unselected.';
+    _triggerDiscountCycleNotice(noticeText);
+  }
+
+  String _collectionCycleLabel(String value) {
+    for (final option in _cycleOptions) {
+      if (option.value == value) {
+        return option.label;
+      }
+    }
+    return value;
+  }
+
+  void _triggerDiscountCycleNotice(String message) {
+    _discountCycleNoticeTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _discountCycleNoticeText = message;
+      _showDiscountCycleNotice = true;
+    });
+
+    _discountCycleNoticeTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _showDiscountCycleNotice = false;
+      });
+    });
+  }
+
   String _buildAllowedPaymentModesDisplayText() {
     if (_allowedPaymentModes.isEmpty) {
       return 'Select modes';
@@ -665,6 +894,22 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     }
 
     return '${selected.length} modes selected';
+  }
+
+  String _buildPaymentCollectionCyclesDisplayText() {
+    if (_paymentCollectionCycles.isEmpty) {
+      return 'Select cycles';
+    }
+
+    final selectedLabels = _cycleOptions
+        .where((option) => _paymentCollectionCycles.contains(option.value))
+        .map((option) => option.label)
+        .toList();
+    if (selectedLabels.length <= 2) {
+      return selectedLabels.join(', ');
+    }
+
+    return '${selectedLabels.length} cycles selected';
   }
 
   Future<void> _openAllowedPaymentModesDialog(
@@ -689,6 +934,37 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       _allowedPaymentModes = selection.intersection(validValues);
     });
     field.didChange(_allowedPaymentModes);
+    field.validate();
+  }
+
+  Future<void> _openCollectionCyclesDialog(
+    FormFieldState<Set<String>> field,
+  ) async {
+    final previousSelection = Set<String>.from(_paymentCollectionCycles);
+    final selection = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => _CollectionCyclesDialog(
+        options: _cycleOptions,
+        initialSelection: _paymentCollectionCycles,
+      ),
+    );
+
+    if (selection == null) {
+      return;
+    }
+
+    final validValues = _cycleOptions.map((option) => option.value).toSet();
+    final updatedSelection = selection.intersection(validValues);
+    setState(() {
+      _paymentCollectionCycles = updatedSelection;
+    });
+    _syncDiscountCyclesAfterCollectionCycleChange(
+      previousSelection,
+      updatedSelection,
+    );
+    field.didChange(_paymentCollectionCycles);
+    field.validate();
+    _onDueFieldChanged();
   }
 
   String _mapCollectionCycleForRequest(String value) {
@@ -727,7 +1003,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return amount.isNotEmpty &&
         gst.isNotEmpty &&
         _paymentCapita != null &&
-        _paymentCollectionCycle != null &&
+        _primaryPaymentCollectionCycle != null &&
         _paymentCollectionMode != null &&
         _collectionStartDate != null &&
         _collectionEndDate != null;
@@ -884,7 +1160,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       'collectionStartDate': _formatApiDate(startDate),
       'collectionEndDate': _formatApiDate(endDate),
       'paymentCollectionCycle': _mapCollectionCycleForRequest(
-        _paymentCollectionCycle!,
+        _primaryPaymentCollectionCycle!,
       ),
       'paymentCollectionMode': _paymentCollectionMode!.toLowerCase(),
       'paymentCapita': _paymentCapita,
@@ -1268,24 +1544,25 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         'genericHeader': header,
         'paymentName': _paymentNameController.text.trim(),
         'shortDetails': _shortDetailsController.text.trim(),
+        'paymentCause': _isCustomPaymentCause
+            ? _customPaymentCauseController.text.trim()
+            : _paymentCauseTypeConstant,
         'paymentCapita': _paymentCapita,
         'paymentAmount': amount,
         'gst': gst,
         'currency': _currency,
         'collectionStartDate': _formatRequestStartDate(startDate),
         'collectionEndDate': _formatRequestEndDate(endDate),
-        'paymentCollectionCycle': _mapCollectionCycleForRequest(
-          _paymentCollectionCycle!,
-        ),
+        'paymentCollectionCycleList':
+            _buildPaymentCollectionCyclesRequestValue(),
         'paymentCollectionMode': _paymentCollectionMode,
         'allowedPaymentModes': _buildAllowedPaymentModesRequestValue(),
         'addedCharges': _buildAdditionalChargesRequest(),
-        'camPayment': _maintenancePayment,
-        'eventPayment': _eventPayment,
         'addLeftOverPayment': true,
         'applicableFor': _buildApplicableForRequestValue(),
         'paymentType': _paymentType,
         'bankAccountId': _bankAccountId,
+        'partialPaymentAllowed': _isPartialPaymentAllowed,
         'discountCode': _appliedDiscountFineByKind('DISCOUNT')?.discFnId ?? '',
         'fineCode': _appliedDiscountFineByKind('FINE')?.discFnId ?? '',
         'status': _status,
@@ -1342,6 +1619,21 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       requestBody['discFnCumlatonCycle'] = draft.calculationType == 'CUMULATIVE'
           ? draft.cumulationCycle
           : null;
+    } else {
+      requestBody['discFinCycleDiscountList'] = draft.cycleDiscounts
+          .map(
+            (item) => {
+              'cycle': item.cycle,
+              'type': item.type == 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED_AMOUNT',
+              'value': item.value,
+            },
+          )
+          .toList();
+
+      final minimumPaymentAmount = draft.minimumPaymentAmount;
+      if (minimumPaymentAmount != null && minimumPaymentAmount.isNotEmpty) {
+        requestBody['minimumPaymentAmount'] = minimumPaymentAmount;
+      }
     }
 
     try {
@@ -1372,6 +1664,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                   endOfDay: true,
                 ),
                 cumulationCycle: draft.cumulationCycle,
+                cycleDiscounts: draft.cycleDiscounts,
+                minimumPaymentAmount: draft.minimumPaymentAmount,
               )
             : null,
       );
@@ -1390,6 +1684,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       builder: (dialogContext) => _DiscountFineDialog(
         initialKind: lockedKind ?? initialKind,
         kindLocked: lockedKind != null,
+        availableCollectionCycles:
+            _buildDiscountCycleOptionsForCurrentSelection(),
         onSubmit: _createDiscountFine,
       ),
     );
@@ -1551,19 +1847,21 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _gstController.clear();
     _collectionStartController.clear();
     _collectionEndController.clear();
+    _customPaymentCauseController.clear();
     for (final charge in _additionalChargeInputs) {
       charge.dispose();
     }
     setState(() {
       _additionalChargeInputs.clear();
-      _maintenancePayment = false;
-      _eventPayment = false;
+      _paymentCauseTypeConstant = null;
+      _isCustomPaymentCause = false;
       _paymentCapita = null;
-      _paymentCollectionCycle = null;
+      _paymentCollectionCycles = <String>{};
       _paymentCollectionMode = null;
       _allowedPaymentModes = <String>{};
       _paymentType = null;
       _bankAccountId = null;
+      _isPartialPaymentAllowed = false;
       _collectionStartDate = null;
       _collectionEndDate = null;
       _applicableFor = Set<String>.from(_allApplicableFlatIds);
@@ -1873,71 +2171,50 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     required String title,
     required String subtitle,
     required bool expanded,
+    required bool enabled,
     required ValueChanged<bool> onExpansionChanged,
     required Widget child,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFDCEAE7)),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: expanded,
-        onExpansionChanged: onExpansionChanged,
-        collapsedShape: const RoundedRectangleBorder(),
-        shape: const RoundedRectangleBorder(),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        title: _buildSectionTitle(title, subtitle),
-        children: [child],
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: IgnorePointer(
+        ignoring: !enabled,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFDCEAE7)),
+          ),
+          child: ExpansionTile(
+            initiallyExpanded: expanded,
+            onExpansionChanged: onExpansionChanged,
+            collapsedShape: const RoundedRectangleBorder(),
+            shape: const RoundedRectangleBorder(),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            title: _buildSectionTitle(title, subtitle),
+            children: [child],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildPaymentTypeFlagsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: CheckboxListTile(
-            value: _maintenancePayment,
-            contentPadding: EdgeInsets.zero,
-            activeColor: _brandColor,
-            controlAffinity: ListTileControlAffinity.leading,
-            title: const Text('Its Maintenance Payment'),
-            onChanged: _eventPayment
-                ? null
-                : (value) {
-                    setState(() {
-                      _maintenancePayment = value ?? false;
-                      if (_maintenancePayment) {
-                        _eventPayment = false;
-                      }
-                    });
-                  },
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: CheckboxListTile(
-            value: _eventPayment,
-            contentPadding: EdgeInsets.zero,
-            activeColor: _brandColor,
-            controlAffinity: ListTileControlAffinity.leading,
-            title: const Text('Its Event Payment'),
-            onChanged: _maintenancePayment
-                ? null
-                : (value) {
-                    setState(() {
-                      _eventPayment = value ?? false;
-                      if (_eventPayment) {
-                        _maintenancePayment = false;
-                      }
-                    });
-                  },
-          ),
-        ),
-      ],
+  Widget _buildPartialPaymentToggle() {
+    return CheckboxListTile(
+      value: _isPartialPaymentAllowed,
+      contentPadding: EdgeInsets.zero,
+      activeColor: _brandColor,
+      controlAffinity: ListTileControlAffinity.leading,
+      title: const Text('Partial Payment Applicable'),
+      onChanged: (value) {
+        setState(() {
+          _isPartialPaymentAllowed = value ?? false;
+        });
+      },
     );
   }
 
@@ -2101,6 +2378,29 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_discountCycleNoticeText != null) ...[
+          AnimatedOpacity(
+            opacity: _showDiscountCycleNotice ? 1 : 0,
+            duration: const Duration(milliseconds: 350),
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7E8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE7C787)),
+              ),
+              child: Text(
+                _discountCycleNoticeText!,
+                style: const TextStyle(
+                  color: Color(0xFF8A5A00),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
         Align(
           alignment: Alignment.centerLeft,
           child: OutlinedButton.icon(
@@ -2273,6 +2573,12 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   Widget _buildAllowedPaymentModesField() {
     return FormField<Set<String>>(
       initialValue: _allowedPaymentModes,
+      validator: (_) {
+        if (_allowedPaymentModes.isEmpty) {
+          return 'Allowed payment mode is required';
+        }
+        return null;
+      },
       builder: (field) {
         return InkWell(
           borderRadius: BorderRadius.circular(18),
@@ -2286,6 +2592,39 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               _buildAllowedPaymentModesDisplayText(),
               style: TextStyle(
                 color: _allowedPaymentModes.isEmpty
+                    ? Colors.black45
+                    : Colors.black87,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCollectionCyclesField() {
+    return FormField<Set<String>>(
+      initialValue: _paymentCollectionCycles,
+      validator: (_) {
+        if (_paymentCollectionCycles.isEmpty) {
+          return 'Collection cycle is required';
+        }
+        return null;
+      },
+      builder: (field) {
+        return InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openCollectionCyclesDialog(field),
+          child: InputDecorator(
+            decoration: _inputDecoration(
+              label: 'Collection Cycle',
+              suffix: const Icon(Icons.keyboard_arrow_down_rounded),
+            ).copyWith(errorText: field.errorText),
+            child: Text(
+              _buildPaymentCollectionCyclesDisplayText(),
+              style: TextStyle(
+                color: _paymentCollectionCycles.isEmpty
                     ? Colors.black45
                     : Colors.black87,
                 fontWeight: FontWeight.w500,
@@ -2322,6 +2661,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               subtitle:
                   'These values are sent to create the new apartment payment.',
               expanded: _expandPaymentDetails,
+              enabled: true,
               onExpansionChanged: (expanded) {
                 setState(() {
                   _expandPaymentDetails = expanded;
@@ -2360,15 +2700,101 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                       return null;
                     },
                   ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _paymentCauseTypeConstant,
+                    decoration: _inputDecoration(label: 'Payment Cause'),
+                    isExpanded: true,
+                    items: _loadingSocietyCollectionTypes
+                        ? [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('Loading...'),
+                            ),
+                          ]
+                        : [
+                            ..._societyCollectionTypes.map(
+                              (type) => DropdownMenuItem<String>(
+                                value: type.typeConstant,
+                                child: _buildPaymentCauseDropdownItem(
+                                  type.collectionType,
+                                  type.sacCode,
+                                ),
+                              ),
+                            ),
+                            const DropdownMenuItem<String>(
+                              value: '__OTHER__',
+                              child: Text('Other'),
+                            ),
+                          ],
+                    onChanged: _loadingSocietyCollectionTypes
+                        ? null
+                        : (value) {
+                            setState(() {
+                              if (value == '__OTHER__') {
+                                _isCustomPaymentCause = true;
+                                _paymentCauseTypeConstant = null;
+                                _customPaymentCauseController.clear();
+                              } else {
+                                _isCustomPaymentCause = false;
+                                _paymentCauseTypeConstant = value;
+                                _customPaymentCauseController.clear();
+                              }
+                            });
+                          },
+                    validator: (value) =>
+                        value == null ? 'Payment cause is required' : null,
+                  ),
+                  if (_isCustomPaymentCause) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _customPaymentCauseController,
+                      decoration: _inputDecoration(
+                        label: 'Enter Payment Cause',
+                        hintText: 'e.g. Custom Maintenance Charge',
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Payment cause is required';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _paymentCapita,
+                    decoration: _inputDecoration(label: 'Payment Capita'),
+                    items: _capitaOptions
+                        .map(
+                          (option) => DropdownMenuItem<String>(
+                            value: option.value,
+                            child: Text(option.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _paymentCapita = value;
+                        if (_isPerHeadCapita) {
+                          _paymentType = 'OPTIONAL';
+                        }
+                      });
+                      _scheduleDueDetailsRefresh();
+                    },
+                    validator: (value) =>
+                        value == null ? 'Payment capita is required' : null,
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 14),
             _buildCollapsibleFormSection(
-              title: 'Collection Setup',
+              title: 'Collection Details',
               subtitle:
                   'These fields drive the live due amount preview on the right.',
               expanded: _expandCollectionSetup,
+              enabled: _isPaymentDetailsComplete,
               onExpansionChanged: (expanded) {
                 setState(() {
                   _expandCollectionSetup = expanded;
@@ -2377,30 +2803,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               child: Column(
                 children: [
                   _buildThreeFieldRow(
-                    first: DropdownButtonFormField<String>(
-                      initialValue: _paymentCapita,
-                      decoration: _inputDecoration(label: 'Payment Capita'),
-                      items: _capitaOptions
-                          .map(
-                            (option) => DropdownMenuItem<String>(
-                              value: option.value,
-                              child: Text(option.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _paymentCapita = value;
-                          if (_isPerHeadCapita) {
-                            _paymentType = 'OPTIONAL';
-                          }
-                        });
-                        _scheduleDueDetailsRefresh();
-                      },
-                      validator: (value) =>
-                          value == null ? 'Payment capita is required' : null,
-                    ),
-                    second: TextFormField(
+                    first: TextFormField(
                       controller: _paymentAmountController,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -2409,7 +2812,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                       ],
                       decoration: _inputDecoration(
-                        label: 'Amount Per Cycle',
+                        label: 'Amount Per Month',
                         prefix: const Icon(Icons.currency_rupee_rounded),
                       ),
                       validator: (value) {
@@ -2423,7 +2826,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                         return null;
                       },
                     ),
-                    third: TextFormField(
+                    second: TextFormField(
                       controller: _gstController,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -2452,55 +2855,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                         return null;
                       },
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTwoFieldRow(
-                    first: TextFormField(
-                      controller: _collectionStartController,
-                      readOnly: true,
-                      decoration: _inputDecoration(
-                        label: 'Collection Start Date',
-                        suffix: const Icon(Icons.calendar_today_rounded),
-                      ),
-                      onTap: _pickStartDate,
-                      validator: (_) => _collectionStartDate == null
-                          ? 'Start date is required'
-                          : null,
-                    ),
-                    second: TextFormField(
-                      controller: _collectionEndController,
-                      readOnly: true,
-                      decoration: _inputDecoration(
-                        label: 'Collection End Date',
-                        suffix: const Icon(Icons.calendar_today_rounded),
-                      ),
-                      onTap: _pickEndDate,
-                      validator: (_) => _collectionEndDate == null
-                          ? 'End date is required'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildThreeFieldRow(
-                    first: DropdownButtonFormField<String>(
-                      initialValue: _paymentCollectionCycle,
-                      decoration: _inputDecoration(label: 'Collection Cycle'),
-                      items: _cycleOptions
-                          .map(
-                            (option) => DropdownMenuItem<String>(
-                              value: option.value,
-                              child: Text(option.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        _paymentCollectionCycle = value;
-                        _onDueFieldChanged();
-                      },
-                      validator: (value) =>
-                          value == null ? 'Collection cycle is required' : null,
-                    ),
-                    second: DropdownButtonFormField<String>(
+                    third: DropdownButtonFormField<String>(
                       initialValue: _paymentCollectionMode,
                       decoration: _inputDecoration(label: 'Collection Mode'),
                       items: _modeOptions
@@ -2518,19 +2873,49 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                       validator: (value) =>
                           value == null ? 'Collection mode is required' : null,
                     ),
-                    third: _buildAllowedPaymentModesField(),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTwoFieldRow(
+                    first: TextFormField(
+                      controller: _collectionStartController,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        label: 'Start Date',
+                        suffix: const Icon(Icons.calendar_today_rounded),
+                      ),
+                      onTap: _pickStartDate,
+                      validator: (_) => _collectionStartDate == null
+                          ? 'Start date is required'
+                          : null,
+                    ),
+                    second: TextFormField(
+                      controller: _collectionEndController,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        label: 'End Date',
+                        suffix: const Icon(Icons.calendar_today_rounded),
+                      ),
+                      onTap: _pickEndDate,
+                      validator: (_) => _collectionEndDate == null
+                          ? 'End date is required'
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTwoFieldRow(
+                    first: _buildCollectionCyclesField(),
+                    second: _buildAllowedPaymentModesField(),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            _buildPaymentTypeFlagsRow(),
             const SizedBox(height: 14),
             _buildCollapsibleFormSection(
-              title: 'Add Other Taxes',
+              title: 'Added Charges And Discount',
               subtitle:
                   'Add additional tax or charge entries that will be included in this payment.',
               expanded: _expandChargesAndAdjustments,
+              enabled: _isCollectionDetailsComplete,
               onExpansionChanged: (expanded) {
                 setState(() {
                   _expandChargesAndAdjustments = expanded;
@@ -2546,10 +2931,11 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
             ),
             const SizedBox(height: 14),
             _buildCollapsibleFormSection(
-              title: 'Audience And Settlement',
+              title: 'Audience And Configuration',
               subtitle:
                   'Select who the payment applies to and where the amount is collected.',
               expanded: _expandAudienceAndSettlement,
+              enabled: _isCollectionDetailsComplete,
               onExpansionChanged: (expanded) {
                 setState(() {
                   _expandAudienceAndSettlement = expanded;
@@ -2610,6 +2996,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                       validator: (value) =>
                           value == null ? 'Bank account is required' : null,
                     ),
+                  ),
+                  SizedBox(
+                    width: mobile ? double.infinity : 320,
+                    child: _buildPartialPaymentToggle(),
                   ),
                 ],
               ),
@@ -3114,6 +3504,16 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 const SizedBox(height: 14),
                 _SummaryRow(label: 'Currency', value: _currency),
                 _SummaryRow(
+                  label: 'Payment Cause',
+                  value: _isCustomPaymentCause
+                      ? _customPaymentCauseController.text.trim()
+                      : (_paymentCauseTypeConstant != null
+                            ? (_societyCollectionTypeMap[_paymentCauseTypeConstant]
+                                      ?.collectionType ??
+                                  '--')
+                            : '--'),
+                ),
+                _SummaryRow(
                   label: 'Collection Mode',
                   value:
                       _modeOptions
@@ -3127,16 +3527,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 ),
                 _SummaryRow(
                   label: 'Collection Cycle',
-                  value:
-                      _cycleOptions
-                          .cast<_PaymentChoice?>()
-                          .firstWhere(
-                            (option) =>
-                                option?.value == _paymentCollectionCycle,
-                            orElse: () => null,
-                          )
-                          ?.label ??
-                      '--',
+                  value: _buildPaymentCollectionCyclesDisplayText(),
                 ),
                 _SummaryRow(
                   label: 'Applicable For',
@@ -3153,6 +3544,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                           )
                           ?.label ??
                       '--',
+                ),
+                _SummaryRow(
+                  label: 'Partial Payment',
+                  value: _isPartialPaymentAllowed ? 'Allowed' : 'Not Allowed',
                 ),
               ],
             ),
@@ -3237,6 +3632,22 @@ class _PaymentChoice {
 
   final String label;
   final String value;
+}
+
+class _SocietyCollectionType {
+  const _SocietyCollectionType({
+    required this.collectionType,
+    required this.purposeOfCollection,
+    required this.sacCode,
+    required this.taxable,
+    required this.typeConstant,
+  });
+
+  final String collectionType;
+  final String purposeOfCollection;
+  final String sacCode;
+  final bool taxable;
+  final String typeConstant;
 }
 
 class _FlatSelectionNode {
@@ -3368,6 +3779,44 @@ class _AdditionalChargeInput {
   }
 }
 
+class _DiscountCycleOption {
+  const _DiscountCycleOption({
+    required this.cycle,
+    required this.sourceCycle,
+    required this.label,
+  });
+
+  final String cycle;
+  final String sourceCycle;
+  final String label;
+}
+
+class _DiscFinCycleDiscount {
+  const _DiscFinCycleDiscount({
+    required this.cycle,
+    required this.type,
+    required this.value,
+  });
+
+  final String cycle;
+  final String type;
+  final String value;
+}
+
+class _CycleDiscountInput {
+  _CycleDiscountInput({required this.cycle, required this.label})
+    : valueController = TextEditingController();
+
+  final String cycle;
+  final String label;
+  final TextEditingController valueController;
+  String type = 'AMOUNT';
+
+  void dispose() {
+    valueController.dispose();
+  }
+}
+
 class _DiscountFineDraft {
   const _DiscountFineDraft({
     required this.kind,
@@ -3378,6 +3827,8 @@ class _DiscountFineDraft {
     required this.value,
     this.calculationType,
     this.cumulationCycle,
+    this.cycleDiscounts = const [],
+    this.minimumPaymentAmount,
   });
 
   final String kind;
@@ -3388,6 +3839,8 @@ class _DiscountFineDraft {
   final String value;
   final String? calculationType;
   final String? cumulationCycle;
+  final List<_DiscFinCycleDiscount> cycleDiscounts;
+  final String? minimumPaymentAmount;
 
   bool get isFine => kind == 'FINE';
 }
@@ -3403,6 +3856,8 @@ class _AppliedDiscountFine {
     required this.startDateText,
     required this.endDateText,
     this.cumulationCycle,
+    this.cycleDiscounts = const [],
+    this.minimumPaymentAmount,
   });
 
   final String kind;
@@ -3414,6 +3869,27 @@ class _AppliedDiscountFine {
   final String startDateText;
   final String endDateText;
   final String? cumulationCycle;
+  final List<_DiscFinCycleDiscount> cycleDiscounts;
+  final String? minimumPaymentAmount;
+
+  _AppliedDiscountFine copyWith({
+    List<_DiscFinCycleDiscount>? cycleDiscounts,
+    String? minimumPaymentAmount,
+  }) {
+    return _AppliedDiscountFine(
+      kind: kind,
+      discFnId: discFnId,
+      mode: mode,
+      value: value,
+      calculationType: calculationType,
+      dueDateAsStartDate: dueDateAsStartDate,
+      startDateText: startDateText,
+      endDateText: endDateText,
+      cumulationCycle: cumulationCycle,
+      cycleDiscounts: cycleDiscounts ?? this.cycleDiscounts,
+      minimumPaymentAmount: minimumPaymentAmount ?? this.minimumPaymentAmount,
+    );
+  }
 }
 
 class _DiscountFineSubmitResult {
@@ -3638,11 +4114,13 @@ class _DiscountFineDialog extends StatefulWidget {
   const _DiscountFineDialog({
     required this.initialKind,
     required this.kindLocked,
+    required this.availableCollectionCycles,
     required this.onSubmit,
   });
 
   final String initialKind;
   final bool kindLocked;
+  final List<_DiscountCycleOption> availableCollectionCycles;
   final Future<_DiscountFineSubmitResult> Function(_DiscountFineDraft draft)
   onSubmit;
 
@@ -3655,6 +4133,9 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   final TextEditingController _startDateController = TextEditingController();
   final TextEditingController _endDateController = TextEditingController();
   final TextEditingController _valueController = TextEditingController();
+  final TextEditingController _minimumPaymentAmountController =
+      TextEditingController();
+  final List<_CycleDiscountInput> _cycleDiscountInputs = [];
 
   late String _kind;
   String _mode = 'AMOUNT';
@@ -3670,19 +4151,54 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   bool get _showCycleType => _isFine;
   bool get _showCumulationCycle => _isFine && _calculationType == 'CUMULATIVE';
   bool get _isStartDateInputEnabled => !(_isFine && _dueDateAsStartDate);
+  bool get _isDiscount => _kind == 'DISCOUNT';
+  bool get _hasCycleDiscountRows => _cycleDiscountInputs.isNotEmpty;
+  bool get _isBaseDiscountFieldLocked => _isDiscount && _hasCycleDiscountRows;
+  bool get _hasDirectBaseDiscountValue {
+    if (!_isDiscount) {
+      return false;
+    }
+    final normalized = _normalizeNumericValue(_valueController.text);
+    final number = double.tryParse(normalized);
+    return normalized.isNotEmpty && number != null && number > 0;
+  }
+
+  bool get _disableAddCycleDiscountButton {
+    return _remainingCycleOptions.isEmpty || _hasDirectBaseDiscountValue;
+  }
+
+  List<_DiscountCycleOption> get _remainingCycleOptions {
+    final usedCycles = _cycleDiscountInputs.map((entry) => entry.cycle).toSet();
+    return widget.availableCollectionCycles
+        .where((entry) => !usedCycles.contains(entry.cycle))
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _kind = widget.initialKind;
+    _valueController.addListener(_onBaseDiscountValueChanged);
   }
 
   @override
   void dispose() {
+    _valueController.removeListener(_onBaseDiscountValueChanged);
     _startDateController.dispose();
     _endDateController.dispose();
     _valueController.dispose();
+    _minimumPaymentAmountController.dispose();
+    for (final row in _cycleDiscountInputs) {
+      row.dispose();
+    }
     super.dispose();
+  }
+
+  void _onBaseDiscountValueChanged() {
+    if (!mounted || !_isDiscount) {
+      return;
+    }
+    setState(() {});
   }
 
   InputDecoration _inputDecoration({required String label, Widget? suffix}) {
@@ -3800,6 +4316,88 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
     });
   }
 
+  Future<void> _addCycleDiscountRow() async {
+    final remaining = _remainingCycleOptions;
+    if (remaining.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All available collection cycles are already added.'),
+        ),
+      );
+      return;
+    }
+
+    final selectedCycle = await showDialog<_DiscountCycleOption>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFF9F6FB),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Select Collection Cycle'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final option in remaining)
+                  ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: Text(option.label),
+                    onTap: () => Navigator.of(dialogContext).pop(option),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedCycle == null) {
+      return;
+    }
+
+    setState(() {
+      _cycleDiscountInputs.add(
+        _CycleDiscountInput(
+          cycle: selectedCycle.cycle,
+          label: selectedCycle.label,
+        ),
+      );
+    });
+  }
+
+  void _removeCycleDiscountRow(int index) {
+    if (index < 0 || index >= _cycleDiscountInputs.length) {
+      return;
+    }
+
+    setState(() {
+      final row = _cycleDiscountInputs.removeAt(index);
+      row.dispose();
+    });
+  }
+
+  List<_DiscFinCycleDiscount> _buildCycleDiscountDraftRows() {
+    return _cycleDiscountInputs
+        .map(
+          (row) => _DiscFinCycleDiscount(
+            cycle: row.cycle,
+            type: row.type,
+            value: _normalizeNumericValue(row.valueController.text),
+          ),
+        )
+        .where((row) => row.value.isNotEmpty)
+        .toList();
+  }
+
   Future<void> _submit() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
@@ -3834,6 +4432,10 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
         value: _normalizeNumericValue(_valueController.text),
         calculationType: _isFine ? _calculationType : null,
         cumulationCycle: _isFine ? _cumulationCycle : null,
+        cycleDiscounts: _isFine ? const [] : _buildCycleDiscountDraftRows(),
+        minimumPaymentAmount: _isFine
+            ? null
+            : _normalizeNumericValue(_minimumPaymentAmountController.text),
       ),
     );
 
@@ -3988,15 +4590,17 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
+                        onChanged: _isBaseDiscountFieldLocked
+                            ? null
+                            : (value) {
+                                if (value == null) {
+                                  return;
+                                }
 
-                          setState(() {
-                            _mode = value;
-                          });
-                        },
+                                setState(() {
+                                  _mode = value;
+                                });
+                              },
                         validator: (value) =>
                             value == null ? 'Select mode' : null,
                       ),
@@ -4058,6 +4662,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _valueController,
+                  enabled: !_isBaseDiscountFieldLocked,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -4066,6 +4671,9 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                   ],
                   decoration: _inputDecoration(label: 'Value'),
                   validator: (value) {
+                    if (_isBaseDiscountFieldLocked) {
+                      return null;
+                    }
                     final normalized = _normalizeNumericValue(value ?? '');
                     final number = double.tryParse(normalized);
                     if (normalized.isEmpty || number == null || number <= 0) {
@@ -4074,6 +4682,136 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                     return null;
                   },
                 ),
+                if (_isDiscount) ...[
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _disableAddCycleDiscountButton
+                          ? null
+                          : _addCycleDiscountRow,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add Cycle Discount'),
+                    ),
+                  ),
+                  if (_cycleDiscountInputs.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    for (
+                      var index = 0;
+                      index < _cycleDiscountInputs.length;
+                      index++
+                    ) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 16),
+                              child: Text(
+                                _cycleDiscountInputs[index].label,
+                                style: const TextStyle(
+                                  color: Color(0xFF124B45),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 3,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _cycleDiscountInputs[index].type,
+                              decoration: _inputDecoration(label: 'Type'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'AMOUNT',
+                                  child: Text('Amount'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'PERCENTAGE',
+                                  child: Text('Percentage'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) {
+                                  return;
+                                }
+                                setState(() {
+                                  _cycleDiscountInputs[index].type = value;
+                                });
+                              },
+                              validator: (value) =>
+                                  value == null ? 'Select type' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 3,
+                            child: TextFormField(
+                              controller:
+                                  _cycleDiscountInputs[index].valueController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.]'),
+                                ),
+                              ],
+                              decoration: _inputDecoration(label: 'Value'),
+                              validator: (value) {
+                                final normalized = _normalizeNumericValue(
+                                  value ?? '',
+                                );
+                                final number = double.tryParse(normalized);
+                                if (normalized.isEmpty ||
+                                    number == null ||
+                                    number <= 0) {
+                                  return 'Enter value';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () => _removeCycleDiscountRow(index),
+                            tooltip: 'Delete row',
+                            color: const Color(0xFFB3261E),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _minimumPaymentAmountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    decoration: _inputDecoration(
+                      label: 'Minimum Payment Amount To Apply Discount',
+                    ),
+                    validator: (value) {
+                      final normalized = _normalizeNumericValue(value ?? '');
+                      if (normalized.isEmpty) {
+                        return null;
+                      }
+                      final number = double.tryParse(normalized);
+                      if (number == null || number < 0) {
+                        return 'Enter a valid amount';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
                 if (_errorMessage != null && _errorMessage!.trim().isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
@@ -4190,6 +4928,98 @@ class _AllowedPaymentModesDialogState
                       _selectedValues.remove(option.value);
                     }
                   });
+                },
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _CreatePaymentPageState._brandColor,
+          ),
+          onPressed: () => Navigator.of(context).pop(_selectedValues),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CollectionCyclesDialog extends StatefulWidget {
+  const _CollectionCyclesDialog({
+    required this.options,
+    required this.initialSelection,
+  });
+
+  final List<_PaymentChoice> options;
+  final Set<String> initialSelection;
+
+  @override
+  State<_CollectionCyclesDialog> createState() =>
+      _CollectionCyclesDialogState();
+}
+
+class _CollectionCyclesDialogState extends State<_CollectionCyclesDialog> {
+  static const String _onceValue = 'ONCE';
+
+  late Set<String> _selectedValues;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValues = Set<String>.from(widget.initialSelection);
+  }
+
+  bool _isOptionDisabled(String value) {
+    if (value == _onceValue) {
+      return _selectedValues.any((item) => item != _onceValue);
+    }
+
+    return _selectedValues.contains(_onceValue);
+  }
+
+  void _toggleValue(String value, bool selected) {
+    setState(() {
+      if (selected) {
+        if (value == _onceValue) {
+          _selectedValues = <String>{_onceValue};
+        } else {
+          _selectedValues.remove(_onceValue);
+          _selectedValues.add(value);
+        }
+      } else {
+        _selectedValues.remove(value);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF9F6FB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: const Text('Collection Cycle'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final option in widget.options)
+              CheckboxListTile(
+                value: _selectedValues.contains(option.value),
+                enabled: !_isOptionDisabled(option.value),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                activeColor: _CreatePaymentPageState._brandColor,
+                title: Text(option.label),
+                onChanged: (checked) {
+                  _toggleValue(option.value, checked ?? false);
                 },
               ),
           ],

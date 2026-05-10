@@ -15,6 +15,7 @@ import 'create_notice_page.dart';
 import 'create_receipt_page.dart';
 import 'reports_dashboard_page.dart';
 import 'home_page.dart';
+import 'onboard_employee_page.dart';
 import 'view_all_notices_page.dart';
 import 'view_transactions_page.dart';
 import 'view_update_payments_page.dart';
@@ -260,22 +261,69 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
   }
 }
 
-class StaffManagementPage extends StatelessWidget {
+class StaffManagementPage extends StatefulWidget {
   const StaffManagementPage({super.key, this.embedded = false});
 
   final bool embedded;
 
   @override
+  State<StaffManagementPage> createState() => _StaffManagementPageState();
+}
+
+class _StaffManagementPageState extends State<StaffManagementPage> {
+  bool _showEmployeeAttendance = false;
+  StaffManagementPanel _initialPanel = StaffManagementPanel.onboardEmployee;
+
+  @override
   Widget build(BuildContext context) {
+    if (_showEmployeeAttendance) {
+      return OnboardEmployeePage(
+        embedded: widget.embedded,
+        initialPanel: _initialPanel,
+        onBack: () {
+          setState(() {
+            _showEmployeeAttendance = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
-      embedded: embedded,
+      embedded: widget.embedded,
       section: AppSection.staffManagement,
       title: 'Staff Management',
       subtitle: 'Choose one of the staff management actions below.',
-      items: const [
-        _ModuleHubItem('Add Staff', Icons.person_add_alt_1),
-        _ModuleHubItem('Update Staff', Icons.manage_accounts_outlined),
-        _ModuleHubItem('View Staff', Icons.badge_outlined),
+      items: [
+        _ModuleHubItem(
+          'Onboard Employee',
+          Icons.person_add_alt_1,
+          onTap: () {
+            setState(() {
+              _initialPanel = StaffManagementPanel.onboardEmployee;
+              _showEmployeeAttendance = true;
+            });
+          },
+        ),
+        _ModuleHubItem(
+          'Today Attendance',
+          Icons.today_outlined,
+          onTap: () {
+            setState(() {
+              _initialPanel = StaffManagementPanel.todayAttendance;
+              _showEmployeeAttendance = true;
+            });
+          },
+        ),
+        _ModuleHubItem(
+          'Employee Attendance',
+          Icons.badge_outlined,
+          onTap: () {
+            setState(() {
+              _initialPanel = StaffManagementPanel.employeeAttendance;
+              _showEmployeeAttendance = true;
+            });
+          },
+        ),
       ],
     );
   }

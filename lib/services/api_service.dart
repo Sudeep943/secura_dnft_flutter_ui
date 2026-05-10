@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:http/http.dart' as http;
 
+import 'face_image_preprocessor.dart';
 import 'notice_models.dart';
 
 class ApiService {
@@ -1584,6 +1586,159 @@ class ApiService {
         'importType': importType,
         'sheetName': sheetName,
         'documentData': documentData,
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> onboardEmployee({
+    required String employeeCode,
+    required String fullName,
+    required String department,
+    required String phone,
+    required String email,
+    required List<Uint8List> images,
+  }) async {
+    final normalizedImages = await Future.wait(
+      images.map((bytes) => normalizeFaceImageBytes(bytes)),
+    );
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/employees/onboard',
+      requestBody: {
+        'employeeCode': employeeCode.trim(),
+        'fullName': fullName.trim(),
+        'department': department.trim(),
+        'phone': phone.trim(),
+        'email': email.trim(),
+        'imagesBase64': normalizedImages.map(base64Encode).toList(),
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> lodgeAttendanceEntry({
+    required String deviceId,
+    required Uint8List imageBytes,
+  }) async {
+    final normalizedImageBytes = await normalizeFaceImageBytes(imageBytes);
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/attendance/lodge-entry'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'deviceId': deviceId.trim(),
+        'imageBase64': base64Encode(normalizedImageBytes),
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> markAttendanceExit({
+    required String deviceId,
+    required Uint8List imageBytes,
+  }) async {
+    final normalizedImageBytes = await normalizeFaceImageBytes(imageBytes);
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/attendance/mark-exit'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'deviceId': deviceId.trim(),
+        'imageBase64': base64Encode(normalizedImageBytes),
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getTodayAttendance() async {
+    final response = await _getWithOptionalAuthorization(
+      '/employees/attendance/today',
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getAttendanceByEmployeeCode(
+    String employeeCode,
+  ) async {
+    final response = await _getWithOptionalAuthorization(
+      '/employees/attendance/${employeeCode.trim()}',
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getSocietyCollectionTypes() async {
+    if (token == null) {
+      return null;
+    }
+
+    final response = await http.get(
+      Uri.parse(
+        "$_baseUrl/societyCollectionTypes/getAllsocietyCollectionTypes",
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
       },
     );
 

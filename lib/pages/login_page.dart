@@ -14,13 +14,13 @@ import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
 import 'app_shell.dart';
 
-enum _LoginMode { username, faceDetection }
+enum _LoginMode { adminLogin, attendanceEntry, attendanceExit }
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
   @override
-  _LoginPageState createState() => _LoginPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
@@ -29,23 +29,28 @@ class _LoginPageState extends State<LoginPage> {
 
   final username = TextEditingController();
   final password = TextEditingController();
+  final _deviceIdController = TextEditingController(text: 'DEVICE_001');
   final _passwordFocusNode = FocusNode();
 
-  _LoginMode _loginMode = _LoginMode.username;
+  _LoginMode _loginMode = _LoginMode.adminLogin;
 
   bool loading = false;
   bool _obscurePassword = true;
   bool _cameraInitializing = false;
   bool _faceValidated = false;
+  bool _liveValidationAvailable = false;
   bool _isProcessingCameraFrame = false;
   DateTime? _lastProcessedFrameAt;
   String _faceStatusMessage =
-      'Switch to face detection to activate the camera.';
+      'Switch to Submit Attendance or Mark Exit to activate the camera.';
   String? _cameraErrorMessage;
 
   CameraController? _cameraController;
+  CameraDescription? _activeCameraDescription;
   FaceDetector? _faceDetector;
   Timer? _webValidationTimer;
+
+  bool get _isAttendanceMode => _loginMode != _LoginMode.adminLogin;
 
   Future<bool> _supportsLiveFaceDetection() async {
     if (kIsWeb) {
@@ -63,6 +68,7 @@ class _LoginPageState extends State<LoginPage> {
     unawaited(_stopFaceDetectionCamera());
     username.dispose();
     password.dispose();
+    _deviceIdController.dispose();
     _passwordFocusNode.dispose();
     super.dispose();
   }
@@ -76,17 +82,18 @@ class _LoginPageState extends State<LoginPage> {
       _loginMode = mode;
       _cameraErrorMessage = null;
       _faceValidated = false;
-      _faceStatusMessage = mode == _LoginMode.faceDetection
-          ? 'Starting the camera for face validation.'
-          : 'Switch to face detection to activate the camera.';
+      _liveValidationAvailable = false;
+      _faceStatusMessage = mode == _LoginMode.adminLogin
+          ? 'Switch to Submit Attendance or Mark Exit to activate the camera.'
+          : 'Starting the camera for face validation.';
     });
 
-    if (mode == _LoginMode.faceDetection) {
-      await _startFaceDetectionCamera();
+    if (mode == _LoginMode.adminLogin) {
+      await _stopFaceDetectionCamera();
       return;
     }
 
-    await _stopFaceDetectionCamera();
+    await _startFaceDetectionCamera();
   }
 
   Future<void> _startFaceDetectionCamera() async {
@@ -95,30 +102,17 @@ class _LoginPageState extends State<LoginPage> {
     final browserFaceDetectorUnavailableReason = kIsWeb
         ? await browser_face_detector.getBrowserFaceDetectorUnavailableReason()
         : null;
-
-    if (!await _supportsLiveFaceDetection()) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _cameraInitializing = false;
-        _cameraErrorMessage = kIsWeb
-            ? browserFaceDetectorUnavailableReason ??
-                  'Browser face detection is unavailable in this browser.'
-            : 'Face detection is available on Android, iOS, and supported web browsers. Windows desktop needs a native desktop face-detection backend.';
-        _faceValidated = false;
-        _faceStatusMessage = kIsWeb
-            ? 'Use username or phone login, or open the app where browser face detection is available.'
-            : 'Use Android, iOS, or a supported web browser for live face validation.';
-      });
-      return;
-    }
+    final liveFaceDetectionSupported = await _supportsLiveFaceDetection();
+    final fallbackStatusMessage = kIsWeb
+        ? (browserFaceDetectorUnavailableReason ??
+              'Live face guidance is unavailable in this browser. You can still capture a photo and the backend will verify it.')
+        : 'Live face guidance is unavailable on this device. You can still capture a photo and the backend will verify it.';
 
     setState(() {
       _cameraInitializing = true;
       _cameraErrorMessage = null;
       _faceValidated = false;
+      _liveValidationAvailable = liveFaceDetectionSupported;
       _faceStatusMessage = 'Starting the front camera.';
     });
 
@@ -135,45 +129,45 @@ class _LoginPageState extends State<LoginPage> {
 
       final controller = CameraController(
         selectedCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: false,
       );
 
       await controller.initialize();
 
-      if (_loginMode != _LoginMode.faceDetection) {
+      if (!_isAttendanceMode) {
         await controller.dispose();
         return;
       }
 
-      final detector = FaceDetector(
-        options: FaceDetectorOptions(
-          performanceMode: FaceDetectorMode.fast,
-          minFaceSize: 0.12,
-        ),
-      );
-
       _cameraController = controller;
-      if (!kIsWeb) {
+      _activeCameraDescription = selectedCamera;
+      if (liveFaceDetectionSupported && !kIsWeb) {
+        final detector = FaceDetector(
+          options: FaceDetectorOptions(
+            performanceMode: FaceDetectorMode.fast,
+            minFaceSize: 0.12,
+          ),
+        );
         _faceDetector = detector;
 
         await controller.startImageStream((image) {
           _handleCameraFrame(image, selectedCamera);
         });
-      } else {
-        await detector.close();
+      } else if (liveFaceDetectionSupported && kIsWeb) {
         _startWebFaceValidationLoop();
       }
 
-      if (!mounted || _loginMode != _LoginMode.faceDetection) {
+      if (!mounted || !_isAttendanceMode) {
         return;
       }
 
       setState(() {
         _cameraInitializing = false;
-        _faceStatusMessage = kIsWeb
-            ? 'Center one face in the frame while the browser validates it.'
-            : 'Center one face in the frame to enable face-validated login.';
+        _faceValidated = !liveFaceDetectionSupported;
+        _faceStatusMessage = liveFaceDetectionSupported
+            ? 'Center one face in the frame to continue.'
+            : fallbackStatusMessage;
       });
     } on CameraException catch (error) {
       if (!mounted) {
@@ -184,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
         _cameraInitializing = false;
         _cameraErrorMessage =
             error.description ?? 'Unable to access the camera.';
-        _faceStatusMessage = 'Camera access is required for face validation.';
+        _faceStatusMessage = 'Camera access is required for attendance.';
       });
     } catch (_) {
       if (!mounted) {
@@ -207,6 +201,7 @@ class _LoginPageState extends State<LoginPage> {
 
     final controller = _cameraController;
     _cameraController = null;
+    _activeCameraDescription = null;
 
     if (controller != null) {
       try {
@@ -223,7 +218,7 @@ class _LoginPageState extends State<LoginPage> {
     _faceDetector = null;
     await detector?.close();
 
-    if (!mounted || _loginMode == _LoginMode.faceDetection) {
+    if (!mounted || _isAttendanceMode) {
       return;
     }
 
@@ -247,7 +242,7 @@ class _LoginPageState extends State<LoginPage> {
     final controller = _cameraController;
     if (!mounted ||
         !kIsWeb ||
-        _loginMode != _LoginMode.faceDetection ||
+        !_isAttendanceMode ||
         controller == null ||
         !controller.value.isInitialized ||
         _isProcessingCameraFrame ||
@@ -261,7 +256,7 @@ class _LoginPageState extends State<LoginPage> {
       final bytes = await snapshot.readAsBytes();
       final faceCount = await browser_face_detector.detectFacesFromBytes(bytes);
 
-      if (!mounted || _loginMode != _LoginMode.faceDetection) {
+      if (!mounted || !_isAttendanceMode) {
         return;
       }
 
@@ -281,8 +276,7 @@ class _LoginPageState extends State<LoginPage> {
         _cameraErrorMessage = null;
         _faceValidated = faceCount == 1;
         if (faceCount == 1) {
-          _faceStatusMessage =
-              'Face detected. You can continue with face-validated login.';
+          _faceStatusMessage = 'Face detected. You can submit attendance now.';
         } else if (faceCount == 0) {
           _faceStatusMessage =
               'No face detected. Move closer and face the camera.';
@@ -292,7 +286,7 @@ class _LoginPageState extends State<LoginPage> {
         }
       });
     } catch (_) {
-      if (!mounted || _loginMode != _LoginMode.faceDetection) {
+      if (!mounted || !_isAttendanceMode) {
         return;
       }
 
@@ -311,7 +305,7 @@ class _LoginPageState extends State<LoginPage> {
     CameraDescription cameraDescription,
   ) {
     if (!mounted ||
-        _loginMode != _LoginMode.faceDetection ||
+        !_isAttendanceMode ||
         _faceDetector == null ||
         _isProcessingCameraFrame) {
       return;
@@ -340,7 +334,7 @@ class _LoginPageState extends State<LoginPage> {
     _isProcessingCameraFrame = true;
     try {
       final faces = await _faceDetector!.processImage(inputImage);
-      if (!mounted || _loginMode != _LoginMode.faceDetection) {
+      if (!mounted || !_isAttendanceMode) {
         return;
       }
 
@@ -348,8 +342,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _faceValidated = hasSingleFace;
         if (hasSingleFace) {
-          _faceStatusMessage =
-              'Face detected. You can continue with face-validated login.';
+          _faceStatusMessage = 'Face detected. You can submit attendance now.';
         } else if (faces.isEmpty) {
           _faceStatusMessage =
               'No face detected. Move closer and face the camera.';
@@ -359,7 +352,7 @@ class _LoginPageState extends State<LoginPage> {
         }
       });
     } catch (_) {
-      if (!mounted || _loginMode != _LoginMode.faceDetection) {
+      if (!mounted || !_isAttendanceMode) {
         return;
       }
 
@@ -477,7 +470,7 @@ class _LoginPageState extends State<LoginPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Face detection',
+            'Face attendance',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -486,7 +479,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'The camera starts automatically. Login is enabled after one face is visible in the frame.',
+            'The camera starts automatically. Attendance is enabled after one face is visible in the frame.',
             style: TextStyle(color: Colors.black54, height: 1.35),
           ),
           const SizedBox(height: 14),
@@ -646,6 +639,13 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _submitIfReady() {
+    if (_isAttendanceMode) {
+      if (!loading) {
+        unawaited(_submitAttendance());
+      }
+      return;
+    }
+
     if (!loading) {
       login();
     }
@@ -670,6 +670,150 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _submitAttendance() async {
+    if (_cameraInitializing) {
+      await _showMessageDialog(
+        title: 'Camera Starting',
+        message: 'Wait for the camera to finish starting before submitting.',
+      );
+      return;
+    }
+
+    if (_cameraErrorMessage != null) {
+      await _showMessageDialog(
+        title: 'Camera Unavailable',
+        message: _cameraErrorMessage!,
+      );
+      return;
+    }
+
+    if (_isProcessingCameraFrame) {
+      await _showMessageDialog(
+        title: 'Validating Face',
+        message: 'Wait for the current camera frame to finish processing.',
+      );
+      return;
+    }
+
+    if (_liveValidationAvailable && !_faceValidated) {
+      await _showMessageDialog(
+        title: 'Face Validation Required',
+        message: 'Keep exactly one face visible before continuing.',
+      );
+      return;
+    }
+
+    final deviceId = _deviceIdController.text.trim();
+    if (deviceId.isEmpty) {
+      await _showMessageDialog(
+        title: 'Missing Device ID',
+        message: 'Enter the device ID used for this attendance station.',
+      );
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      final imageBytes = await _captureAttendanceSnapshot();
+      final response = _loginMode == _LoginMode.attendanceExit
+          ? await ApiService.markAttendanceExit(
+              deviceId: deviceId,
+              imageBytes: imageBytes,
+            )
+          : await ApiService.lodgeAttendanceEntry(
+              deviceId: deviceId,
+              imageBytes: imageBytes,
+            );
+
+      final matched = response != null && response['matched'] == true;
+      final employeeName = response == null
+          ? null
+          : response['employeeName']?.toString().trim();
+      final actionTime = _loginMode == _LoginMode.attendanceExit
+          ? (response == null ? null : response['exitTime']?.toString().trim())
+          : (response == null
+                ? null
+                : response['entryTime']?.toString().trim());
+      final message =
+          (response == null ? null : response['message']?.toString().trim()) ??
+          (_loginMode == _LoginMode.attendanceExit
+              ? 'Unable to mark exit right now.'
+              : 'Unable to submit attendance right now.');
+      final matchScore = response == null
+          ? null
+          : response['matchScore']?.toString().trim();
+
+      final dialogLines = <String>[];
+      if ((employeeName ?? '').isNotEmpty) {
+        dialogLines.add(employeeName!);
+      }
+      dialogLines.add(message);
+      if ((matchScore ?? '').isNotEmpty) {
+        dialogLines.add('Match Score: $matchScore');
+      }
+      if ((actionTime ?? '').isNotEmpty) {
+        dialogLines.add(actionTime!);
+      }
+
+      final dialogMessage = matched ? dialogLines.join('\n') : message;
+
+      await _showMessageDialog(
+        title: matched ? 'Success' : 'Attendance Failed',
+        message: dialogMessage,
+      );
+    } catch (_) {
+      await _showMessageDialog(
+        title: 'Attendance Failed',
+        message: _loginMode == _LoginMode.attendanceExit
+            ? 'Unable to capture the face and mark exit.'
+            : 'Unable to capture the face and submit attendance.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  Future<Uint8List> _captureAttendanceSnapshot() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      throw StateError('Camera is not ready.');
+    }
+
+    final wasStreaming = !kIsWeb && controller.value.isStreamingImages;
+    final cameraDescription = _activeCameraDescription;
+    _webValidationTimer?.cancel();
+    _webValidationTimer = null;
+
+    _isProcessingCameraFrame = true;
+    try {
+      if (wasStreaming) {
+        await controller.stopImageStream();
+      }
+
+      final picture = await controller.takePicture();
+      return await picture.readAsBytes();
+    } finally {
+      _isProcessingCameraFrame = false;
+
+      if (mounted && _isAttendanceMode) {
+        if (kIsWeb) {
+          _startWebFaceValidationLoop();
+        } else if (wasStreaming && cameraDescription != null) {
+          try {
+            await controller.startImageStream((image) {
+              _handleCameraFrame(image, cameraDescription);
+            });
+          } catch (_) {
+            // Ignore restart errors if the camera mode changed while capturing.
+          }
+        }
+      }
+    }
   }
 
   Future<String?> _showOtpDialog(String message) async {
@@ -864,8 +1008,12 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
 
-    final message = response?['message']?.toString() ?? 'Unable to verify OTP.';
-    final messageCode = response?['messageCode']?.toString() ?? '';
+    final message = response == null
+        ? 'Unable to verify OTP.'
+        : response['message']?.toString() ?? 'Unable to verify OTP.';
+    final messageCode = response == null
+        ? ''
+        : response['messageCode']?.toString() ?? '';
 
     if (response == null) {
       await _showMessageDialog(title: 'Error', message: message);
@@ -888,10 +1036,13 @@ class _LoginPageState extends State<LoginPage> {
         newPassword: newPassword,
         otpVerified: true,
       );
-      final updateMessage =
-          updateResponse?['message']?.toString() ??
-          'Unable to update password.';
-      final updateCode = updateResponse?['messageCode']?.toString() ?? '';
+      final updateMessage = updateResponse == null
+          ? 'Unable to update password.'
+          : updateResponse['message']?.toString() ??
+                'Unable to update password.';
+      final updateCode = updateResponse == null
+          ? ''
+          : updateResponse['messageCode']?.toString() ?? '';
 
       if (updateCode.startsWith('SUCC')) {
         password.text = newPassword;
@@ -912,38 +1063,9 @@ class _LoginPageState extends State<LoginPage> {
     if (trimmedUsername.isEmpty || trimmedPassword.isEmpty) {
       await _showMessageDialog(
         title: 'Error',
-        message: _loginMode == _LoginMode.faceDetection
-            ? 'Username, password, and face validation are required.'
-            : 'Username and password are required.',
+        message: 'Username and password are required.',
       );
       return;
-    }
-
-    if (_loginMode == _LoginMode.faceDetection) {
-      if (_cameraInitializing) {
-        await _showMessageDialog(
-          title: 'Camera Starting',
-          message: 'Wait for the camera to finish starting before logging in.',
-        );
-        return;
-      }
-
-      if (_cameraErrorMessage != null) {
-        await _showMessageDialog(
-          title: 'Face Detection Unavailable',
-          message: _cameraErrorMessage!,
-        );
-        return;
-      }
-
-      if (!_faceValidated) {
-        await _showMessageDialog(
-          title: 'Face Validation Required',
-          message:
-              'Keep exactly one face visible in the camera before continuing.',
-        );
-        return;
-      }
     }
 
     setState(() => loading = true);
@@ -960,9 +1082,12 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
 
-    final message =
-        response?['message']?.toString() ?? 'Unable to complete login.';
-    final messageCode = response?['messageCode']?.toString() ?? '';
+    final message = response == null
+        ? 'Unable to complete login.'
+        : response['message']?.toString() ?? 'Unable to complete login.';
+    final messageCode = response == null
+        ? ''
+        : response['messageCode']?.toString() ?? '';
 
     if (response == null) {
       await _showMessageDialog(title: 'Error', message: message);
@@ -986,6 +1111,24 @@ class _LoginPageState extends State<LoginPage> {
     await _showMessageDialog(title: 'Error', message: message);
   }
 
+  Widget _buildAttendanceActionButton() {
+    final isExit = _loginMode == _LoginMode.attendanceExit;
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isExit ? const Color(0xFF7A3E00) : _brandColor,
+          foregroundColor: Colors.white,
+        ),
+        onPressed: loading ? null : _submitIfReady,
+        child: loading
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Text(isExit ? 'Mark Exit' : 'Submit Attendance'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1006,7 +1149,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 28),
                 Center(
                   child: Container(
-                    width: 400,
+                    width: 420,
                     padding: const EdgeInsets.all(30),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -1015,21 +1158,18 @@ class _LoginPageState extends State<LoginPage> {
                         BoxShadow(color: Colors.black12, blurRadius: 15),
                       ],
                     ),
-
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          "Login",
-                          style: TextStyle(
+                        Text(
+                          _isAttendanceMode ? 'Attendance' : 'Admin Login',
+                          style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF0F8F82),
                           ),
                         ),
-
                         const SizedBox(height: 30),
-
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -1039,91 +1179,95 @@ class _LoginPageState extends State<LoginPage> {
                           child: Row(
                             children: [
                               _buildLoginModeOption(
-                                mode: _LoginMode.username,
-                                label: 'Login by Username',
+                                mode: _LoginMode.adminLogin,
+                                label: 'Admin Login',
                                 icon: Icons.person_outline,
                               ),
                               _buildLoginModeOption(
-                                mode: _LoginMode.faceDetection,
-                                label: 'Face Detection',
-                                icon: Icons.face_outlined,
+                                mode: _LoginMode.attendanceEntry,
+                                label: 'Submit Attendance',
+                                icon: Icons.login_outlined,
+                              ),
+                              _buildLoginModeOption(
+                                mode: _LoginMode.attendanceExit,
+                                label: 'Mark Exit',
+                                icon: Icons.logout_outlined,
                               ),
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 20),
-
-                        if (_loginMode == _LoginMode.faceDetection) ...[
+                        if (_isAttendanceMode) ...[
                           _buildFaceDetectionPanel(),
                           const SizedBox(height: 20),
-                        ],
-
-                        TextField(
-                          controller: username,
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) {
-                            FocusScope.of(
-                              context,
-                            ).requestFocus(_passwordFocusNode);
-                          },
-                          decoration: const InputDecoration(
-                            labelText: "Username / Phone",
-                            border: OutlineInputBorder(),
+                          TextField(
+                            controller: _deviceIdController,
+                            decoration: const InputDecoration(
+                              labelText: 'Device ID',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        TextField(
-                          controller: password,
-                          focusNode: _passwordFocusNode,
-                          obscureText: _obscurePassword,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _submitIfReady(),
-                          decoration: InputDecoration(
-                            labelText: "Password",
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
+                          const SizedBox(height: 24),
+                          _buildAttendanceActionButton(),
+                        ] else ...[
+                          TextField(
+                            controller: username,
+                            textInputAction: TextInputAction.next,
+                            onSubmitted: (_) {
+                              FocusScope.of(
+                                context,
+                              ).requestFocus(_passwordFocusNode);
+                            },
+                            decoration: const InputDecoration(
+                              labelText: 'Username / Phone',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            controller: password,
+                            focusNode: _passwordFocusNode,
+                            obscureText: _obscurePassword,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _submitIfReady(),
+                            decoration: InputDecoration(
+                              labelText: 'Password',
+                              border: const OutlineInputBorder(),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                                tooltip: _obscurePassword
+                                    ? 'Show password'
+                                    : 'Hide password',
                               ),
-                              tooltip: _obscurePassword
-                                  ? 'Show password'
-                                  : 'Hide password',
                             ),
                           ),
-                        ),
-
-                        const SizedBox(height: 30),
-
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _brandColor,
-                              foregroundColor: Colors.white,
+                          const SizedBox(height: 30),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _brandColor,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: loading ? null : _submitIfReady,
+                              child: loading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.white,
+                                    )
+                                  : const Text('Login'),
                             ),
-                            onPressed: loading ? null : _submitIfReady,
-                            child: loading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                : Text(
-                                    _loginMode == _LoginMode.faceDetection
-                                        ? 'Validate Face & Login'
-                                        : 'Login',
-                                  ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

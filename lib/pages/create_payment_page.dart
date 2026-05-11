@@ -1544,7 +1544,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         'genericHeader': header,
         'paymentName': _paymentNameController.text.trim(),
         'shortDetails': _shortDetailsController.text.trim(),
-        'paymentCause': _isCustomPaymentCause
+        'cause': _isCustomPaymentCause
             ? _customPaymentCauseController.text.trim()
             : _paymentCauseTypeConstant,
         'paymentCapita': _paymentCapita,

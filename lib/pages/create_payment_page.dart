@@ -129,6 +129,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   bool _loadingDueDetails = false;
   bool _submitting = false;
   int _dueDetailsRequestId = 0;
+  int _selectedDueCycleIndex = 0;
   int _selectedFlatTypeIndex = 0;
   Timer? _previewDebounce;
   final List<_AppliedDiscountFine> _appliedDiscountFines = [];
@@ -144,15 +145,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 
   bool get _isPerHeadCapita => _paymentCapita == 'PER_HEAD';
 
-  String? get _primaryPaymentCollectionCycle {
-    for (final option in _cycleOptions) {
-      if (_paymentCollectionCycles.contains(option.value)) {
-        return option.value;
-      }
-    }
-    return null;
-  }
-
   bool get _isPaymentDetailsComplete {
     return _paymentNameController.text.trim().isNotEmpty &&
         _shortDetailsController.text.trim().isNotEmpty &&
@@ -161,6 +153,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
             : _paymentCauseTypeConstant != null) &&
         _paymentCapita != null;
   }
+
+  bool get _isOnlyOnce =>
+      _paymentCollectionCycles.length == 1 &&
+      _paymentCollectionCycles.contains('ONCE');
 
   bool get _isCollectionDetailsComplete {
     final amount = double.tryParse(
@@ -246,6 +242,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         response.containsKey('discFnId') ||
         response.containsKey('discFinId') ||
         response.containsKey('discFinList') ||
+        response.containsKey('dueAmountDetailsEntityMap') ||
         response.containsKey('listOfDueAmountDetails') ||
         response.containsKey('flatTypeDueAmountDetails');
   }
@@ -491,6 +488,93 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         .toList();
   }
 
+  List<_DueAmountCycleGroup> _dueAmountCycleGroups(
+    Map<String, dynamic>? response,
+  ) {
+    final rawNestedMap = response?['dueAmountDetailsEntityMap'];
+    if (rawNestedMap is Map) {
+      final groups = <_DueAmountCycleGroup>[];
+
+      for (final entry in rawNestedMap.entries) {
+        final cycleLabel = entry.key.toString().trim();
+        final rawCycleValue = entry.value;
+        if (cycleLabel.isEmpty || rawCycleValue is! List) {
+          continue;
+        }
+
+        final flatTypeDetails = <String, List<_DueAmountDetail>>{};
+        for (final cycleItem in rawCycleValue.whereType<Map>()) {
+          final mapEntry = Map<String, dynamic>.from(cycleItem);
+          for (final flatEntry in mapEntry.entries) {
+            final flatLabel = flatEntry.key.toString().trim();
+            final rawDetails = flatEntry.value;
+            if (flatLabel.isEmpty) {
+              continue;
+            }
+
+            final details = <_DueAmountDetail>[];
+            if (rawDetails is List) {
+              details.addAll(
+                rawDetails.whereType<Map>().map(
+                  (item) =>
+                      _DueAmountDetail.fromMap(Map<String, dynamic>.from(item)),
+                ),
+              );
+            } else if (rawDetails is Map) {
+              details.add(
+                _DueAmountDetail.fromMap(Map<String, dynamic>.from(rawDetails)),
+              );
+            }
+
+            if (details.isEmpty) {
+              continue;
+            }
+
+            flatTypeDetails
+                .putIfAbsent(flatLabel, () => <_DueAmountDetail>[])
+                .addAll(details);
+          }
+        }
+
+        if (flatTypeDetails.isNotEmpty) {
+          groups.add(
+            _DueAmountCycleGroup(
+              cycleLabel: cycleLabel,
+              flatTypeDetails: flatTypeDetails,
+            ),
+          );
+        }
+      }
+
+      groups.sort(
+        (left, right) => _compareCycleLabels(left.cycleLabel, right.cycleLabel),
+      );
+      return groups;
+    }
+
+    final flatTypeDetails = _flatTypeDueAmountDetails(response);
+    if (flatTypeDetails.isNotEmpty) {
+      return [
+        _DueAmountCycleGroup(
+          cycleLabel: 'ALL',
+          flatTypeDetails: flatTypeDetails,
+        ),
+      ];
+    }
+
+    final details = _listOfDueAmountDetails(response);
+    if (details.isNotEmpty) {
+      return [
+        _DueAmountCycleGroup(
+          cycleLabel: 'ALL',
+          flatTypeDetails: {'ALL': details},
+        ),
+      ];
+    }
+
+    return const [];
+  }
+
   Map<String, List<_DueAmountDetail>> _flatTypeDueAmountDetails(
     Map<String, dynamic>? response,
   ) {
@@ -539,27 +623,33 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   List<_FlatTypeDueAmountItem> _activeFlatTypeDueAmountDetails(
     Map<String, dynamic>? response,
   ) {
-    final flatTypeDetails = _flatTypeDueAmountDetails(response);
+    final cycleGroup = _selectedDueAmountCycleGroup(response);
+    if (cycleGroup == null) {
+      return const [];
+    }
+
     final entries = <_FlatTypeDueAmountItem>[];
 
-    for (final entry in flatTypeDetails.entries) {
-      final activeDetail = _resolvePrimaryActiveDueDetail(entry.value);
+    final flatLabels = cycleGroup.flatTypeDetails.keys.toList()
+      ..sort(_compareNaturalValues);
+
+    for (final flatLabel in flatLabels) {
+      final activeDetail = _resolveNextUpcomingDueDetail(
+        cycleGroup.flatTypeDetails[flatLabel] ?? const [],
+      );
       if (activeDetail == null) {
         continue;
       }
 
       entries.add(
-        _FlatTypeDueAmountItem(flatLabel: entry.key, detail: activeDetail),
+        _FlatTypeDueAmountItem(flatLabel: flatLabel, detail: activeDetail),
       );
     }
 
-    entries.sort(
-      (left, right) => _compareNaturalValues(left.flatLabel, right.flatLabel),
-    );
     return entries;
   }
 
-  _DueAmountDetail? _resolvePrimaryActiveDueDetail(
+  _DueAmountDetail? _resolveNextUpcomingDueDetail(
     List<_DueAmountDetail> details,
   ) {
     final activeDetails = details
@@ -571,6 +661,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     if (activeDetails.isEmpty) {
       return null;
     }
+
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
 
     activeDetails.sort((left, right) {
       final leftDate = left.dueDate;
@@ -586,10 +679,39 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         return -1;
       }
 
+      final leftIsFutureOrToday = !leftDate.isBefore(normalizedToday);
+      final rightIsFutureOrToday = !rightDate.isBefore(normalizedToday);
+
+      if (leftIsFutureOrToday != rightIsFutureOrToday) {
+        return leftIsFutureOrToday ? -1 : 1;
+      }
+
       return leftDate.compareTo(rightDate);
     });
 
     return activeDetails.first;
+  }
+
+  int _compareCycleLabels(String left, String right) {
+    const cycleOrder = ['MONTHLY', 'QUATERLY', 'HALF YEARLY', 'YEARLY'];
+
+    final leftIndex = cycleOrder.indexOf(left.toUpperCase());
+    final rightIndex = cycleOrder.indexOf(right.toUpperCase());
+    if (leftIndex != -1 || rightIndex != -1) {
+      if (leftIndex == -1) {
+        return 1;
+      }
+      if (rightIndex == -1) {
+        return -1;
+      }
+
+      final comparison = leftIndex.compareTo(rightIndex);
+      if (comparison != 0) {
+        return comparison;
+      }
+    }
+
+    return _compareNaturalValues(left, right);
   }
 
   int _compareNaturalValues(String left, String right) {
@@ -640,53 +762,91 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return _selectedFlatTypeIndex;
   }
 
+  int _resolvedDueCycleIndex(int itemCount) {
+    if (itemCount <= 0) {
+      return 0;
+    }
+
+    if (_selectedDueCycleIndex < 0) {
+      return 0;
+    }
+
+    if (_selectedDueCycleIndex >= itemCount) {
+      return itemCount - 1;
+    }
+
+    return _selectedDueCycleIndex;
+  }
+
+  _DueAmountCycleGroup? _selectedDueAmountCycleGroup(
+    Map<String, dynamic>? response,
+  ) {
+    final groups = _dueAmountCycleGroups(response);
+    if (groups.isEmpty) {
+      return null;
+    }
+
+    return groups[_resolvedDueCycleIndex(groups.length)];
+  }
+
+  List<_DueAmountCycleGroup> _availableDueAmountCycleGroups(
+    Map<String, dynamic>? response,
+  ) {
+    return _dueAmountCycleGroups(response);
+  }
+
+  String _formatCycleLabel(String value) {
+    final normalized = value.trim().toUpperCase();
+    switch (normalized) {
+      case 'MONTHLY':
+        return 'Monthly';
+      case 'QUATERLY':
+        return 'Quarterly';
+      case 'HALF YEARLY':
+        return 'Half Yearly';
+      case 'YEARLY':
+        return 'Yearly';
+      case 'ALL':
+        return 'All';
+      default:
+        return value;
+    }
+  }
+
   _DueAmountDetail? _resolveUpcomingDueDetail(Map<String, dynamic>? response) {
+    final selectedCycleGroup = _selectedDueAmountCycleGroup(response);
+    if (selectedCycleGroup != null) {
+      final flatTypeItems = selectedCycleGroup.flatTypeDetails.entries.toList()
+        ..sort((left, right) => _compareNaturalValues(left.key, right.key));
+
+      if (flatTypeItems.isNotEmpty) {
+        final selectedFlatIndex = _resolvedFlatTypeIndex(flatTypeItems.length);
+        final selectedFlatItem = flatTypeItems[selectedFlatIndex];
+        final detail = _resolveNextUpcomingDueDetail(selectedFlatItem.value);
+        if (detail != null) {
+          return detail;
+        }
+
+        for (final item in flatTypeItems) {
+          final fallback = _resolveNextUpcomingDueDetail(item.value);
+          if (fallback != null) {
+            return fallback;
+          }
+        }
+      }
+    }
+
     final details = _listOfDueAmountDetails(response);
     if (details.isEmpty) {
       return _singleDueAmountDetail(response);
     }
 
-    final today = DateTime.now();
-    final activeDetails = details
-        .where(
-          (detail) =>
-              detail.status.isEmpty || detail.status.toUpperCase() == 'ACTIVE',
-        )
-        .toList();
-
-    if (activeDetails.isEmpty) {
-      return details.first;
+    final selected = _resolveNextUpcomingDueDetail(details);
+    if (selected != null) {
+      return selected;
     }
 
-    activeDetails.sort((left, right) {
-      final leftDate = left.dueDate;
-      final rightDate = right.dueDate;
-
-      if (leftDate == null && rightDate == null) {
-        return 0;
-      }
-      if (leftDate == null) {
-        return 1;
-      }
-      if (rightDate == null) {
-        return -1;
-      }
-
-      final leftIsPast = leftDate.isBefore(
-        DateTime(today.year, today.month, today.day),
-      );
-      final rightIsPast = rightDate.isBefore(
-        DateTime(today.year, today.month, today.day),
-      );
-
-      if (leftIsPast != rightIsPast) {
-        return leftIsPast ? 1 : -1;
-      }
-
-      return leftDate.compareTo(rightDate);
-    });
-
-    return activeDetails.first;
+    return details.first;
   }
 
   String _formatDueDateValue(String? value) {
@@ -796,7 +956,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         _DiscountCycleOption(
           cycle: option.value,
           sourceCycle: option.value,
-          label: option.value,
+          label: option.label,
         ),
     ];
   }
@@ -1003,7 +1163,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return amount.isNotEmpty &&
         gst.isNotEmpty &&
         _paymentCapita != null &&
-        _primaryPaymentCollectionCycle != null &&
+        _paymentCollectionCycles.isNotEmpty &&
         _paymentCollectionMode != null &&
         _collectionStartDate != null &&
         _collectionEndDate != null;
@@ -1120,6 +1280,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       _loadingDueDetails = false;
       _dueDetails = null;
       _dueDetailsError = error;
+      _selectedDueCycleIndex = 0;
       _selectedFlatTypeIndex = 0;
     });
   }
@@ -1159,9 +1320,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       'gst': _normalizeNumericValue(_gstController.text),
       'collectionStartDate': _formatApiDate(startDate),
       'collectionEndDate': _formatApiDate(endDate),
-      'paymentCollectionCycle': _mapCollectionCycleForRequest(
-        _primaryPaymentCollectionCycle!,
-      ),
+      'paymentCollectionCycleList': _buildPaymentCollectionCyclesRequestValue(),
       'paymentCollectionMode': _paymentCollectionMode!.toLowerCase(),
       'paymentCapita': _paymentCapita,
       'addedCharges': _buildAdditionalChargesRequest(),
@@ -1179,10 +1338,12 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       if (response != null && isSuccess) {
         _dueDetails = response;
         _dueDetailsError = null;
+        _selectedDueCycleIndex = 0;
         _selectedFlatTypeIndex = 0;
       } else {
         _dueDetails = null;
         _dueDetailsError = _responseMessage(response);
+        _selectedDueCycleIndex = 0;
         _selectedFlatTypeIndex = 0;
       }
     });
@@ -1609,7 +1770,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       'discFnType': draft.kind,
       'dueDateAsStartDateFlag': draft.isFine ? draft.dueDateAsStartDate : false,
       'discFnStrtDt': _formatUtcBoundaryDate(draft.startDate, endOfDay: false),
-      'discFnEndDt': _formatUtcBoundaryDate(draft.endDate, endOfDay: true),
+      'discFnEndDt': _formatUtcBoundaryDate(draft.endDate, endOfDay: false),
       'discFnMode': draft.mode,
       'discFnValue': draft.value,
       'discFnCycleType': draft.isFine ? draft.calculationType : null,
@@ -2585,7 +2746,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
           onTap: () => _openAllowedPaymentModesDialog(field),
           child: InputDecorator(
             decoration: _inputDecoration(
-              label: 'Allowed Payment Modes',
+              label: 'Allowes Tenders',
               suffix: const Icon(Icons.keyboard_arrow_down_rounded),
             ).copyWith(errorText: field.errorText),
             child: Text(
@@ -2803,58 +2964,8 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               child: Column(
                 children: [
                   _buildThreeFieldRow(
-                    first: TextFormField(
-                      controller: _paymentAmountController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                      ],
-                      decoration: _inputDecoration(
-                        label: 'Amount Per Month',
-                        prefix: const Icon(Icons.currency_rupee_rounded),
-                      ),
-                      validator: (value) {
-                        final normalized = _normalizeNumericValue(value ?? '');
-                        final number = double.tryParse(normalized);
-                        if (normalized.isEmpty ||
-                            number == null ||
-                            number <= 0) {
-                          return 'Enter a valid amount';
-                        }
-                        return null;
-                      },
-                    ),
-                    second: TextFormField(
-                      controller: _gstController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                      ],
-                      decoration: _inputDecoration(
-                        label: 'GST',
-                        suffix: const Padding(
-                          padding: EdgeInsets.only(right: 14),
-                          child: Icon(Icons.percent_rounded),
-                        ),
-                      ),
-                      validator: (value) {
-                        final normalized = _normalizeNumericValue(value ?? '');
-                        final number = double.tryParse(normalized);
-                        if (normalized.isEmpty ||
-                            number == null ||
-                            number < 0) {
-                          return 'Enter GST';
-                        }
-                        if (number > 100) {
-                          return 'GST cannot exceed 100';
-                        }
-                        return null;
-                      },
-                    ),
+                    first: _buildCollectionCyclesField(),
+                    second: _buildAllowedPaymentModesField(),
                     third: DropdownButtonFormField<String>(
                       initialValue: _paymentCollectionMode,
                       decoration: _inputDecoration(label: 'Collection Mode'),
@@ -2903,8 +3014,58 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                   ),
                   const SizedBox(height: 16),
                   _buildTwoFieldRow(
-                    first: _buildCollectionCyclesField(),
-                    second: _buildAllowedPaymentModesField(),
+                    first: TextFormField(
+                      controller: _gstController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      decoration: _inputDecoration(
+                        label: 'GST',
+                        suffix: const Padding(
+                          padding: EdgeInsets.only(right: 14),
+                          child: Icon(Icons.percent_rounded),
+                        ),
+                      ),
+                      validator: (value) {
+                        final normalized = _normalizeNumericValue(value ?? '');
+                        final number = double.tryParse(normalized);
+                        if (normalized.isEmpty ||
+                            number == null ||
+                            number < 0) {
+                          return 'Enter GST';
+                        }
+                        if (number > 100) {
+                          return 'GST cannot exceed 100';
+                        }
+                        return null;
+                      },
+                    ),
+                    second: TextFormField(
+                      controller: _paymentAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      decoration: _inputDecoration(
+                        label: _isOnlyOnce ? 'Amount' : 'Amount Per Month',
+                        prefix: const Icon(Icons.currency_rupee_rounded),
+                      ),
+                      validator: (value) {
+                        final normalized = _normalizeNumericValue(value ?? '');
+                        final number = double.tryParse(normalized);
+                        if (normalized.isEmpty ||
+                            number == null ||
+                            number <= 0) {
+                          return 'Enter a valid amount';
+                        }
+                        return null;
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -3187,6 +3348,16 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                     SizedBox(
                       width: mobile ? double.infinity : 180,
                       child: _buildPreviewStat(
+                        label: 'Upcoming Due Date',
+                        value: _formatDueDateValue(
+                          selectedDetail.detail.dueDateText,
+                        ),
+                        backgroundColor: const Color(0xFFF0F7FF),
+                      ),
+                    ),
+                    SizedBox(
+                      width: mobile ? double.infinity : 180,
+                      child: _buildPreviewStat(
                         label: 'Amount',
                         value: _formatCurrencyValueOrDash(
                           selectedDetail.detail.amount,
@@ -3260,8 +3431,22 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   }
 
   Widget _buildPreviewColumn(bool mobile) {
+    final isBuildUpAreaCapita = _paymentCapita == 'PER_SQFT';
+    final cycleGroups = _availableDueAmountCycleGroups(_dueDetails);
+    final selectedCycleIndex = _resolvedDueCycleIndex(cycleGroups.length);
+    final selectedCycleGroup = cycleGroups.isEmpty
+        ? null
+        : cycleGroups[selectedCycleIndex];
+    final selectedCycleLabel = selectedCycleGroup == null
+        ? '--'
+        : _formatCycleLabel(selectedCycleGroup.cycleLabel);
+    final canGoPreviousCycle = selectedCycleIndex > 0;
+    final canGoNextCycle = selectedCycleIndex < cycleGroups.length - 1;
     final upcomingDueDetail = _resolveUpcomingDueDetail(_dueDetails);
     final flatTypeDetails = _activeFlatTypeDueAmountDetails(_dueDetails);
+    final hasFlatTypeWiseEntries = flatTypeDetails.any(
+      (entry) => entry.flatLabel.toUpperCase() != 'ALL',
+    );
     final selectedFlatIndex = _resolvedFlatTypeIndex(flatTypeDetails.length);
     final selectedFlatDetail = flatTypeDetails.isEmpty
         ? null
@@ -3278,6 +3463,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     );
     final totalAddedCharges = _formatCurrencyValueOrDash(
       upcomingDueDetail?.totalAddedCharges,
+    );
+    final selectedEstimatedCollectionAmount = _formatCurrencyValueOrDash(
+      upcomingDueDetail?.estimatedCollectionAmount ??
+          selectedFlatDetail?.detail.estimatedCollectionAmount,
     );
 
     return Container(
@@ -3310,13 +3499,70 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Upcoming Due Details',
-                  style: TextStyle(
-                    color: _brandTextColor,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: [
+                    _buildFlatTypeNavigationButton(
+                      icon: Icons.chevron_left_rounded,
+                      enabled: canGoPreviousCycle,
+                      onPressed: () {
+                        if (!canGoPreviousCycle) {
+                          return;
+                        }
+
+                        setState(() {
+                          _selectedDueCycleIndex = selectedCycleIndex - 1;
+                          _selectedFlatTypeIndex = 0;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Upcoming Due Details',
+                            style: TextStyle(
+                              color: _brandTextColor,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Cycle: $selectedCycleLabel',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Estimated Collection Amount: $selectedEstimatedCollectionAmount',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildFlatTypeNavigationButton(
+                      icon: Icons.chevron_right_rounded,
+                      enabled: canGoNextCycle,
+                      onPressed: () {
+                        if (!canGoNextCycle) {
+                          return;
+                        }
+
+                        setState(() {
+                          _selectedDueCycleIndex = selectedCycleIndex + 1;
+                          _selectedFlatTypeIndex = 0;
+                        });
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -3424,11 +3670,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 style: TextStyle(color: Colors.black54, height: 1.5),
               ),
             )
-          else if (flatTypeDetails.isNotEmpty && upcomingDueDetail == null)
-            _buildFlatTypeDueAmountSection(flatTypeDetails, mobile)
-          else if (_dueDetails != null &&
-              upcomingDueDetail == null &&
-              flatTypeDetails.isEmpty)
+          else if (isBuildUpAreaCapita && !hasFlatTypeWiseEntries)
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -3438,6 +3680,21 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               ),
               child: const Text(
                 'No active flat-wise due amount details are available for the selected inputs.',
+                style: TextStyle(color: Colors.black54, height: 1.5),
+              ),
+            )
+          else if (isBuildUpAreaCapita)
+            _buildFlatTypeDueAmountSection(flatTypeDetails, mobile)
+          else if (upcomingDueDetail == null)
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFE0EBE8)),
+              ),
+              child: const Text(
+                'No active due amount details are available for the selected inputs.',
                 style: TextStyle(color: Colors.black54, height: 1.5),
               ),
             )
@@ -3478,10 +3735,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 ),
               ],
             ),
-          if (flatTypeDetails.isNotEmpty && upcomingDueDetail != null) ...[
-            const SizedBox(height: 20),
-            _buildFlatTypeDueAmountSection(flatTypeDetails, mobile),
-          ],
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(18),
@@ -3687,6 +3940,8 @@ class _DueAmountDetail {
     required this.gstAmount,
     required this.gstPercent,
     required this.status,
+    required this.collectionCycle,
+    required this.estimatedCollectionAmount,
     required this.totalAddedCharges,
     required this.totalAmount,
   });
@@ -3704,7 +3959,12 @@ class _DueAmountDetail {
       gstAmount: map['gstAmount']?.toString().trim() ?? '',
       gstPercent: map['gstPercent']?.toString().trim() ?? '',
       status: map['status']?.toString().trim() ?? '',
-      totalAddedCharges: _sumAddedChargeValues(map['addedCharges']),
+      collectionCycle: map['collectionCycle']?.toString().trim() ?? '',
+      estimatedCollectionAmount:
+          map['estimatedCollectionAmount']?.toString().trim() ?? '',
+      totalAddedCharges:
+          map['totalAddedCharges']?.toString().trim() ??
+          _sumAddedChargeValues(map['addedCharges']),
       totalAmount:
           map['totalAmount']?.toString().trim() ??
           map['amountIncludingGst']?.toString().trim() ??
@@ -3754,6 +4014,8 @@ class _DueAmountDetail {
   final String gstAmount;
   final String gstPercent;
   final String status;
+  final String collectionCycle;
+  final String estimatedCollectionAmount;
   final String totalAddedCharges;
   final String totalAmount;
 }
@@ -3763,6 +4025,16 @@ class _FlatTypeDueAmountItem {
 
   final String flatLabel;
   final _DueAmountDetail detail;
+}
+
+class _DueAmountCycleGroup {
+  const _DueAmountCycleGroup({
+    required this.cycleLabel,
+    required this.flatTypeDetails,
+  });
+
+  final String cycleLabel;
+  final Map<String, List<_DueAmountDetail>> flatTypeDetails;
 }
 
 class _AdditionalChargeInput {
@@ -4146,14 +4418,19 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   DateTime? _endDate;
   bool _submitting = false;
   String? _errorMessage;
+  String _discountModeSelection = 'FIXED'; // 'FIXED' or 'CYCLE_LEVEL'
 
   bool get _isFine => _kind == 'FINE';
   bool get _showCycleType => _isFine;
   bool get _showCumulationCycle => _isFine && _calculationType == 'CUMULATIVE';
   bool get _isStartDateInputEnabled => !(_isFine && _dueDateAsStartDate);
   bool get _isDiscount => _kind == 'DISCOUNT';
-  bool get _hasCycleDiscountRows => _cycleDiscountInputs.isNotEmpty;
-  bool get _isBaseDiscountFieldLocked => _isDiscount && _hasCycleDiscountRows;
+  bool get _showDiscountModeRadio =>
+      _isDiscount &&
+      widget.availableCollectionCycles.any((c) => c.cycle != 'ONCE');
+  bool get _isCycleLevelDiscountMode =>
+      _showDiscountModeRadio && _discountModeSelection == 'CYCLE_LEVEL';
+  bool get _isBaseDiscountFieldLocked => _isCycleLevelDiscountMode;
   bool get _hasDirectBaseDiscountValue {
     if (!_isDiscount) {
       return false;
@@ -4231,6 +4508,77 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.4),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    String? subtitle,
+    required Widget child,
+    IconData icon = Icons.tune_rounded,
+    Color accentColor = _CreatePaymentPageState._brandColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: accentColor.withValues(alpha: 0.16)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F8F82),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: accentColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: _CreatePaymentPageState._brandTextColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Color(0xFF5D7A76),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
       ),
     );
   }
@@ -4463,9 +4811,24 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
       backgroundColor: const Color(0xFFF9F6FB),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-      title: const Text('Create Discount / Fine'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text('Create Discount / Fine'),
+          SizedBox(height: 4),
+          Text(
+            'Configure the adjustment with dates, values, and optional cycle-wise discounts.',
+            style: TextStyle(
+              color: Color(0xFF5D7A76),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
       content: SizedBox(
-        width: 560,
+        width: 620,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -4475,10 +4838,14 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
               children: [
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7E8),
-                    borderRadius: BorderRadius.circular(14),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFF8E7), Color(0xFFFFF2D1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: const Color(0xFFE7C787)),
                   ),
                   child: const Text(
@@ -4489,100 +4856,16 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  initialValue: _kind,
-                  decoration: _inputDecoration(label: 'Type'),
-                  items: _CreatePaymentPageState._discountFineKindOptions
-                      .map(
-                        (option) => DropdownMenuItem<String>(
-                          value: option.value,
-                          child: Text(option.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: widget.kindLocked
-                      ? null
-                      : (value) {
-                          if (value == null) {
-                            return;
-                          }
-
-                          setState(() {
-                            _kind = value;
-                            if (!_isFine) {
-                              _dueDateAsStartDate = false;
-                              _calculationType = null;
-                              _cumulationCycle = null;
-                            }
-                          });
-                        },
-                  validator: (value) => value == null ? 'Select type' : null,
-                ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  value: _dueDateAsStartDate,
-                  enabled: _isFine,
-                  activeColor: _CreatePaymentPageState._brandColor,
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('Is Due Date As Start Date'),
-                  onChanged: _isFine
-                      ? (value) {
-                          setState(() {
-                            _dueDateAsStartDate = value ?? false;
-                            if (_dueDateAsStartDate) {
-                              _startDate = null;
-                              _startDateController.clear();
-                            }
-                          });
-                        }
-                      : null,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _startDateController,
-                        enabled: _isStartDateInputEnabled,
-                        readOnly: true,
-                        decoration: _inputDecoration(
-                          label: 'Start Date',
-                          suffix: const Icon(Icons.calendar_today_rounded),
-                        ),
-                        onTap: _isStartDateInputEnabled ? _pickStartDate : null,
-                        validator: (_) => _startDate == null
-                            ? 'Start date is required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _endDateController,
-                        readOnly: true,
-                        decoration: _inputDecoration(
-                          label: 'End Date',
-                          suffix: const Icon(Icons.calendar_today_rounded),
-                        ),
-                        onTap: _pickEndDate,
-                        validator: (_) =>
-                            _endDate == null ? 'End date is required' : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _mode,
-                        decoration: _inputDecoration(label: 'Mode'),
-                        items: _CreatePaymentPageState._chargeTypeOptions
+                const SizedBox(height: 18),
+                _buildSectionCard(
+                  title: 'Fill Details',
+                  icon: Icons.auto_awesome_rounded,
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: _kind,
+                        decoration: _inputDecoration(label: 'Type'),
+                        items: _CreatePaymentPageState._discountFineKindOptions
                             .map(
                               (option) => DropdownMenuItem<String>(
                                 value: option.value,
@@ -4590,7 +4873,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                               ),
                             )
                             .toList(),
-                        onChanged: _isBaseDiscountFieldLocked
+                        onChanged: widget.kindLocked
                             ? null
                             : (value) {
                                 if (value == null) {
@@ -4598,21 +4881,233 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                                 }
 
                                 setState(() {
-                                  _mode = value;
+                                  _kind = value;
+                                  if (!_isFine) {
+                                    _dueDateAsStartDate = false;
+                                    _calculationType = null;
+                                    _cumulationCycle = null;
+                                  }
                                 });
                               },
                         validator: (value) =>
-                            value == null ? 'Select mode' : null,
+                            value == null ? 'Select type' : null,
                       ),
-                    ),
-                    if (_showCycleType) ...[
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _calculationType,
-                          decoration: _inputDecoration(label: 'Cycle Type'),
+                      const SizedBox(height: 14),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4FBF9),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFD6ECE7)),
+                        ),
+                        child: CheckboxListTile(
+                          value: _dueDateAsStartDate,
+                          enabled: _isFine,
+                          activeColor: _CreatePaymentPageState._brandColor,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('Is Due Date As Start Date'),
+                          onChanged: _isFine
+                              ? (value) {
+                                  setState(() {
+                                    _dueDateAsStartDate = value ?? false;
+                                    if (_dueDateAsStartDate) {
+                                      _startDate = null;
+                                      _startDateController.clear();
+                                    }
+                                  });
+                                }
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _startDateController,
+                              enabled: _isStartDateInputEnabled,
+                              readOnly: true,
+                              decoration: _inputDecoration(
+                                label: 'Start Date',
+                                suffix: const Icon(
+                                  Icons.calendar_today_rounded,
+                                ),
+                              ),
+                              onTap: _isStartDateInputEnabled
+                                  ? _pickStartDate
+                                  : null,
+                              validator: (_) => _startDate == null
+                                  ? 'Start date is required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _endDateController,
+                              readOnly: true,
+                              decoration: _inputDecoration(
+                                label: 'End Date',
+                                suffix: const Icon(
+                                  Icons.calendar_today_rounded,
+                                ),
+                              ),
+                              onTap: _pickEndDate,
+                              validator: (_) => _endDate == null
+                                  ? 'End date is required'
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_showDiscountModeRadio) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4FBF9),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFD6ECE7)),
+                          ),
+                          child: RadioGroup<String>(
+                            groupValue: _discountModeSelection,
+                            onChanged: (v) {
+                              if (v == 'FIXED') {
+                                setState(() {
+                                  _discountModeSelection = 'FIXED';
+                                  for (final row in _cycleDiscountInputs) {
+                                    row.dispose();
+                                  }
+                                  _cycleDiscountInputs.clear();
+                                });
+                              } else if (v == 'CYCLE_LEVEL') {
+                                setState(() {
+                                  _discountModeSelection = 'CYCLE_LEVEL';
+                                  _valueController.clear();
+                                });
+                              }
+                            },
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: const Text('Fixed Discount'),
+                                    value: 'FIXED',
+                                  ),
+                                ),
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: const Text('Cycle Level Discount'),
+                                    value: 'CYCLE_LEVEL',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_isDiscount) ...[
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: _minimumPaymentAmountController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.]'),
+                            ),
+                          ],
+                          decoration: _inputDecoration(
+                            label: 'Minimum Payment Amount To Apply Discount',
+                          ),
+                          validator: (value) {
+                            final normalized = _normalizeNumericValue(
+                              value ?? '',
+                            );
+                            if (normalized.isEmpty) {
+                              return null;
+                            }
+                            final number = double.tryParse(normalized);
+                            if (number == null || number < 0) {
+                              return 'Enter a valid amount';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _mode,
+                              decoration: _inputDecoration(label: 'Mode'),
+                              items: _CreatePaymentPageState._chargeTypeOptions
+                                  .map(
+                                    (option) => DropdownMenuItem<String>(
+                                      value: option.value,
+                                      child: Text(option.label),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _isBaseDiscountFieldLocked
+                                  ? null
+                                  : (value) {
+                                      if (value == null) {
+                                        return;
+                                      }
+
+                                      setState(() {
+                                        _mode = value;
+                                      });
+                                    },
+                              validator: (value) =>
+                                  value == null ? 'Select mode' : null,
+                            ),
+                          ),
+                          if (_showCycleType) ...[
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _calculationType,
+                                decoration: _inputDecoration(
+                                  label: 'Cycle Type',
+                                ),
+                                items: _CreatePaymentPageState
+                                    ._discountFineTypeOptions
+                                    .map(
+                                      (option) => DropdownMenuItem<String>(
+                                        value: option.value,
+                                        child: Text(option.label),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _calculationType = value;
+                                    if (_calculationType != 'CUMULATIVE') {
+                                      _cumulationCycle = null;
+                                    }
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (_showCumulationCycle) ...[
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          initialValue: _cumulationCycle,
+                          decoration: _inputDecoration(
+                            label: 'Cummilation Cycle',
+                          ),
                           items: _CreatePaymentPageState
-                              ._discountFineTypeOptions
+                              ._discountFineCycleOptions
                               .map(
                                 (option) => DropdownMenuItem<String>(
                                   value: option.value,
@@ -4622,194 +5117,257 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                               .toList(),
                           onChanged: (value) {
                             setState(() {
-                              _calculationType = value;
-                              if (_calculationType != 'CUMULATIVE') {
-                                _cumulationCycle = null;
-                              }
+                              _cumulationCycle = value;
                             });
                           },
+                          validator: (value) {
+                            if (!_showCumulationCycle) {
+                              return null;
+                            }
+                            return value == null ? 'Select cycle' : null;
+                          },
                         ),
+                      ],
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _valueController,
+                        enabled: !_isBaseDiscountFieldLocked,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        decoration: _inputDecoration(label: 'Value'),
+                        validator: (value) {
+                          if (_isBaseDiscountFieldLocked) {
+                            return null;
+                          }
+                          final normalized = _normalizeNumericValue(
+                            value ?? '',
+                          );
+                          final number = double.tryParse(normalized);
+                          if (normalized.isEmpty ||
+                              number == null ||
+                              number <= 0) {
+                            return 'Enter a valid value';
+                          }
+                          return null;
+                        },
                       ),
                     ],
-                  ],
-                ),
-                if (_showCumulationCycle) ...[
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue: _cumulationCycle,
-                    decoration: _inputDecoration(label: 'Cummilation Cycle'),
-                    items: _CreatePaymentPageState._discountFineCycleOptions
-                        .map(
-                          (option) => DropdownMenuItem<String>(
-                            value: option.value,
-                            child: Text(option.label),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _cumulationCycle = value;
-                      });
-                    },
-                    validator: (value) {
-                      if (!_showCumulationCycle) {
-                        return null;
-                      }
-                      return value == null ? 'Select cycle' : null;
-                    },
                   ),
-                ],
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _valueController,
-                  enabled: !_isBaseDiscountFieldLocked,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  decoration: _inputDecoration(label: 'Value'),
-                  validator: (value) {
-                    if (_isBaseDiscountFieldLocked) {
-                      return null;
-                    }
-                    final normalized = _normalizeNumericValue(value ?? '');
-                    final number = double.tryParse(normalized);
-                    if (normalized.isEmpty || number == null || number <= 0) {
-                      return 'Enter a valid value';
-                    }
-                    return null;
-                  },
                 ),
-                if (_isDiscount) ...[
+                if (_isCycleLevelDiscountMode) ...[
                   const SizedBox(height: 18),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: _disableAddCycleDiscountButton
-                          ? null
-                          : _addCycleDiscountRow,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add Cycle Discount'),
-                    ),
-                  ),
-                  if (_cycleDiscountInputs.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    for (
-                      var index = 0;
-                      index < _cycleDiscountInputs.length;
-                      index++
-                    ) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 16),
-                              child: Text(
-                                _cycleDiscountInputs[index].label,
-                                style: const TextStyle(
-                                  color: Color(0xFF124B45),
-                                  fontWeight: FontWeight.w700,
+                  _buildSectionCard(
+                    title: 'Cycle-wise Discount',
+                    subtitle:
+                        'Add different discount values for specific collection cycles when needed.',
+                    icon: Icons.view_timeline_rounded,
+                    accentColor: const Color(0xFF0A7E73),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4FBF9),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFD6ECE7)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor:
+                                        _CreatePaymentPageState._brandColor,
+                                    side: const BorderSide(
+                                      color: Color(0xFFB8D8D1),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  onPressed: _disableAddCycleDiscountButton
+                                      ? null
+                                      : _addCycleDiscountRow,
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Add Cycle Discount'),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 3,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _cycleDiscountInputs[index].type,
-                              decoration: _inputDecoration(label: 'Type'),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'AMOUNT',
-                                  child: Text('Amount'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'PERCENTAGE',
-                                  child: Text('Percentage'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                setState(() {
-                                  _cycleDiscountInputs[index].type = value;
-                                });
-                              },
-                              validator: (value) =>
-                                  value == null ? 'Select type' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              controller:
-                                  _cycleDiscountInputs[index].valueController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                              const SizedBox(height: 18),
+                              if (_cycleDiscountInputs.isNotEmpty) ...[
+                                for (
+                                  var index = 0;
+                                  index < _cycleDiscountInputs.length;
+                                  index++
+                                ) ...[
+                                  Container(
+                                    width: double.infinity,
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: const Color(0xFFDCEAE7),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                _cycleDiscountInputs[index]
+                                                    .label,
+                                                style: const TextStyle(
+                                                  color: Color(0xFF124B45),
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              onPressed: () =>
+                                                  _removeCycleDiscountRow(
+                                                    index,
+                                                  ),
+                                              tooltip: 'Delete row',
+                                              color: const Color(0xFFB3261E),
+                                              icon: const Icon(
+                                                Icons.delete_outline_rounded,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: DropdownButtonFormField<String>(
+                                                initialValue:
+                                                    _cycleDiscountInputs[index]
+                                                        .type,
+                                                decoration: _inputDecoration(
+                                                  label: 'Type',
+                                                ),
+                                                items: const [
+                                                  DropdownMenuItem(
+                                                    value: 'AMOUNT',
+                                                    child: Text('Amount'),
+                                                  ),
+                                                  DropdownMenuItem(
+                                                    value: 'PERCENTAGE',
+                                                    child: Text('Percentage'),
+                                                  ),
+                                                ],
+                                                onChanged: (value) {
+                                                  if (value == null) {
+                                                    return;
+                                                  }
+                                                  setState(() {
+                                                    _cycleDiscountInputs[index]
+                                                            .type =
+                                                        value;
+                                                  });
+                                                },
+                                                validator: (value) =>
+                                                    value == null
+                                                    ? 'Select type'
+                                                    : null,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: TextFormField(
+                                                controller:
+                                                    _cycleDiscountInputs[index]
+                                                        .valueController,
+                                                keyboardType:
+                                                    const TextInputType.numberWithOptions(
+                                                      decimal: true,
+                                                    ),
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter.allow(
+                                                    RegExp(r'[0-9.]'),
+                                                  ),
+                                                ],
+                                                decoration: _inputDecoration(
+                                                  label: 'Value',
+                                                ),
+                                                validator: (value) {
+                                                  final normalized =
+                                                      _normalizeNumericValue(
+                                                        value ?? '',
+                                                      );
+                                                  final number =
+                                                      double.tryParse(
+                                                        normalized,
+                                                      );
+                                                  if (normalized.isEmpty ||
+                                                      number == null ||
+                                                      number <= 0) {
+                                                    return 'Enter value';
+                                                  }
+                                                  return null;
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'[0-9.]'),
-                                ),
+                                ],
                               ],
-                              decoration: _inputDecoration(label: 'Value'),
-                              validator: (value) {
-                                final normalized = _normalizeNumericValue(
-                                  value ?? '',
-                                );
-                                final number = double.tryParse(normalized);
-                                if (normalized.isEmpty ||
-                                    number == null ||
-                                    number <= 0) {
-                                  return 'Enter value';
-                                }
-                                return null;
-                              },
-                            ),
+                              TextFormField(
+                                controller: _minimumPaymentAmountController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'[0-9.]'),
+                                  ),
+                                ],
+                                decoration: _inputDecoration(
+                                  label:
+                                      'Minimum Payment Amount To Apply Discount',
+                                ),
+                                validator: (value) {
+                                  final normalized = _normalizeNumericValue(
+                                    value ?? '',
+                                  );
+                                  if (normalized.isEmpty) {
+                                    return null;
+                                  }
+                                  final number = double.tryParse(normalized);
+                                  if (number == null || number < 0) {
+                                    return 'Enter a valid amount';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () => _removeCycleDiscountRow(index),
-                            tooltip: 'Delete row',
-                            color: const Color(0xFFB3261E),
-                            icon: const Icon(Icons.delete_outline_rounded),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _minimumPaymentAmountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                        ),
+                      ],
                     ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    decoration: _inputDecoration(
-                      label: 'Minimum Payment Amount To Apply Discount',
-                    ),
-                    validator: (value) {
-                      final normalized = _normalizeNumericValue(value ?? '');
-                      if (normalized.isEmpty) {
-                        return null;
-                      }
-                      final number = double.tryParse(normalized);
-                      if (number == null || number < 0) {
-                        return 'Enter a valid amount';
-                      }
-                      return null;
-                    },
                   ),
                 ],
                 if (_errorMessage != null && _errorMessage!.trim().isNotEmpty)
@@ -4895,6 +5453,20 @@ class _AllowedPaymentModesDialogState
     extends State<_AllowedPaymentModesDialog> {
   late Set<String> _selectedValues;
 
+  bool get _allSelected =>
+      widget.options.isNotEmpty &&
+      widget.options.every((option) => _selectedValues.contains(option.value));
+
+  void _toggleAll(bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedValues = widget.options.map((option) => option.value).toSet();
+      } else {
+        _selectedValues.clear();
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -4913,6 +5485,26 @@ class _AllowedPaymentModesDialogState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4FBF9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD6ECE7)),
+              ),
+              child: CheckboxListTile(
+                value: _allSelected,
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                activeColor: _CreatePaymentPageState._brandColor,
+                title: const Text(
+                  'All',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text('Select every payment mode'),
+                onChanged: (checked) => _toggleAll(checked ?? false),
+              ),
+            ),
+            const SizedBox(height: 10),
             for (final option in widget.options)
               CheckboxListTile(
                 value: _selectedValues.contains(option.value),
@@ -4969,6 +5561,16 @@ class _CollectionCyclesDialogState extends State<_CollectionCyclesDialog> {
 
   late Set<String> _selectedValues;
 
+  Iterable<_PaymentChoice> get _allEligibleOptions =>
+      widget.options.where((option) => option.value != _onceValue);
+
+  bool get _allSelected =>
+      !_selectedValues.contains(_onceValue) &&
+      _allEligibleOptions.isNotEmpty &&
+      _allEligibleOptions.every(
+        (option) => _selectedValues.contains(option.value),
+      );
+
   @override
   void initState() {
     super.initState();
@@ -4998,6 +5600,20 @@ class _CollectionCyclesDialogState extends State<_CollectionCyclesDialog> {
     });
   }
 
+  void _toggleAll(bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedValues = _allEligibleOptions
+            .map((option) => option.value)
+            .toSet();
+      } else {
+        _selectedValues.removeAll(
+          _allEligibleOptions.map((option) => option.value),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -5010,6 +5626,26 @@ class _CollectionCyclesDialogState extends State<_CollectionCyclesDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4FBF9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD6ECE7)),
+              ),
+              child: CheckboxListTile(
+                value: _allSelected,
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                activeColor: _CreatePaymentPageState._brandColor,
+                title: const Text(
+                  'All',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text('Select all recurring cycles'),
+                onChanged: (checked) => _toggleAll(checked ?? false),
+              ),
+            ),
+            const SizedBox(height: 10),
             for (final option in widget.options)
               CheckboxListTile(
                 value: _selectedValues.contains(option.value),

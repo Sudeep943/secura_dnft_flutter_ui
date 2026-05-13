@@ -469,7 +469,50 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       return '--';
     }
 
-    return value.startsWith('₹') ? value : '₹$value';
+    final normalizedValue = value.startsWith('₹')
+        ? value.substring(1).trim()
+        : value;
+    final formattedValue = _formatNumberWithCommas(normalizedValue);
+
+    return '₹$formattedValue';
+  }
+
+  String _formatNumberWithCommas(String value) {
+    final cleaned = value.replaceAll(',', '').trim();
+    if (cleaned.isEmpty) {
+      return value;
+    }
+
+    final isNegative = cleaned.startsWith('-');
+    final unsigned = isNegative ? cleaned.substring(1) : cleaned;
+    final parts = unsigned.split('.');
+    final integerPart = parts.first;
+    if (!RegExp(r'^\d+$').hasMatch(integerPart)) {
+      return value;
+    }
+
+    String groupedInteger;
+    if (integerPart.length <= 3) {
+      groupedInteger = integerPart;
+    } else {
+      final lastThree = integerPart.substring(integerPart.length - 3);
+      var remaining = integerPart.substring(0, integerPart.length - 3);
+      final chunks = <String>[];
+
+      while (remaining.length > 2) {
+        chunks.insert(0, remaining.substring(remaining.length - 2));
+        remaining = remaining.substring(0, remaining.length - 2);
+      }
+      if (remaining.isNotEmpty) {
+        chunks.insert(0, remaining);
+      }
+
+      groupedInteger = '${chunks.join(',')},$lastThree';
+    }
+
+    final decimalPart = parts.length > 1 ? '.${parts.sublist(1).join('')}' : '';
+    final sign = isNegative ? '-' : '';
+    return '$sign$groupedInteger$decimalPart';
   }
 
   List<_DueAmountDetail> _listOfDueAmountDetails(
@@ -3348,16 +3391,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                     SizedBox(
                       width: mobile ? double.infinity : 180,
                       child: _buildPreviewStat(
-                        label: 'Upcoming Due Date',
-                        value: _formatDueDateValue(
-                          selectedDetail.detail.dueDateText,
-                        ),
-                        backgroundColor: const Color(0xFFF0F7FF),
-                      ),
-                    ),
-                    SizedBox(
-                      width: mobile ? double.infinity : 180,
-                      child: _buildPreviewStat(
                         label: 'Amount',
                         value: _formatCurrencyValueOrDash(
                           selectedDetail.detail.amount,
@@ -3500,6 +3533,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildFlatTypeNavigationButton(
                       icon: Icons.chevron_left_rounded,
@@ -3515,39 +3549,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                         });
                       },
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Upcoming Due Details',
-                            style: TextStyle(
-                              color: _brandTextColor,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Cycle: $selectedCycleLabel',
-                            style: const TextStyle(
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Estimated Collection Amount: $selectedEstimatedCollectionAmount',
-                            style: const TextStyle(
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
                     _buildFlatTypeNavigationButton(
                       icon: Icons.chevron_right_rounded,
                       enabled: canGoNextCycle,
@@ -3561,6 +3562,36 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                           _selectedFlatTypeIndex = 0;
                         });
                       },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Upcoming Due Details',
+                      style: TextStyle(
+                        color: _brandTextColor,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cycle: $selectedCycleLabel',
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Expected Collection Amount: $selectedEstimatedCollectionAmount',
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),

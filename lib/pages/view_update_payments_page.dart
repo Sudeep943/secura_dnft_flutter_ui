@@ -686,7 +686,52 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
     }
 
     if (_paymentList.isEmpty) {
-      return const Center(child: Text('No payments found.'));
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1400),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    if (widget.onBack != null) ...[
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: _brandColor),
+                        onPressed: widget.onBack,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    const Expanded(
+                      child: Text(
+                        'View / Update Payments',
+                        style: TextStyle(
+                          color: _brandTextColor,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _loadPayments,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Center(
+                  child: Text(
+                    'No payments found.',
+                    style: TextStyle(color: Colors.black54, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return SingleChildScrollView(

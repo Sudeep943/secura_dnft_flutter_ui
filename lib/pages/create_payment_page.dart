@@ -3532,40 +3532,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildFlatTypeNavigationButton(
-                      icon: Icons.chevron_left_rounded,
-                      enabled: canGoPreviousCycle,
-                      onPressed: () {
-                        if (!canGoPreviousCycle) {
-                          return;
-                        }
-
-                        setState(() {
-                          _selectedDueCycleIndex = selectedCycleIndex - 1;
-                          _selectedFlatTypeIndex = 0;
-                        });
-                      },
-                    ),
-                    _buildFlatTypeNavigationButton(
-                      icon: Icons.chevron_right_rounded,
-                      enabled: canGoNextCycle,
-                      onPressed: () {
-                        if (!canGoNextCycle) {
-                          return;
-                        }
-
-                        setState(() {
-                          _selectedDueCycleIndex = selectedCycleIndex + 1;
-                          _selectedFlatTypeIndex = 0;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -3578,16 +3544,43 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Cycle: $selectedCycleLabel',
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          'Cycle: $selectedCycleLabel',
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        _buildFlatTypeNavigationButton(
+                          icon: Icons.chevron_left_rounded,
+                          enabled: canGoPreviousCycle,
+                          onPressed: () {
+                            if (!canGoPreviousCycle) return;
+                            setState(() {
+                              _selectedDueCycleIndex = selectedCycleIndex - 1;
+                              _selectedFlatTypeIndex = 0;
+                            });
+                          },
+                        ),
+                        _buildFlatTypeNavigationButton(
+                          icon: Icons.chevron_right_rounded,
+                          enabled: canGoNextCycle,
+                          onPressed: () {
+                            if (!canGoNextCycle) return;
+                            setState(() {
+                              _selectedDueCycleIndex = selectedCycleIndex + 1;
+                              _selectedFlatTypeIndex = 0;
+                            });
+                          },
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Expected Collection Amount: $selectedEstimatedCollectionAmount',
+                      'Expected Collection Amount: $selectedEstimatedCollectionAmount (approx)',
                       style: const TextStyle(
                         color: Colors.black54,
                         fontWeight: FontWeight.w600,
@@ -3597,7 +3590,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Refer to this panel to view details of any upcoming dues related to the payment you are creating. It provides a clear breakdown of pending amounts and relevant dates. Use this information to ensure accurate and timely payment processing.',
+                  'Review the upcoming due breakdown based on the details filled in — including amount split, applicable charges, and due date as per the selected cycle.',
                   style: TextStyle(color: Colors.black54, height: 1.5),
                 ),
                 const SizedBox(height: 18),

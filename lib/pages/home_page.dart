@@ -111,6 +111,7 @@ class _HomePageState extends State<HomePage> {
 
   String _dashboardDueAmount() {
     final candidates = [
+      dueAmountData?['totalDue'],
       dueAmountData?['totalDueAmount'],
       dashboardData?['totalDues'],
     ];
@@ -126,11 +127,67 @@ class _HomePageState extends State<HomePage> {
     return '₹0';
   }
 
+  String _normalizePaymentType(String paymentType) {
+    final normalized = paymentType.trim().toUpperCase();
+    if (normalized == 'OPTIONNAL') {
+      return 'OPTIONAL';
+    }
+    return normalized;
+  }
+
+  Map<String, List<Map<String, dynamic>>> _dueDetailsByPayment() {
+    final result = <String, List<Map<String, dynamic>>>{};
+    final rawDetails = dueAmountData?['dueDetails'];
+    if (rawDetails is! Map) {
+      return result;
+    }
+
+    rawDetails.forEach((rawKey, rawValue) {
+      final key = rawKey?.toString() ?? '';
+      if (key.isEmpty) {
+        return;
+      }
+
+      final list = <Map<String, dynamic>>[];
+      if (rawValue is List) {
+        for (final item in rawValue.whereType<Map>()) {
+          list.add(Map<String, dynamic>.from(item));
+        }
+      } else if (rawValue is Map) {
+        list.add(Map<String, dynamic>.from(rawValue));
+      }
+
+      if (list.isNotEmpty) {
+        result[key] = list;
+      }
+    });
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> _allDuePaymentMaps() {
+    final dueDetailsGroups = _dueDetailsByPayment();
+    if (dueDetailsGroups.isNotEmpty) {
+      return dueDetailsGroups.values.expand((items) => items).toList();
+    }
+
+    final rawList = dueAmountData?['duePaymentList'];
+    if (rawList is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    return rawList
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
   String _sumDueByPaymentType(String paymentType) {
     final items = _duePaymentItems();
+    final expectedType = _normalizePaymentType(paymentType);
     var total = 0.0;
     for (final item in items) {
-      if (item.paymentType.toUpperCase() != paymentType) {
+      if (_normalizePaymentType(item.paymentType) != expectedType) {
         continue;
       }
       total += double.tryParse(item.totalAmount) ?? 0;
@@ -138,51 +195,19 @@ class _HomePageState extends State<HomePage> {
     return _formatAsCurrency(total.toStringAsFixed(0));
   }
 
-  String _extractTotalFromResponse({
-    required String key,
-    required String fallbackPaymentType,
-  }) {
-    final topLevel = dueAmountData?[key]?.toString().trim() ?? '';
-    if (topLevel.isNotEmpty && topLevel.toLowerCase() != 'null') {
-      return _formatAsCurrency(topLevel);
-    }
-
-    final rawList = dueAmountData?['duePaymentList'];
-    if (rawList is List) {
-      for (final entry in rawList.whereType<Map>()) {
-        final value = entry[key]?.toString().trim() ?? '';
-        if (value.isNotEmpty && value.toLowerCase() != 'null') {
-          return _formatAsCurrency(value);
-        }
-      }
-    }
-
-    return _sumDueByPaymentType(fallbackPaymentType);
-  }
-
   String _totalMandatoryPaymentAmount() {
-    return _extractTotalFromResponse(
-      key: 'totalMandatoryPaymentAmount',
-      fallbackPaymentType: 'MANDATORY',
-    );
+    return _sumDueByPaymentType('MANDATORY');
   }
 
   String _totalOptionalPaymentAmount() {
-    return _extractTotalFromResponse(
-      key: 'totalOptionalPaymentAmount',
-      fallbackPaymentType: 'OPTIONAL',
-    );
+    return _sumDueByPaymentType('OPTIONAL');
   }
 
   List<_DuePaymentItem> _duePaymentItems() {
-    final rawList = dueAmountData?['duePaymentList'];
-    if (rawList is! List) return const [];
+    final entries = _allDuePaymentMaps();
+    if (entries.isEmpty) return const [];
 
-    return rawList
-        .whereType<Map>()
-        .map((entry) => Map<String, dynamic>.from(entry))
-        .map(_DuePaymentItem.fromMap)
-        .toList();
+    return entries.map(_DuePaymentItem.fromMap).toList();
   }
 
   DateTime? _parseDueDate(String value) {
@@ -273,6 +298,7 @@ class _HomePageState extends State<HomePage> {
 
   bool _isDueAmountZero() {
     final candidates = [
+      dueAmountData?['totalDue'],
       dueAmountData?['totalDueAmount'],
       dashboardData?['totalDues'],
     ];
@@ -288,10 +314,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showPaymentDetailsModal() {
+    final groupedDues = _dueDetailsByPayment();
     showDialog(
       context: context,
       builder: (dialogContext) => PaymentDetailsModal(
         duePaymentList: dueAmountData?['duePaymentList'] ?? [],
+        dueDetailsByPayment: groupedDues,
         formatAsCurrency: _formatAsCurrency,
         onPaymentCompleted: fetchDashboardData,
       ),
@@ -1782,10 +1810,12 @@ class PaymentDetailsModal extends StatefulWidget {
   const PaymentDetailsModal({
     required this.duePaymentList,
     required this.formatAsCurrency,
+    this.dueDetailsByPayment,
     this.onPaymentCompleted,
   });
 
   final List<dynamic> duePaymentList;
+  final Map<String, List<Map<String, dynamic>>>? dueDetailsByPayment;
   final String Function(String amount) formatAsCurrency;
 
   final Future<void> Function()? onPaymentCompleted;
@@ -1794,10 +1824,28 @@ class PaymentDetailsModal extends StatefulWidget {
   State<PaymentDetailsModal> createState() => _PaymentDetailsModalState();
 }
 
+enum _DueSectionTab { overdue, active }
+
+class _DueGroupData {
+  const _DueGroupData({
+    required this.groupId,
+    required this.paymentId,
+    required this.paymentName,
+    required this.dues,
+  });
+
+  final String groupId;
+  final String paymentId;
+  final String paymentName;
+  final List<Map<String, dynamic>> dues;
+}
+
 class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   static const String _razorpayKey = 'rzp_test_SRxceBfBqGmeGy';
 
   final Map<String, bool> _submittingRows = <String, bool>{};
+  final Map<String, _DueSectionTab> _selectedTabs = <String, _DueSectionTab>{};
+  final Map<String, String> _selectedDueByGroup = <String, String>{};
 
   String _toCamelCase(String text) {
     if (text.isEmpty) return text;
@@ -1825,55 +1873,149 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         .toList();
   }
 
-  String _formatChargeLine(Map<String, dynamic> charge) {
-    final chargeName = charge['chargeName']?.toString().trim() ?? '--';
-    final chargeValue = charge['finalChargeValue']?.toString().trim() ?? '0';
-    final chargeType =
-        charge['chargeType']?.toString().trim().toLowerCase() ?? '';
-    final percentage = charge['value']?.toString().trim() ?? '';
-    final suffix =
-        chargeType == 'percentage' &&
-            percentage.isNotEmpty &&
-            percentage.toLowerCase() != 'null'
-        ? ' ($percentage%)'
-        : '';
-    return '$chargeName: ${widget.formatAsCurrency(chargeValue)}$suffix';
+  String _dueId(Map<String, dynamic> payment) {
+    return payment['DueId']?.toString().trim() ??
+        payment['dueId']?.toString().trim() ??
+        '';
   }
 
-  List<String> _discountFineCodeLines(Map<String, dynamic> payment) {
-    final discountCode = payment['discountCode']?.toString().trim() ?? '';
-    final fineCode = payment['fineCode']?.toString().trim() ?? '';
-    final parts = <String>[];
-
-    if (discountCode.isNotEmpty && discountCode.toLowerCase() != 'null') {
-      parts.add('$discountCode (Discount)');
-    }
-    if (fineCode.isNotEmpty && fineCode.toLowerCase() != 'null') {
-      parts.add('$fineCode (Fine)');
+  String _paymentNameFromGroupKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      return '--';
     }
 
-    return parts;
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map) {
+        final paymentName = decoded['paymentName']?.toString().trim() ?? '';
+        if (paymentName.isNotEmpty && paymentName.toLowerCase() != 'null') {
+          return paymentName;
+        }
+      }
+    } catch (_) {
+      // Not a JSON key, use fallback below.
+    }
+
+    return trimmed;
   }
 
-  List<String> _discountFineAmountLines(Map<String, dynamic> payment) {
-    final discountedAmount =
-        payment['discountedAmount']?.toString().trim() ?? '';
-    final fineAmount = payment['fineAmount']?.toString().trim() ?? '';
-    final amounts = <String>[];
-
-    if (fineAmount.isNotEmpty &&
-        fineAmount.toLowerCase() != 'null' &&
-        fineAmount != '0') {
-      amounts.add('Fine: ${widget.formatAsCurrency(fineAmount)}');
+  String _paymentIdFromGroupKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      return '';
     }
-    if (discountedAmount.isNotEmpty &&
-        discountedAmount.toLowerCase() != 'null') {
-      amounts.add(
-        'Total Savings: ${widget.formatAsCurrency(discountedAmount)}',
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map) {
+        final paymentId = decoded['paymentId']?.toString().trim() ?? '';
+        if (paymentId.isNotEmpty && paymentId.toLowerCase() != 'null') {
+          return paymentId;
+        }
+      }
+    } catch (_) {
+      // Not a JSON key, use fallback below.
+    }
+
+    return '';
+  }
+
+  List<Map<String, dynamic>> _normalizePaymentMaps(dynamic rawValue) {
+    final list = <Map<String, dynamic>>[];
+
+    if (rawValue is List) {
+      for (final payment in rawValue.whereType<Map>()) {
+        list.add(Map<String, dynamic>.from(payment));
+      }
+    } else if (rawValue is Map) {
+      list.add(Map<String, dynamic>.from(rawValue));
+    }
+
+    return list;
+  }
+
+  List<_DueGroupData> _groupedPayments() {
+    final grouped = <_DueGroupData>[];
+    final fromDueDetails = widget.dueDetailsByPayment;
+
+    if (fromDueDetails != null && fromDueDetails.isNotEmpty) {
+      fromDueDetails.forEach((rawKey, rawList) {
+        final dues = _normalizePaymentMaps(rawList);
+        if (dues.isEmpty) {
+          return;
+        }
+
+        final paymentName = _paymentNameFromGroupKey(rawKey);
+        final paymentId = _paymentIdFromGroupKey(rawKey);
+        final groupId = paymentId.isNotEmpty
+            ? paymentId
+            : '$paymentName-${rawKey.hashCode}';
+
+        grouped.add(
+          _DueGroupData(
+            groupId: groupId,
+            paymentId: paymentId,
+            paymentName: paymentName,
+            dues: dues,
+          ),
+        );
+      });
+    }
+
+    if (grouped.isNotEmpty) {
+      grouped.sort(
+        (a, b) =>
+            a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase()),
       );
+      return grouped;
     }
 
-    return amounts;
+    final normalized = _normalizedPayments();
+    if (normalized.isEmpty) {
+      return const <_DueGroupData>[];
+    }
+
+    final byPayment = <String, List<Map<String, dynamic>>>{};
+    final paymentNames = <String, String>{};
+    for (final payment in normalized) {
+      final paymentId = payment['paymentId']?.toString().trim() ?? '';
+      final paymentName = payment['paymentName']?.toString().trim() ?? '--';
+      final groupId = paymentId.isNotEmpty
+          ? paymentId
+          : '$paymentName-${payment.hashCode}';
+      byPayment
+          .putIfAbsent(groupId, () => <Map<String, dynamic>>[])
+          .add(payment);
+      paymentNames[groupId] = paymentName;
+    }
+
+    byPayment.forEach((groupId, dues) {
+      grouped.add(
+        _DueGroupData(
+          groupId: groupId,
+          paymentId: groupId,
+          paymentName: paymentNames[groupId] ?? '--',
+          dues: dues,
+        ),
+      );
+    });
+
+    grouped.sort(
+      (a, b) =>
+          a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase()),
+    );
+    return grouped;
+  }
+
+  List<Map<String, dynamic>> _duesForTab(
+    _DueGroupData group,
+    _DueSectionTab selectedTab,
+  ) {
+    return group.dues.where((due) {
+      final isOverdue = _isPastDue(due);
+      return selectedTab == _DueSectionTab.overdue ? isOverdue : !isOverdue;
+    }).toList();
   }
 
   DateTime? _parseDueDate(String value) {
@@ -1912,104 +2054,22 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   }
 
   bool _isPastDue(Map<String, dynamic> payment) {
+    final dueEndDateText = payment['dueEndDate']?.toString().trim() ?? '';
     final dueDateText = payment['dueDate']?.toString().trim() ?? '';
+
+    final dueEndDate = _parseDueDate(dueEndDateText);
     final dueDate = _parseDueDate(dueDateText);
-    if (dueDate == null) return false;
+    final comparisonDate = dueEndDate ?? dueDate;
+    if (comparisonDate == null) return false;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final dueOnly = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final dueOnly = DateTime(
+      comparisonDate.year,
+      comparisonDate.month,
+      comparisonDate.day,
+    );
     return dueOnly.isBefore(today);
-  }
-
-  Widget _centerCellText(
-    String text, {
-    TextStyle? style,
-    TextAlign textAlign = TextAlign.center,
-  }) {
-    return Align(
-      alignment: Alignment.center,
-      child: Text(text, style: style, textAlign: textAlign),
-    );
-  }
-
-  Widget _buildOtherChargesCell(List addedCharges, String totalAddedCharges) {
-    final chargeLines = addedCharges
-        .whereType<Map>()
-        .map((charge) => _formatChargeLine(Map<String, dynamic>.from(charge)))
-        .toList();
-
-    if (chargeLines.isEmpty) {
-      return _centerCellText('--');
-    }
-
-    return Align(
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...chargeLines.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(line, textAlign: TextAlign.center),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Divider(thickness: 1, height: 1),
-          const SizedBox(height: 4),
-          Text(
-            'Total: ${widget.formatAsCurrency(totalAddedCharges)}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F8F82),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDiscountFineCell(Map<String, dynamic> payment) {
-    final codeLines = _discountFineCodeLines(payment);
-    final amountLines = _discountFineAmountLines(payment);
-
-    if (codeLines.isEmpty && amountLines.isEmpty) {
-      return _centerCellText('--');
-    }
-
-    return Align(
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...codeLines.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(line, textAlign: TextAlign.center),
-            ),
-          ),
-          if (amountLines.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            const Divider(thickness: 1, height: 1),
-            const SizedBox(height: 4),
-            ...amountLines.map(
-              (line) => Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  line,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F8F82),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   List<String> _extractAllowedPaymentModes(Map<String, dynamic> payment) {
@@ -2401,216 +2461,528 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final payments = _normalizedPayments();
-    final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
-    const baseHeight = 190.0;
-    const estimatedRowHeight = 108.0;
-    final requiredHeight = baseHeight + (payments.length * estimatedRowHeight);
-    final dialogHeight = requiredHeight < maxDialogHeight
-        ? requiredHeight
-        : maxDialogHeight;
+  Widget _buildSelectedDueSummary(Map<String, dynamic> due) {
+    final amount = due['amount']?.toString().trim() ?? '0';
+    final gstAmount = due['gstAmount']?.toString().trim() ?? '0';
+    final gstPercentage = due['gstPercentage']?.toString().trim() ?? '';
+    final totalAmount = due['totalAmount']?.toString().trim() ?? '0';
+    final totalAddedCharges =
+        due['totalAddedCharges']?.toString().trim() ?? '0';
+    final dueDate = due['dueDate']?.toString().trim() ?? '--';
+    final paymentType = due['paymentType']?.toString().trim() ?? '--';
+    final discountCode = due['discountCode']?.toString().trim() ?? '';
+    final discountedAmount = due['discountedAmount']?.toString().trim() ?? '';
+    final fineCode = due['fineCode']?.toString().trim() ?? '';
+    final fineAmount = due['fineAmount']?.toString().trim() ?? '';
+    final rowKey = _rowPaymentKey(due);
+    final isSubmitting = _submittingRows[rowKey] ?? false;
 
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.96,
-        height: dialogHeight,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
+    final hasDiscountAmount =
+        discountedAmount.isNotEmpty &&
+        discountedAmount.toLowerCase() != 'null' &&
+        discountedAmount != '0';
+    final hasDiscountCode =
+        discountCode.isNotEmpty && discountCode.toLowerCase() != 'null';
+
+    final discountText = hasDiscountAmount
+        ? hasDiscountCode
+              ? '${widget.formatAsCurrency(discountedAmount)} ($discountCode)'
+              : widget.formatAsCurrency(discountedAmount)
+        : '--';
+
+    final fineText =
+        fineAmount.isNotEmpty &&
+            fineAmount.toLowerCase() != 'null' &&
+            fineAmount != '0'
+        ? widget.formatAsCurrency(fineAmount)
+        : fineCode.isNotEmpty && fineCode.toLowerCase() != 'null'
+        ? fineCode
+        : '--';
+
+    final totalSavingsText = hasDiscountAmount
+        ? widget.formatAsCurrency(discountedAmount)
+        : '--';
+
+    final gstText =
+        gstPercentage.isNotEmpty && gstPercentage.toLowerCase() != 'null'
+        ? '${widget.formatAsCurrency(gstAmount)} ($gstPercentage%)'
+        : widget.formatAsCurrency(gstAmount);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FCFA),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Due Details',
+            style: TextStyle(
+              color: Color(0xFF124B45),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const headerTextStyle = TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              );
+              const rowTextStyle = TextStyle(
+                color: Color(0xFF124B45),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              );
+
+              Widget buildCell(
+                String value, {
+                TextStyle? style,
+                bool isHeader = false,
+              }) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 10,
+                  ),
+                  child: Center(
                     child: Text(
-                      'Payment Details',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF124B45),
-                      ),
+                      value,
+                      textAlign: TextAlign.center,
+                      style:
+                          style ?? (isHeader ? headerTextStyle : rowTextStyle),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth: MediaQuery.of(context).size.width * 0.92,
-                        ),
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(
-                            const Color(0xFFE4F3F0),
-                          ),
-                          headingTextStyle: const TextStyle(
-                            color: Color(0xFF124B45),
-                            fontWeight: FontWeight.w700,
-                          ),
-                          columnSpacing: 20,
-                          dataRowMinHeight: 72,
-                          dataRowMaxHeight: 170,
-                          headingRowHeight: 56,
-                          columns: const [
-                            DataColumn(
-                              label: Center(child: Text('Payment Name')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Base Amount')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('GST')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Other Added Charges')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Payment Type')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Discount/Fine')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Due Date')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Net Payable')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                            DataColumn(
-                              label: Center(child: Text('Action')),
-                              headingRowAlignment: MainAxisAlignment.center,
-                            ),
-                          ],
-                          rows: payments.map((payment) {
-                            final rowKey = _rowPaymentKey(payment);
-                            final isSubmitting =
-                                _submittingRows[rowKey] ?? false;
-                            final paymentName =
-                                payment['paymentName']?.toString() ?? '';
-                            final baseAmount =
-                                payment['amount']?.toString() ?? '0';
-                            final gstAmount =
-                                payment['gstAmount']?.toString() ?? '0';
-                            final gstPercentage =
-                                payment['gstPercentage']?.toString() ?? '';
-                            final paymentType =
-                                payment['paymentType']?.toString() ?? '';
-                            final dueDate =
-                                payment['dueDate']?.toString() ?? '--';
-                            final totalAmount =
-                                payment['totalAmount']?.toString() ?? '0';
-                            final addedCharges =
-                                payment['addedCharges'] as List? ?? [];
-                            final totalAddedCharges =
-                                payment['totalAddedCharges']?.toString() ?? '0';
-                            final overdue = _isPastDue(payment);
+                );
+              }
 
-                            return DataRow(
-                              color: overdue
-                                  ? WidgetStateProperty.all(
-                                      const Color(0xFFFFDDDD),
-                                    )
-                                  : null,
-                              cells: [
-                                DataCell(
-                                  _centerCellText(_toCamelCase(paymentName)),
-                                ),
-                                DataCell(
-                                  _centerCellText(
-                                    widget.formatAsCurrency(baseAmount),
-                                  ),
-                                ),
-                                DataCell(
-                                  _centerCellText(
-                                    '${widget.formatAsCurrency(gstAmount)} (${gstPercentage}%)',
-                                  ),
-                                ),
-                                DataCell(
-                                  _buildOtherChargesCell(
-                                    addedCharges,
-                                    totalAddedCharges,
-                                  ),
-                                ),
-                                DataCell(
-                                  _centerCellText(_toCamelCase(paymentType)),
-                                ),
-                                DataCell(_buildDiscountFineCell(payment)),
-                                DataCell(_centerCellText(dueDate)),
-                                DataCell(
-                                  _centerCellText(
-                                    widget.formatAsCurrency(totalAmount),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F8F82),
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Align(
-                                    alignment: Alignment.center,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFF0F8F82,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                      onPressed: isSubmitting
-                                          ? null
-                                          : () => _handlePayPressed(payment),
-                                      child: isSubmitting
-                                          ? const SizedBox(
-                                              height: 16,
-                                              width: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.white,
-                                              ),
-                                            )
-                                          : const Text(
-                                              'Pay',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
+              return Container(
+                width: constraints.maxWidth,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD7EAE3)),
+                ),
+                child: Table(
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  border: TableBorder.symmetric(
+                    inside: const BorderSide(color: Color(0xFFE2EEEA)),
+                  ),
+                  columnWidths: const {
+                    0: FlexColumnWidth(),
+                    1: FlexColumnWidth(),
+                    2: FlexColumnWidth(),
+                    3: FlexColumnWidth(),
+                    4: FlexColumnWidth(),
+                    5: FlexColumnWidth(),
+                    6: FlexColumnWidth(),
+                    7: FlexColumnWidth(),
+                    8: FlexColumnWidth(),
+                  },
+                  children: [
+                    TableRow(
+                      decoration: const BoxDecoration(color: Color(0xFFE4F3F0)),
+                      children: [
+                        buildCell('Due Date', isHeader: true),
+                        buildCell('Amount', isHeader: true),
+                        buildCell('Discount', isHeader: true),
+                        buildCell('GST', isHeader: true),
+                        buildCell('Added Charges', isHeader: true),
+                        buildCell('Fine', isHeader: true),
+                        buildCell('Total Savings', isHeader: true),
+                        buildCell('Payment Type', isHeader: true),
+                        buildCell('Net Payable', isHeader: true),
+                      ],
+                    ),
+                    TableRow(
+                      children: [
+                        buildCell(dueDate),
+                        buildCell(widget.formatAsCurrency(amount)),
+                        buildCell(discountText),
+                        buildCell(gstText),
+                        buildCell(widget.formatAsCurrency(totalAddedCharges)),
+                        buildCell(fineText),
+                        buildCell(totalSavingsText),
+                        buildCell(_toCamelCase(paymentType)),
+                        buildCell(
+                          widget.formatAsCurrency(totalAmount),
+                          style: const TextStyle(
+                            color: Color(0xFF0F8F82),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F8F82),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+              ),
+              onPressed: isSubmitting ? null : () => _handlePayPressed(due),
+              child: isSubmitting
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Pay', style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDueTabButton({
+    required String label,
+    required bool selected,
+    required bool isOverdueTab,
+    required VoidCallback onTap,
+  }) {
+    final selectedColor = isOverdueTab
+        ? const Color(0xFFB3261E)
+        : const Color(0xFF0F8F82);
+
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: selected ? selectedColor : Colors.transparent,
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? Colors.white : const Color(0xFF124B45),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDueTabsSection({
+    required int overdueCount,
+    required int activeCount,
+    required _DueSectionTab selectedTab,
+    required VoidCallback onOverdueTap,
+    required VoidCallback onActiveTap,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9F4F1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD2E7E1)),
+      ),
+      child: Row(
+        children: [
+          _buildDueTabButton(
+            label: 'Overdue ($overdueCount)',
+            selected: selectedTab == _DueSectionTab.overdue,
+            isOverdueTab: true,
+            onTap: onOverdueTap,
+          ),
+          const SizedBox(width: 4),
+          _buildDueTabButton(
+            label: 'Active Due ($activeCount)',
+            selected: selectedTab == _DueSectionTab.active,
+            isOverdueTab: false,
+            onTap: onActiveTap,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _displayCycle(Map<String, dynamic> due) {
+    final rawCycle = due['collectionCycle']?.toString().trim() ?? '';
+    if (rawCycle.isEmpty || rawCycle.toLowerCase() == 'null') {
+      return '--';
+    }
+    return _toCamelCase(rawCycle);
+  }
+
+  Widget _buildGroupPanel(_DueGroupData group, int index) {
+    final groupId = group.groupId;
+    final selectedTab = _selectedTabs[groupId] ?? _DueSectionTab.active;
+    final dues = _duesForTab(group, selectedTab);
+    final overdueCount = _duesForTab(group, _DueSectionTab.overdue).length;
+    final activeCount = _duesForTab(group, _DueSectionTab.active).length;
+    final selectedDueId = _selectedDueByGroup[groupId];
+    final selectedDue = dues.firstWhere(
+      (due) => _dueId(due) == selectedDueId,
+      orElse: () => dues.isNotEmpty ? dues.first : const <String, dynamic>{},
+    );
+
+    if (dues.isNotEmpty && selectedDueId == null) {
+      final firstDueId = _dueId(dues.first);
+      if (firstDueId.isNotEmpty) {
+        _selectedDueByGroup[groupId] = firstDueId;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: index == 0,
+        onExpansionChanged: (_) => setState(() {}),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        title: Text(
+          _toCamelCase(group.paymentName),
+          style: const TextStyle(
+            color: Color(0xFF124B45),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          '${group.dues.length} due cycle${group.dues.length == 1 ? '' : 's'}',
+          style: const TextStyle(color: Colors.black54),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: 0.30,
+              alignment: Alignment.centerLeft,
+              child: _buildDueTabsSection(
+                overdueCount: overdueCount,
+                activeCount: activeCount,
+                selectedTab: selectedTab,
+                onOverdueTap: () {
+                  setState(() {
+                    _selectedTabs[groupId] = _DueSectionTab.overdue;
+                    _selectedDueByGroup.remove(groupId);
+                  });
+                },
+                onActiveTap: () {
+                  setState(() {
+                    _selectedTabs[groupId] = _DueSectionTab.active;
+                    _selectedDueByGroup.remove(groupId);
+                  });
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (dues.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7FCFA),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFD7EAE3)),
+              ),
+              child: Text(
+                selectedTab == _DueSectionTab.overdue
+                    ? 'No overdue dues in this payment.'
+                    : 'No active dues in this payment.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+            )
+          else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                alignment: WrapAlignment.start,
+                runAlignment: WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: dues.map((due) {
+                  final currentDueId = _dueId(due);
+                  final isSelected =
+                      currentDueId.isNotEmpty &&
+                      currentDueId == _selectedDueByGroup[groupId];
+                  final label = _displayCycle(due);
+
+                  return ChoiceChip(
+                    label: Text(label),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      if (currentDueId.isEmpty) {
+                        return;
+                      }
+                      setState(() {
+                        _selectedDueByGroup[groupId] = currentDueId;
+                      });
+                    },
+                    selectedColor: const Color(0xFF0F8F82),
+                    side: const BorderSide(color: Color(0xFF0F8F82)),
+                    labelStyle: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF124B45),
+                      fontWeight: FontWeight.w700,
+                    ),
+                    backgroundColor: Colors.white,
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (selectedDue.isNotEmpty) _buildSelectedDueSummary(selectedDue),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groupedPayments = _groupedPayments();
+    final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
+    final maxDialogWidth = MediaQuery.of(context).size.width * 0.96;
+
+    return Dialog(
+      alignment: Alignment.topCenter,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: maxDialogWidth,
+          maxHeight: maxDialogHeight,
+          minWidth: 340,
+        ),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFE9FFF7), Color(0xFFFFF2D8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFD7EAE3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF0F8F82),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.payments_outlined,
+                          color: Colors.white,
+                          size: 18,
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Payment Details',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF124B45),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Choose overdue/active dues and complete payment by cycle.',
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      child: groupedPayments.isEmpty
+                          ? Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7FCFA),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFD7EAE3),
+                                ),
+                              ),
+                              child: const Text(
+                                'No due payments found.',
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                            )
+                          : Column(
+                              children: [
+                                ...groupedPayments.asMap().entries.map(
+                                  (entry) =>
+                                      _buildGroupPanel(entry.value, entry.key),
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

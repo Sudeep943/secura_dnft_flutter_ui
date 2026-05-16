@@ -2543,6 +2543,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     final totalAmount = due['totalAmount']?.toString().trim() ?? '0';
     final totalAddedCharges =
         due['totalAddedCharges']?.toString().trim() ?? '0';
+    final dueStartDate = due['dueStartDate']?.toString().trim() ?? '--';
+    final dueEndDate = due['dueEndDate']?.toString().trim() ?? '--';
     final dueDate = due['dueDate']?.toString().trim() ?? '--';
     final paymentType = due['paymentType']?.toString().trim() ?? '--';
     final discountCode = due['discountCode']?.toString().trim() ?? '';
@@ -2657,11 +2659,15 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                     6: FlexColumnWidth(),
                     7: FlexColumnWidth(),
                     8: FlexColumnWidth(),
+                    9: FlexColumnWidth(),
+                    10: FlexColumnWidth(),
                   },
                   children: [
                     TableRow(
                       decoration: const BoxDecoration(color: Color(0xFFE4F3F0)),
                       children: [
+                        buildCell('Due From', isHeader: true),
+                        buildCell('Due To', isHeader: true),
                         buildCell('Due Date', isHeader: true),
                         buildCell('Amount', isHeader: true),
                         buildCell('Discount', isHeader: true),
@@ -2675,6 +2681,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                     ),
                     TableRow(
                       children: [
+                        buildCell(dueStartDate),
+                        buildCell(dueEndDate),
                         buildCell(dueDate),
                         buildCell(widget.formatAsCurrency(amount)),
                         buildCell(discountText),
@@ -2805,6 +2813,46 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     return _toCamelCase(rawCycle);
   }
 
+  Widget _buildOverdueDueItem(Map<String, dynamic> due) {
+    final cycle = _displayCycle(due);
+    final dueDateText = due['dueDate']?.toString().trim() ?? '--';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              cycle,
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            Text(
+              dueDateText,
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        childrenPadding: const EdgeInsets.all(12),
+        children: [_buildSelectedDueSummary(due)],
+      ),
+    );
+  }
+
   Widget _buildGroupPanel(_DueGroupData group, int index) {
     final groupId = group.groupId;
     final selectedTab = _selectedTabs[groupId] ?? _DueSectionTab.active;
@@ -2888,6 +2936,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                     : 'No active dues in this payment.',
                 style: const TextStyle(color: Colors.black54),
               ),
+            )
+          else if (selectedTab == _DueSectionTab.overdue)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: dues.map((due) => _buildOverdueDueItem(due)).toList(),
             )
           else ...[
             Align(

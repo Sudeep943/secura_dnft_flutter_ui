@@ -36,6 +36,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? dueAmountData;
   bool loading = true;
+  bool isRefreshing = false;
   final PageController _dueSliderController = PageController();
   Timer? _dueSliderTimer;
   int _dueSliderIndex = 0;
@@ -47,13 +48,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refetch data whenever the dashboard page comes into focus
+    fetchDashboardData();
+  }
+
+  @override
   void dispose() {
     _dueSliderTimer?.cancel();
     _dueSliderController.dispose();
     super.dispose();
   }
 
-  Future<void> fetchDashboardData() async {
+  Future<void> fetchDashboardData({bool isManualRefresh = false}) async {
+    if (isManualRefresh) {
+      setState(() {
+        isRefreshing = true;
+      });
+    }
+
     final results = await Future.wait<Map<String, dynamic>?>([
       ApiService.getDashboardData(),
       ApiService.getDueAmountForFlat(),
@@ -64,6 +78,7 @@ class _HomePageState extends State<HomePage> {
       dashboardData = results[0];
       dueAmountData = results[1];
       loading = false;
+      isRefreshing = false;
     });
     _configureDueSliderAutoPlay();
   }
@@ -196,11 +211,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _totalMandatoryPaymentAmount() {
-    return _sumDueByPaymentType('MANDATORY');
+    final amount =
+        dueAmountData?['totalMandatoryPayment']?.toString().trim() ?? '0';
+    return _formatAsCurrency(amount);
   }
 
   String _totalOptionalPaymentAmount() {
-    return _sumDueByPaymentType('OPTIONAL');
+    final amount =
+        dueAmountData?['totalOptionalPayment']?.toString().trim() ?? '0';
+    return _formatAsCurrency(amount);
   }
 
   List<_DuePaymentItem> _duePaymentItems() {
@@ -217,8 +236,23 @@ class _HomePageState extends State<HomePage> {
     final direct = DateTime.tryParse(trimmed);
     if (direct != null) return direct;
 
+    final numericMatch = RegExp(
+      r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$',
+    ).firstMatch(trimmed);
+    if (numericMatch != null) {
+      final day = int.tryParse(numericMatch.group(1)!);
+      final month = int.tryParse(numericMatch.group(2)!);
+      final year = int.tryParse(numericMatch.group(3)!);
+      if (day != null && month != null && year != null) {
+        final parsed = DateTime(year, month, day);
+        if (parsed.year == year && parsed.month == month && parsed.day == day) {
+          return parsed;
+        }
+      }
+    }
+
     final match = RegExp(
-      r'^(\d{1,2})-([A-Za-z]{3})-(\d{4})$',
+      r'^(\d{1,2})[-/\s]([A-Za-z]{3})[-/\s](\d{4})$',
     ).firstMatch(trimmed);
     if (match == null) return null;
 
@@ -660,13 +694,39 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      'Financial Snapshot',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.90),
-                        fontSize: 14,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Financial Snapshot',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.90),
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (!isRefreshing)
+                          IconButton(
+                            icon: const Icon(Icons.refresh, size: 18),
+                            color: Colors.white.withValues(alpha: 0.90),
+                            onPressed: () =>
+                                fetchDashboardData(isManualRefresh: true),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          )
+                        else
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(
+                                Colors.white.withValues(alpha: 0.90),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -2025,8 +2085,23 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     final direct = DateTime.tryParse(trimmed);
     if (direct != null) return direct;
 
+    final numericMatch = RegExp(
+      r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$',
+    ).firstMatch(trimmed);
+    if (numericMatch != null) {
+      final day = int.tryParse(numericMatch.group(1)!);
+      final month = int.tryParse(numericMatch.group(2)!);
+      final year = int.tryParse(numericMatch.group(3)!);
+      if (day != null && month != null && year != null) {
+        final parsed = DateTime(year, month, day);
+        if (parsed.year == year && parsed.month == month && parsed.day == day) {
+          return parsed;
+        }
+      }
+    }
+
     final match = RegExp(
-      r'^(\d{1,2})-([A-Za-z]{3})-(\d{4})$',
+      r'^(\d{1,2})[-/\s]([A-Za-z]{3})[-/\s](\d{4})$',
     ).firstMatch(trimmed);
     if (match == null) return null;
 
@@ -2059,7 +2134,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
 
     final dueEndDate = _parseDueDate(dueEndDateText);
     final dueDate = _parseDueDate(dueDateText);
-    final comparisonDate = dueEndDate ?? dueDate;
+    final comparisonDate = dueDate ?? dueEndDate;
     if (comparisonDate == null) return false;
 
     final now = DateTime.now();

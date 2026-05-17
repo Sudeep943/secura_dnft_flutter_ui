@@ -142,14 +142,6 @@ class _HomePageState extends State<HomePage> {
     return '₹0';
   }
 
-  String _normalizePaymentType(String paymentType) {
-    final normalized = paymentType.trim().toUpperCase();
-    if (normalized == 'OPTIONNAL') {
-      return 'OPTIONAL';
-    }
-    return normalized;
-  }
-
   Map<String, List<Map<String, dynamic>>> _dueDetailsByPayment() {
     final result = <String, List<Map<String, dynamic>>>{};
     final rawDetails = dueAmountData?['dueDetails'];
@@ -195,19 +187,6 @@ class _HomePageState extends State<HomePage> {
         .whereType<Map>()
         .map((entry) => Map<String, dynamic>.from(entry))
         .toList();
-  }
-
-  String _sumDueByPaymentType(String paymentType) {
-    final items = _duePaymentItems();
-    final expectedType = _normalizePaymentType(paymentType);
-    var total = 0.0;
-    for (final item in items) {
-      if (_normalizePaymentType(item.paymentType) != expectedType) {
-        continue;
-      }
-      total += double.tryParse(item.totalAmount) ?? 0;
-    }
-    return _formatAsCurrency(total.toStringAsFixed(0));
   }
 
   String _totalMandatoryPaymentAmount() {
@@ -2001,7 +1980,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
 
     if (fromDueDetails != null && fromDueDetails.isNotEmpty) {
       fromDueDetails.forEach((rawKey, rawList) {
-        final dues = _normalizePaymentMaps(rawList);
+        final dues = _sortDuesByCycleSequence(_normalizePaymentMaps(rawList));
         if (dues.isEmpty) {
           return;
         }
@@ -2056,7 +2035,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           groupId: groupId,
           paymentId: groupId,
           paymentName: paymentNames[groupId] ?? '--',
-          dues: dues,
+          dues: _sortDuesByCycleSequence(dues),
         ),
       );
     });
@@ -2148,7 +2127,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   }
 
   List<String> _extractAllowedPaymentModes(Map<String, dynamic> payment) {
-    final rawModes = payment['allowedPaymentModes'];
+    final rawModes =
+        payment['allowedTenders'] ?? payment['allowedPaymentModes'];
     final modes = <String>[];
 
     if (rawModes is List) {
@@ -2159,7 +2139,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         }
       }
     } else if (rawModes is String) {
-      final cleaned = rawModes.replaceAll('[', '').replaceAll(']', '');
+      final cleaned = rawModes
+          .replaceAll('[', '')
+          .replaceAll(']', '')
+          .replaceAll('"', '');
       for (final mode in cleaned.split(',')) {
         final normalized = mode.trim().toUpperCase();
         if (normalized.isNotEmpty && normalized.toLowerCase() != 'null') {
@@ -2202,6 +2185,48 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
 
   int _toPaise(double amount) {
     return (amount * 100).round();
+  }
+
+  int _cycleSortRank(Map<String, dynamic> due) {
+    final rawCycle =
+        due['collectionCycle']?.toString().trim().toUpperCase() ?? '';
+    final normalized = rawCycle.replaceAll(RegExp(r'[^A-Z]'), '');
+
+    if (normalized == 'MONTHLY') return 0;
+    if (normalized == 'QUARTERLY' || normalized == 'QUATERLY') return 1;
+    if (normalized == 'HALFYEARLY') return 2;
+    if (normalized == 'YEARLY') return 3;
+    if (normalized == 'ONCE') return 4;
+    return 5;
+  }
+
+  List<Map<String, dynamic>> _sortDuesByCycleSequence(
+    List<Map<String, dynamic>> dues,
+  ) {
+    final sorted = List<Map<String, dynamic>>.from(dues);
+    sorted.sort((a, b) {
+      final rankCompare = _cycleSortRank(a).compareTo(_cycleSortRank(b));
+      if (rankCompare != 0) return rankCompare;
+
+      final startA = _parseDueDate(a['dueStartDate']?.toString().trim() ?? '');
+      final startB = _parseDueDate(b['dueStartDate']?.toString().trim() ?? '');
+      if (startA != null && startB != null) {
+        final startCompare = startA.compareTo(startB);
+        if (startCompare != 0) return startCompare;
+      }
+
+      final dueA = _parseDueDate(a['dueDate']?.toString().trim() ?? '');
+      final dueB = _parseDueDate(b['dueDate']?.toString().trim() ?? '');
+      if (dueA != null && dueB != null) {
+        final dueCompare = dueA.compareTo(dueB);
+        if (dueCompare != 0) return dueCompare;
+      }
+
+      return _displayCycle(
+        a,
+      ).toLowerCase().compareTo(_displayCycle(b).toLowerCase());
+    });
+    return sorted;
   }
 
   void _showStatusSnack(String message, {bool isError = false}) {
@@ -2278,10 +2303,47 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
+          backgroundColor: const Color(0xFFF7FCFA),
+          surfaceTintColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 24,
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFD7EAE3)),
           ),
-          title: const Text('Payment Successful'),
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2F3EF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF0F8F82),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Payment Successful',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -2296,12 +2358,24 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                     height: 1.35,
                   ),
                 ),
-                const SizedBox(height: 12),
-                SelectableText(
-                  'Transaction ID: $transactionId',
-                  style: const TextStyle(
-                    color: Color(0xFF0F8F82),
-                    fontWeight: FontWeight.w700,
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD7EAE3)),
+                  ),
+                  child: SelectableText(
+                    'Transaction ID: $transactionId',
+                    style: const TextStyle(
+                      color: Color(0xFF0F8F82),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
@@ -2309,10 +2383,25 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           ),
           actions: [
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF124B45),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+              ),
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Close'),
             ),
             FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0F8F82),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+              ),
               onPressed: receiptBase64 == null
                   ? null
                   : () async {
@@ -2382,9 +2471,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
 
       if (selection.tender == 'CASH') {
         transactionStatus = 'SUCCESS';
-      } else if (selection.tender == 'OFFLINE_BANK_TRANSFER') {
-        transactionStatus = 'ONHOLD';
-      } else {
+      } else if (selection.tender == 'ONLINE') {
         final onlineOutcome = await _runOnlinePayment(
           payment: payment,
           amount: selection.netPayable,
@@ -2397,6 +2484,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         transactionStatus = onlineOutcome.transactionStatus;
         thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
         thirdPartyName = 'RAZORPAY';
+      } else {
+        transactionStatus = 'ONHOLD';
       }
 
       final requestBody = {
@@ -2406,12 +2495,23 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         'paymentId': paymentId,
         'DueId': dueId,
         'amount': _formatAmountForRequest(selection.netPayable),
-        'tender': selection.tender,
+        'paymentTenderDataList': [
+          {
+            'tenderName': selection.tender,
+            'amountPaid': _formatAmountForRequest(selection.netPayable),
+          },
+        ],
+        'paymentCycle': payment['collectionCycle']?.toString().trim() ?? '',
+        'paymentName': payment['paymentName']?.toString().trim() ?? '',
+        'dueDate': payment['dueDate']?.toString().trim() ?? '',
+        'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
+        'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+        'bankInstrumentTenderDetails': selection.bankInstrumentTenderDetails,
         'thirdPartyTransactionId': thirdPartyTransactionId,
         'transactionStatus': transactionStatus,
         'thirdPartyName': thirdPartyName,
         'noOfPersons': selection.noOfPersons.toString(),
-        'listOfFiles': selection.listOfFiles,
+        'files': selection.listOfFiles,
       };
 
       final response = await ApiService.payDues(requestBody);
@@ -2666,8 +2766,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                     TableRow(
                       decoration: const BoxDecoration(color: Color(0xFFE4F3F0)),
                       children: [
-                        buildCell('Due From', isHeader: true),
-                        buildCell('Due To', isHeader: true),
+                        buildCell('Cycle Start Date', isHeader: true),
+                        buildCell('Cycle End Date', isHeader: true),
                         buildCell('Due Date', isHeader: true),
                         buildCell('Amount', isHeader: true),
                         buildCell('Discount', isHeader: true),
@@ -3134,12 +3234,14 @@ class _DueTenderSelection {
     required this.netPayable,
     required this.noOfPersons,
     required this.listOfFiles,
+    required this.bankInstrumentTenderDetails,
   });
 
   final String tender;
   final double netPayable;
   final int noOfPersons;
   final List<String> listOfFiles;
+  final List<Map<String, dynamic>> bankInstrumentTenderDetails;
 }
 
 class _PickedReceipt {
@@ -3169,6 +3271,23 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     text: '1',
   );
   final List<_PickedReceipt> _receipts = <_PickedReceipt>[];
+  final TextEditingController _chequeNumberController = TextEditingController();
+  final TextEditingController _chequeDateController = TextEditingController();
+  final TextEditingController _chequeBankNameController =
+      TextEditingController();
+  final TextEditingController _chequeAccountHolderController =
+      TextEditingController();
+  final TextEditingController _chequeAccountNumberController =
+      TextEditingController();
+  final TextEditingController _ddBankNameController = TextEditingController();
+  final TextEditingController _ddPayableAtController = TextEditingController();
+  final TextEditingController _ddNumberController = TextEditingController();
+  final TextEditingController _ddIssueDateController = TextEditingController();
+  final TextEditingController _transferBankNameController =
+      TextEditingController();
+  final TextEditingController _transferAccountNumberController =
+      TextEditingController();
+  final TextEditingController _transferDateController = TextEditingController();
 
   late String _selectedTender;
   late int _personCount;
@@ -3181,7 +3300,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedTender = widget.allowedModes.first;
+    _selectedTender = widget.allowedModes.isNotEmpty
+        ? widget.allowedModes.first
+        : 'ONLINE';
     _personCount = 1;
     if (_isPerHeadCapita) {
       _schedulePerHeadAmountRefresh(immediate: true);
@@ -3192,6 +3313,18 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   void dispose() {
     _perHeadDebounce?.cancel();
     _personCountController.dispose();
+    _chequeNumberController.dispose();
+    _chequeDateController.dispose();
+    _chequeBankNameController.dispose();
+    _chequeAccountHolderController.dispose();
+    _chequeAccountNumberController.dispose();
+    _ddBankNameController.dispose();
+    _ddPayableAtController.dispose();
+    _ddNumberController.dispose();
+    _ddIssueDateController.dispose();
+    _transferBankNameController.dispose();
+    _transferAccountNumberController.dispose();
+    _transferDateController.dispose();
     super.dispose();
   }
 
@@ -3222,7 +3355,37 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return widget.duePayment['dueId']?.toString().trim() ?? '';
   }
 
-  bool get _requiresReceipts => _selectedTender == 'OFFLINE_BANK_TRANSFER';
+  bool get _requiresReceipts =>
+      _selectedTender == 'CHEQUE' ||
+      _selectedTender == 'DEMAND_DRAFT' ||
+      _selectedTender == 'OFFLINE_BANK_TRANSFER';
+
+  bool get _suppressPerHeadApiMessage => _personCount == 3;
+
+  bool get _requiresBankInstrumentDetails => _requiresReceipts;
+
+  String _formatAmountForRequestValue(double amount) {
+    if (amount == amount.truncateToDouble()) {
+      return amount.toInt().toString();
+    }
+
+    return amount.toStringAsFixed(2);
+  }
+
+  String get _requestAmountText => _formatAmountForRequestValue(_netPayable);
+
+  String get _tenderDetailsHeader {
+    switch (_selectedTender) {
+      case 'CHEQUE':
+        return 'Fill Cheque Details';
+      case 'DEMAND_DRAFT':
+        return 'Fill Demand Draft Details';
+      case 'OFFLINE_BANK_TRANSFER':
+        return 'Fill Transfer Details';
+      default:
+        return 'Fill Tender Details';
+    }
+  }
 
   String _displayMode(String mode) {
     final normalized = mode.replaceAll('_', ' ');
@@ -3312,10 +3475,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
 
     setState(() {
       _loadingPerHeadAmount = false;
-      _perHeadAmountError =
-          response?['message']?.toString().trim().isNotEmpty == true
-          ? response!['message'].toString()
-          : 'Unable to fetch amount for entered person count.';
+      _perHeadAmountError = null;
       _perHeadTotalAmount = null;
     });
   }
@@ -3379,6 +3539,256 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     }
   }
 
+  void _clearTenderSpecificState() {
+    _receipts.clear();
+    _chequeNumberController.clear();
+    _chequeDateController.clear();
+    _chequeBankNameController.clear();
+    _chequeAccountHolderController.clear();
+    _chequeAccountNumberController.clear();
+    _ddBankNameController.clear();
+    _ddPayableAtController.clear();
+    _ddNumberController.clear();
+    _ddIssueDateController.clear();
+    _transferBankNameController.clear();
+    _transferAccountNumberController.clear();
+    _transferDateController.clear();
+  }
+
+  bool _validateBankInstrumentDetails() {
+    if (_selectedTender == 'CHEQUE') {
+      return _chequeNumberController.text.trim().isNotEmpty &&
+          _chequeDateController.text.trim().isNotEmpty &&
+          _chequeBankNameController.text.trim().isNotEmpty &&
+          _chequeAccountHolderController.text.trim().isNotEmpty &&
+          _chequeAccountNumberController.text.trim().isNotEmpty;
+    }
+
+    if (_selectedTender == 'DEMAND_DRAFT') {
+      return _ddBankNameController.text.trim().isNotEmpty &&
+          _ddPayableAtController.text.trim().isNotEmpty &&
+          _ddNumberController.text.trim().isNotEmpty &&
+          _ddIssueDateController.text.trim().isNotEmpty;
+    }
+
+    if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
+      return _transferBankNameController.text.trim().isNotEmpty &&
+          _transferAccountNumberController.text.trim().isNotEmpty &&
+          _transferDateController.text.trim().isNotEmpty;
+    }
+
+    return true;
+  }
+
+  List<Map<String, dynamic>> _buildBankInstrumentTenderDetails() {
+    if (_selectedTender == 'CHEQUE') {
+      return [
+        {
+          'tenderType': 'CHEQUE',
+          'chequeNumber': _chequeNumberController.text.trim(),
+          'chequeDate': _chequeDateController.text.trim(),
+          'bankName': _chequeBankNameController.text.trim(),
+          'accountHolderName': _chequeAccountHolderController.text.trim(),
+          'accountNumber': _chequeAccountNumberController.text.trim(),
+          'amount': _requestAmountText,
+          'ddPayAtBranch': null,
+          'ddNumber': null,
+          'ddIssueDate': null,
+          'remarks': '',
+        },
+      ];
+    }
+
+    if (_selectedTender == 'DEMAND_DRAFT') {
+      return [
+        {
+          'tenderType': 'DEMAND_DRAFT',
+          'chequeNumber': null,
+          'chequeDate': null,
+          'bankName': _ddBankNameController.text.trim(),
+          'accountHolderName': null,
+          'amount': _requestAmountText,
+          'ddPayAtBranch': _ddPayableAtController.text.trim(),
+          'ddNumber': _ddNumberController.text.trim(),
+          'ddIssueDate': _ddIssueDateController.text.trim(),
+          'remarks': '',
+        },
+      ];
+    }
+
+    if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
+      return [
+        {
+          'tenderType': 'OFFLINE_BANK_TRANSFER',
+          'chequeNumber': null,
+          'chequeDate': _transferDateController.text.trim(),
+          'bankName': _transferBankNameController.text.trim(),
+          'accountHolderName': null,
+          'accountNumber': _transferAccountNumberController.text.trim(),
+          'amount': _requestAmountText,
+          'ddPayAtBranch': null,
+          'ddNumber': null,
+          'ddIssueDate': null,
+          'transferDate': _transferDateController.text.trim(),
+          'remarks': '',
+        },
+      ];
+    }
+
+    return const <Map<String, dynamic>>[];
+  }
+
+  Widget _buildInstrumentField({
+    required String label,
+    required TextEditingController controller,
+    TextInputType? keyboardType,
+    bool readOnly = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        readOnly: readOnly,
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: readOnly ? const Color(0xFFF0F5F4) : Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF0F8F82), width: 1.4),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyAmountField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        initialValue: _requestAmountText,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: 'Amount',
+          filled: true,
+          fillColor: const Color(0xFFF0F5F4),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBankInstrumentDetailsSection() {
+    if (!_requiresBankInstrumentDetails) {
+      return const SizedBox.shrink();
+    }
+
+    final children = <Widget>[
+      Text(
+        _tenderDetailsHeader,
+        style: const TextStyle(
+          color: Color(0xFF124B45),
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
+
+    if (_selectedTender == 'CHEQUE') {
+      children.addAll([
+        _buildInstrumentField(
+          label: 'Cheque Number',
+          controller: _chequeNumberController,
+          keyboardType: TextInputType.number,
+        ),
+        _buildInstrumentField(
+          label: 'Cheque Date',
+          controller: _chequeDateController,
+        ),
+        _buildInstrumentField(
+          label: 'Bank Name',
+          controller: _chequeBankNameController,
+        ),
+        _buildInstrumentField(
+          label: 'Account Holder Name',
+          controller: _chequeAccountHolderController,
+        ),
+        _buildInstrumentField(
+          label: 'Account Number',
+          controller: _chequeAccountNumberController,
+        ),
+      ]);
+    } else if (_selectedTender == 'DEMAND_DRAFT') {
+      children.addAll([
+        _buildInstrumentField(
+          label: 'DD Bank Name',
+          controller: _ddBankNameController,
+        ),
+        _buildInstrumentField(
+          label: 'DD Payable At',
+          controller: _ddPayableAtController,
+        ),
+        _buildInstrumentField(
+          label: 'DD Number',
+          controller: _ddNumberController,
+        ),
+        _buildInstrumentField(
+          label: 'DD Issue Date',
+          controller: _ddIssueDateController,
+        ),
+      ]);
+    } else if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
+      children.addAll([
+        _buildInstrumentField(
+          label: 'From Bank Name',
+          controller: _transferBankNameController,
+        ),
+        _buildInstrumentField(
+          label: 'Account Number',
+          controller: _transferAccountNumberController,
+        ),
+        _buildInstrumentField(
+          label: 'Transfer Date',
+          controller: _transferDateController,
+        ),
+      ]);
+    }
+
+    children.add(_buildReadOnlyAmountField());
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF7F5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
   void _confirmSelection() {
     if (_isPerHeadCapita && _loadingPerHeadAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3389,12 +3799,15 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       return;
     }
 
-    if (_isPerHeadCapita &&
-        (_perHeadAmountError != null || _perHeadTotalAmount == null)) {
+    // For PER_HEAD dues, allow payment with entered person count even when
+    // per-head calculation API is unavailable; _netPayable will fall back to
+    // baseAmount * personCount.
+
+    if (_requiresBankInstrumentDetails && !_validateBankInstrumentDetails()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _perHeadAmountError ?? 'Unable to calculate amount for payment.',
+            'Please fill all ${_displayMode(_selectedTender)} details.',
           ),
           backgroundColor: const Color(0xFFB3261E),
         ),
@@ -3418,6 +3831,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         netPayable: _netPayable,
         noOfPersons: _isPerHeadCapita ? _personCount : 1,
         listOfFiles: _receipts.map((receipt) => receipt.filePayload).toList(),
+        bankInstrumentTenderDetails: _buildBankInstrumentTenderDetails(),
       ),
     );
   }
@@ -3428,7 +3842,44 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         widget.duePayment['paymentName']?.toString().trim() ?? '--';
 
     return AlertDialog(
-      title: const Text('Choose Tender'),
+      backgroundColor: const Color(0xFFF7FCFA),
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFD7EAE3)),
+      ),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2F3EF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.account_balance_wallet_rounded,
+              color: Color(0xFF0F8F82),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Choose Tender',
+              style: TextStyle(
+                color: Color(0xFF124B45),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -3436,30 +3887,46 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'Payment: $paymentName',
-                style: const TextStyle(
-                  color: Color(0xFF124B45),
-                  fontWeight: FontWeight.w600,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD7EAE3)),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Total Amount: ${_formatSummaryAmount(_netPayable)}',
-                style: const TextStyle(
-                  color: Color(0xFF0F8F82),
-                  fontWeight: FontWeight.w700,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Payment: $paymentName',
+                      style: const TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Total Amount: ${_formatSummaryAmount(_netPayable)}',
+                      style: const TextStyle(
+                        color: Color(0xFF0F8F82),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_isPerHeadCapita && _loadingPerHeadAmount)
                 const Padding(
-                  padding: EdgeInsets.only(top: 8),
+                  padding: EdgeInsets.only(top: 10),
                   child: Text(
                     'Fetching amount for entered person count...',
                     style: TextStyle(color: Colors.black54, fontSize: 12),
                   ),
                 ),
               if (_isPerHeadCapita &&
+                  !_suppressPerHeadApiMessage &&
                   _perHeadAmountError != null &&
                   _perHeadAmountError!.isNotEmpty)
                 Padding(
@@ -3478,17 +3945,27 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                 spacing: 10,
                 runSpacing: 8,
                 children: widget.allowedModes.map((mode) {
+                  final isSelected = _selectedTender == mode;
                   return ChoiceChip(
                     label: Text(_displayMode(mode)),
-                    selected: _selectedTender == mode,
+                    selected: isSelected,
                     onSelected: (_) {
                       setState(() {
-                        _selectedTender = mode;
-                        if (_selectedTender != 'OFFLINE_BANK_TRANSFER') {
-                          _receipts.clear();
+                        if (_selectedTender != mode) {
+                          _clearTenderSpecificState();
                         }
+                        _selectedTender = mode;
                       });
                     },
+                    selectedColor: const Color(0xFF0F8F82),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF0F8F82)),
+                    labelStyle: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF124B45),
+                      fontWeight: FontWeight.w700,
+                    ),
                   );
                 }).toList(),
               ),
@@ -3497,9 +3974,26 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                 TextFormField(
                   controller: _personCountController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Number Of Persons',
                     helperText: 'Total amount is fetched based on person count',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF0F8F82),
+                        width: 1.4,
+                      ),
+                    ),
                   ),
                   onChanged: (value) {
                     final parsed = int.tryParse(value.trim()) ?? 1;
@@ -3510,12 +4004,24 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                   },
                 ),
               ],
+              _buildBankInstrumentDetailsSection(),
               if (_requiresReceipts) ...[
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: _pickReceipts,
                   icon: const Icon(Icons.add),
-                  label: const Text('Add Receipt'),
+                  label: const Text('Add Document'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0F8F82),
+                    side: const BorderSide(color: Color(0xFF0F8F82)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 if (_receipts.isEmpty)
@@ -3525,14 +4031,33 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                   )
                 else
                   ..._receipts.asMap().entries.map((entry) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFD7EAE3)),
+                      ),
                       child: Row(
                         children: [
+                          const Icon(
+                            Icons.attachment_rounded,
+                            size: 16,
+                            color: Color(0xFF0F8F82),
+                          ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               entry.value.fileName,
                               overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF124B45),
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           IconButton(
@@ -3541,7 +4066,16 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                                 _receipts.removeAt(entry.key);
                               });
                             },
-                            icon: const Icon(Icons.close, size: 18),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Color(0xFF5E6D6B),
+                            ),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            padding: EdgeInsets.zero,
                           ),
                         ],
                       ),
@@ -3554,10 +4088,25 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       ),
       actions: [
         TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF124B45),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        ElevatedButton(onPressed: _confirmSelection, child: const Text('Pay')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF0F8F82),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onPressed: _confirmSelection,
+          child: const Text('Pay'),
+        ),
       ],
     );
   }

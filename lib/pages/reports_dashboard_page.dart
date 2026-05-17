@@ -195,17 +195,6 @@ const _penaltiesRows = [
   ['D-301', 'Harsh Patel', 'Late Payment', '1,200', 'Paid'],
 ];
 
-const _budgetVsActualRows = [
-  ['Category', 'Budget (₹)', 'Actual (₹)', 'Variance (₹)', 'Status'],
-  ['Maintenance', '1,20,000', '1,15,000', '+5,000', 'Under Budget'],
-  ['Utilities', '80,000', '88,500', '-8,500', 'Over Budget'],
-  ['Salaries', '2,00,000', '2,00,000', '0', 'On Target'],
-  ['Security', '60,000', '58,000', '+2,000', 'Under Budget'],
-  ['Repairs', '50,000', '72,000', '-22,000', 'Over Budget'],
-  ['Events', '30,000', '24,000', '+6,000', 'Under Budget'],
-  ['Total', '5,40,000', '5,57,500', '-17,500', 'Over Budget'],
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2637,7 +2626,6 @@ class _ReportSheetScaffold extends StatelessWidget {
     required this.rows,
     required this.sectionRows,
     required this.statusCol,
-    this.budgetChart,
     this.showTable = true,
   });
 
@@ -2651,7 +2639,6 @@ class _ReportSheetScaffold extends StatelessWidget {
   final List<List<dynamic>> rows;
   final Set<int> sectionRows;
   final int statusCol; // column index to apply status colour, or -1
-  final Widget? budgetChart;
   final bool showTable;
 
   static const Color _brandColor = Color(0xFF0F8F82);
@@ -2669,10 +2656,6 @@ class _ReportSheetScaffold extends StatelessWidget {
           _buildSummaryRow(),
           const SizedBox(height: 20),
           if (topSection != null) ...[topSection!, const SizedBox(height: 20)],
-          if (budgetChart != null) ...[
-            budgetChart!,
-            const SizedBox(height: 20),
-          ],
           if (showTable) _buildTable(),
         ],
       ),

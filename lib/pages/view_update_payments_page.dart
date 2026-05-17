@@ -1,13 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main page
-// ─────────────────────────────────────────────────────────────────────────────
 
 class ViewUpdatePaymentsPage extends StatefulWidget {
   const ViewUpdatePaymentsPage({super.key, this.embedded = false, this.onBack});
@@ -22,10 +17,12 @@ class ViewUpdatePaymentsPage extends StatefulWidget {
 class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
+  static const double _detailLabelWidth = 230;
+  static const double _detailColumnGap = 8;
 
   bool _loading = true;
   String? _error;
-  List<Map<String, dynamic>> _paymentList = [];
+  List<Map<String, dynamic>> _paymentList = <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -93,8 +90,6 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
     }
   }
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-
   List<dynamic> _parseJsonList(dynamic value) {
     if (value is List) return value;
     if (value is String) {
@@ -119,8 +114,10 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
         isoDate.toLowerCase() == 'null') {
       return '--';
     }
+
     final dt = DateTime.tryParse(isoDate);
     if (dt == null) return isoDate;
+
     const months = [
       'Jan',
       'Feb',
@@ -138,7 +135,139 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
     return '${dt.day.toString().padLeft(2, '0')}-${months[dt.month - 1]}-${dt.year}';
   }
 
-  // ── sub-widgets ───────────────────────────────────────────────────────────
+  List<String> _toDisplayList(dynamic rawList) {
+    return _parseJsonList(
+      rawList,
+    ).map((item) => _formatValue(item)).where((item) => item != '--').toList();
+  }
+
+  Future<void> _showValueListModal(String title, List<String> values) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 360,
+          child: values.isEmpty
+              ? const Text('--')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: values.length,
+                  separatorBuilder: (_, _) => const Divider(height: 10),
+                  itemBuilder: (_, index) => Text(
+                    values[index],
+                    style: const TextStyle(
+                      color: _brandTextColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _extractDiscFinItems(
+    dynamic rawValue,
+    String code,
+  ) {
+    final items = <Map<String, dynamic>>[];
+
+    void addFrom(dynamic value) {
+      if (value is List) {
+        for (final item in value.whereType<Map>()) {
+          items.add(Map<String, dynamic>.from(item));
+        }
+      } else if (value is Map) {
+        items.add(Map<String, dynamic>.from(value));
+      }
+    }
+
+    if (rawValue is Map) {
+      addFrom(rawValue[code]);
+      if (items.isEmpty && rawValue.isNotEmpty) {
+        addFrom(rawValue.values.first);
+      }
+      return items;
+    }
+
+    addFrom(rawValue);
+    return items;
+  }
+
+  Future<void> _onDiscFinCodeTapped(String code) async {
+    final header = _buildHeader();
+    if (header == null) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final response = await ApiService.getDiscfin({
+        'genericHeader': header,
+        'discFnId': code,
+      });
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      final msgCode = response?['messageCode']?.toString() ?? '';
+      if (!msgCode.toUpperCase().startsWith('SUCC')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              response?['message']?.toString() ??
+                  'Failed to load discount details.',
+            ),
+            backgroundColor: const Color(0xFFB3261E),
+          ),
+        );
+        return;
+      }
+
+      final rawList = response?['discFinList'];
+      final discFinItems = _extractDiscFinItems(rawList, code);
+      if (discFinItems.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No discount details found.')),
+        );
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) =>
+            _DiscFinDetailsDialog(discFnId: code, discFinItems: discFinItems),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      try {
+        Navigator.of(context, rootNavigator: true).pop();
+      } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to load discount details.'),
+          backgroundColor: Color(0xFFB3261E),
+        ),
+      );
+    }
+  }
 
   Widget _buildInfoRow(String label, String value) {
     return Padding(
@@ -147,7 +276,7 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 230,
+            width: _detailLabelWidth,
             child: Text(
               label,
               style: const TextStyle(
@@ -157,7 +286,7 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: _detailColumnGap),
           Expanded(
             child: Text(
               value,
@@ -168,6 +297,30 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabeledRow({required String label, required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _detailLabelWidth,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: _detailColumnGap),
+          Expanded(child: child),
         ],
       ),
     );
@@ -297,117 +450,6 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
     );
   }
 
-  Widget _buildDiscFinChips(List<dynamic> discFins) {
-    if (discFins.isEmpty) {
-      return const Text(
-        '--',
-        style: TextStyle(color: _brandTextColor, fontSize: 13),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: discFins.whereType<Map>().map((entry) {
-        final m = Map<String, dynamic>.from(entry);
-        final type = m['DISTFIN_TYPE']?.toString() ?? '';
-        final code = m['code']?.toString() ?? '';
-        final isDiscount = type.toUpperCase() == 'DISCOUNT';
-        final chipColor = isDiscount ? _brandColor : const Color(0xFFCF8A2E);
-
-        return ActionChip(
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          label: Text(
-            code,
-            style: TextStyle(
-              color: chipColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-          backgroundColor: isDiscount
-              ? const Color(0xFFE2F3F0)
-              : const Color(0xFFFFF4E0),
-          shape: StadiumBorder(
-            side: BorderSide(color: chipColor.withValues(alpha: 0.4)),
-          ),
-          onPressed: () => _onDiscFinCodeTapped(code, type),
-        );
-      }).toList(),
-    );
-  }
-
-  Future<void> _onDiscFinCodeTapped(String code, String type) async {
-    final header = _buildHeader();
-    if (header == null) return;
-
-    // show loading overlay
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      final response = await ApiService.getDiscfin({
-        'genericHeader': header,
-        'discFnId': code,
-      });
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // dismiss loading
-
-      final msgCode = response?['messageCode']?.toString() ?? '';
-      if (!msgCode.toUpperCase().startsWith('SUCC')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              response?['message']?.toString() ??
-                  'Failed to load discount/fine.',
-            ),
-            backgroundColor: const Color(0xFFB3261E),
-          ),
-        );
-        return;
-      }
-
-      final rawList = response?['discFinList'];
-      if (rawList is! List || rawList.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No discount/fine details found.')),
-        );
-        return;
-      }
-
-      final discFin = Map<String, dynamic>.from(rawList.first as Map);
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) =>
-            _DiscFinViewEditDialog(discFin: discFin, typeHint: type),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      // try to dismiss loading if still open
-      try {
-        Navigator.of(context, rootNavigator: true).pop();
-      } catch (_) {}
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to load discount/fine details.'),
-          backgroundColor: Color(0xFFB3261E),
-        ),
-      );
-    }
-  }
-
   Widget _buildPaymentCard(Map<String, dynamic> payment) {
     final paymentId = payment['paymentId']?.toString() ?? '--';
     final paymentName = payment['paymentName']?.toString() ?? '--';
@@ -417,8 +459,12 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
 
     final addedCharges = _parseJsonList(payment['addedCharges']);
     final allowedPaymentModes = _parseJsonList(payment['allowedPaymentModes']);
-    final applicableFor = _parseJsonList(payment['applicableFor']);
-    final discFins = _parseJsonList(payment['discFin']);
+    final applicableFor = _toDisplayList(payment['applicableFor']);
+    final collectionCycles = _toDisplayList(
+      payment['paymentCollectionCycleList'],
+    );
+    final discountCode = _formatValue(payment['discountCode']);
+    final fineCode = _formatValue(payment['fineCode']);
 
     final maintainance =
         payment['maintainanceFee'] == true ||
@@ -446,9 +492,6 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
           childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-          initiallyExpanded: false,
-          shape: const RoundedRectangleBorder(),
-          collapsedShape: const RoundedRectangleBorder(),
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -476,8 +519,6 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
           children: [
             const Divider(height: 1, color: Color(0xFFE8F3F0)),
             const SizedBox(height: 14),
-
-            // ── basic fields ─────────────────────────────────────────────
             _buildInfoRow(
               'Payment Amount',
               _formatValue(payment['paymentAmount']),
@@ -494,7 +535,9 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
             ),
             _buildInfoRow(
               'Collection Cycle',
-              _formatValue(payment['paymentCollectionCycle']),
+              collectionCycles.isEmpty
+                  ? _formatValue(payment['paymentCollectionCycle'])
+                  : collectionCycles.join(', '),
             ),
             _buildInfoRow('GST (%)', _formatValue(payment['gst'])),
             _buildInfoRow(
@@ -513,118 +556,111 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
             if (maintainance) _buildInfoRow('Maintenance Fee', 'Yes'),
             if (eventPay && !maintainance)
               _buildInfoRow('Event Payment', 'Yes'),
-
-            // ── allowed payment modes ────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(
-                    width: 200,
-                    child: Text(
-                      'Allowed Payment Modes',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+            _buildLabeledRow(
+              label: 'Allowed Payment Modes',
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: allowedPaymentModes.isEmpty
+                    ? const Text(
+                        '--',
+                        style: TextStyle(color: _brandTextColor, fontSize: 13),
+                      )
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          alignment: WrapAlignment.start,
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: allowedPaymentModes.map((m) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE2F3F0),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                m.toString().replaceAll('_', ' '),
+                                style: const TextStyle(
+                                  color: _brandColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: allowedPaymentModes.isEmpty
-                        ? const Text(
-                            '--',
-                            style: TextStyle(
-                              color: _brandTextColor,
-                              fontSize: 13,
-                            ),
-                          )
-                        : Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: allowedPaymentModes.map((m) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE2F3F0),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  m.toString().replaceAll('_', ' '),
-                                  style: const TextStyle(
-                                    color: _brandColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                  ),
-                ],
               ),
             ),
-
-            // ── applicable for ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(
-                    width: 200,
-                    child: Text(
-                      'Applicable For',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+            _buildLabeledRow(
+              label: 'Applicable For',
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: applicableFor.isEmpty
+                    ? const Text(
+                        '--',
+                        style: TextStyle(color: _brandTextColor, fontSize: 13),
+                      )
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showValueListModal(
+                            'Applicable For',
+                            applicableFor,
+                          ),
+                          icon: const Icon(Icons.visibility_outlined, size: 16),
+                          label: Text('View (${applicableFor.length})'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _brandColor,
+                            side: const BorderSide(color: _brandColor),
+                            minimumSize: const Size(0, 34),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      applicableFor.isEmpty ? '--' : applicableFor.join(', '),
-                      style: const TextStyle(
+              ),
+            ),
+            _buildLabeledRow(
+              label: 'DiscountCode',
+              child: discountCode == '--'
+                  ? const Text(
+                      '--',
+                      style: TextStyle(
                         color: _brandTextColor,
                         fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    )
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => _onDiscFinCodeTapped(discountCode),
+                        style: TextButton.styleFrom(
+                          foregroundColor: _brandColor,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: Text(
+                          discountCode,
+                          style: const TextStyle(
+                            decoration: TextDecoration.underline,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
             ),
-
-            // ── disc/fine chips ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(
-                    width: 200,
-                    child: Text(
-                      'Discount / Fine',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(child: _buildDiscFinChips(discFins)),
-                ],
-              ),
-            ),
-
-            // ── added charges table ──────────────────────────────────────
+            _buildInfoRow('FineCode', fineCode),
             if (addedCharges.isNotEmpty)
               _buildAddedChargesSection(addedCharges),
           ],
@@ -632,8 +668,6 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
       ),
     );
   }
-
-  // ── page scaffold ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -770,8 +804,7 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${_paymentList.length} payment${_paymentList.length == 1 ? '' : 's'} found. '
-                'Tap a card to expand details. Click a discount/fine code chip to view or edit it.',
+                '${_paymentList.length} payment${_paymentList.length == 1 ? '' : 's'} found. Tap a card to expand details.',
                 style: const TextStyle(color: Colors.black54, height: 1.4),
               ),
               const SizedBox(height: 18),
@@ -784,604 +817,218 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Discount / Fine view + edit dialog
-// ─────────────────────────────────────────────────────────────────────────────
+class _DiscFinDetailsDialog extends StatefulWidget {
+  const _DiscFinDetailsDialog({
+    required this.discFnId,
+    required this.discFinItems,
+  });
 
-class _DiscFinViewEditDialog extends StatefulWidget {
-  const _DiscFinViewEditDialog({required this.discFin, required this.typeHint});
-
-  final Map<String, dynamic> discFin;
-
-  /// Expected: "DISCOUNT" or "FINE" — used as fallback when `discFnCycleType`
-  /// is absent from the API response.
-  final String typeHint;
+  final String discFnId;
+  final List<Map<String, dynamic>> discFinItems;
 
   @override
-  State<_DiscFinViewEditDialog> createState() => _DiscFinViewEditDialogState();
+  State<_DiscFinDetailsDialog> createState() => _DiscFinDetailsDialogState();
 }
 
-class _DiscFinViewEditDialogState extends State<_DiscFinViewEditDialog> {
+class _DiscFinDetailsDialogState extends State<_DiscFinDetailsDialog>
+    with SingleTickerProviderStateMixin {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
 
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  late final TextEditingController _startDateController;
-  late final TextEditingController _endDateController;
-  late final TextEditingController _valueController;
-
-  bool _editing = false;
-  bool _submitting = false;
-  String? _errorMessage;
-
-  // editable fields
-  late String _discFnId;
-  late String _kind; // DISCOUNT | FINE
-  late String _discFnType; // SIMPLE | CUMULATIVE
-  late String _discFnMode; // AMOUNT | PERCENTAGE
-  late bool _dueDateAsStartDateFlag;
-  late DateTime? _startDate;
-  late DateTime? _endDate;
-  String? _discFnCumlatonCycle;
-
-  // metadata kept for the update request
-  String? _aprmtId;
-  String? _creatTs;
-  String? _creatUsrId;
-
-  bool get _isFine => _kind == 'FINE';
-  bool get _showCumulationCycle => _isFine && _discFnType == 'CUMULATIVE';
-  bool get _isStartDateInputEnabled => !(_isFine && _dueDateAsStartDateFlag);
+  late final List<Map<String, dynamic>> _items;
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _initFields();
-  }
-
-  void _initFields() {
-    final d = widget.discFin;
-
-    _discFnId = d['discFnId']?.toString() ?? '';
-    _aprmtId = d['aprmtId']?.toString();
-    _creatTs = d['creatTs']?.toString();
-    _creatUsrId = d['creatUsrId']?.toString();
-
-    // Determine kind
-    final cycleType = (d['discFnCycleType']?.toString().trim() ?? '')
-        .toUpperCase();
-    if (cycleType == 'FINE' || cycleType == 'DISCOUNT') {
-      _kind = cycleType;
-    } else {
-      _kind = widget.typeHint.toUpperCase() == 'FINE' ? 'FINE' : 'DISCOUNT';
-    }
-
-    _discFnType =
-        (d['discFnType']?.toString().trim().toUpperCase() == 'CUMULATIVE')
-        ? 'CUMULATIVE'
-        : 'SIMPLE';
-
-    _discFnMode =
-        (d['discFnMode']?.toString().trim().toUpperCase() == 'PERCENTAGE')
-        ? 'PERCENTAGE'
-        : 'AMOUNT';
-
-    _dueDateAsStartDateFlag =
-        d['dueDateAsStartDateFlag'] == true ||
-        d['dueDateAsStartDateFlag']?.toString().toLowerCase() == 'true';
-
-    final cumulRaw = d['discFnCumlatonCycle']?.toString().trim() ?? '';
-    _discFnCumlatonCycle = cumulRaw.isEmpty || cumulRaw.toLowerCase() == 'null'
-        ? null
-        : cumulRaw;
-
-    final startRaw = d['discFnStrtDt']?.toString().trim() ?? '';
-    _startDate = startRaw.isEmpty ? null : DateTime.tryParse(startRaw);
-
-    final endRaw = d['discFnEndDt']?.toString().trim() ?? '';
-    _endDate = endRaw.isEmpty || endRaw.toLowerCase() == 'null'
-        ? null
-        : DateTime.tryParse(endRaw);
-
-    _startDateController = TextEditingController(
-      text: _startDate != null ? _formatDisplayDate(_startDate!) : '',
-    );
-    _endDateController = TextEditingController(
-      text: _endDate != null ? _formatDisplayDate(_endDate!) : '',
-    );
-    _valueController = TextEditingController(
-      text: d['discFinValue']?.toString() ?? '',
-    );
+    _items = List<Map<String, dynamic>>.from(widget.discFinItems);
+    _items.sort((a, b) => _cycleRank(a).compareTo(_cycleRank(b)));
+    _tabController = TabController(length: _items.length, vsync: this);
   }
 
   @override
   void dispose() {
-    _startDateController.dispose();
-    _endDateController.dispose();
-    _valueController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // ── formatting helpers ────────────────────────────────────────────────────
-
-  String _formatDisplayDate(DateTime dt) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${dt.day.toString().padLeft(2, '0')}-${months[dt.month - 1]}-${dt.year}';
+  int _cycleRank(Map<String, dynamic> item) {
+    final raw = item['discFnCycleType']?.toString().trim().toUpperCase() ?? '';
+    final normalized = raw.replaceAll(RegExp(r'[^A-Z]'), '');
+    if (normalized == 'MONTHLY') return 0;
+    if (normalized == 'QUARTERLY' || normalized == 'QUATERLY') return 1;
+    if (normalized == 'HALFYEARLY') return 2;
+    if (normalized == 'YEARLY') return 3;
+    if (normalized == 'ONCE') return 4;
+    return 5;
   }
 
-  String _toIso(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}T00:00:00';
-
-  // ── date pickers ──────────────────────────────────────────────────────────
-
-  Future<void> _pickStartDate() async {
-    if (!_editing || !_isStartDateInputEnabled) return;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2101),
-    );
-    if (picked == null) return;
-    setState(() {
-      _startDate = picked;
-      _startDateController.text = _formatDisplayDate(picked);
-    });
+  String _text(dynamic value) {
+    if (value == null) return '--';
+    final t = value.toString().trim();
+    if (t.isEmpty || t.toLowerCase() == 'null') return '--';
+    return t.replaceAll('_', ' ');
   }
 
-  Future<void> _pickEndDate() async {
-    if (!_editing) return;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _endDate ?? (_startDate ?? DateTime.now()),
-      firstDate: _startDate ?? DateTime.now(),
-      lastDate: DateTime(2101),
-    );
-    if (picked == null) return;
-    setState(() {
-      _endDate = picked;
-      _endDateController.text = _formatDisplayDate(picked);
-    });
+  String _tabLabel(Map<String, dynamic> item) {
+    final cycle = _text(item['discFnCycleType']);
+    return cycle;
   }
 
-  // ── decoration helper ─────────────────────────────────────────────────────
-
-  InputDecoration _dec({required String label, Widget? suffix}) {
-    return InputDecoration(
-      labelText: label,
-      floatingLabelBehavior: FloatingLabelBehavior.always,
-      filled: true,
-      fillColor: _editing ? Colors.white : const Color(0xFFF5F5F5),
-      suffixIcon: suffix,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _brandColor, width: 1.4),
-      ),
-    );
-  }
-
-  // ── submit ────────────────────────────────────────────────────────────────
-
-  Future<void> _submitUpdate() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (_startDate == null && _isStartDateInputEnabled) {
-      setState(() => _errorMessage = 'Start date is required.');
-      return;
-    }
-
-    setState(() {
-      _submitting = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final header = ApiService.userHeader;
-      if (header == null) {
-        setState(() {
-          _submitting = false;
-          _errorMessage = 'Session expired. Please log in again.';
-        });
-        return;
-      }
-
-      final now = DateTime.now().toIso8601String();
-      final discfinEntity = <String, dynamic>{
-        'aprmtId': _aprmtId,
-        'discFnId': _discFnId,
-        'discFnType': _discFnType,
-        'dueDateAsStartDateFlag': _dueDateAsStartDateFlag,
-        'discFnStrtDt': _startDate != null ? _toIso(_startDate!) : null,
-        'discFnEndDt': _endDate != null ? _toIso(_endDate!) : null,
-        'discFnMode': _discFnMode,
-        'discFnCumlatonCycle': _showCumulationCycle
-            ? _discFnCumlatonCycle
-            : null,
-        'discFnCycleType': _kind,
-        'discFinValue': _valueController.text.trim(),
-        'creatTs': _creatTs,
-        'creatUsrId': _creatUsrId,
-        'lstUpdtTs': now,
-        'lstUpdtUsrId': header['userId']?.toString(),
-      };
-
-      final response = await ApiService.updateDiscfin({
-        'genericHeader': Map<String, dynamic>.from(header),
-        'discFinId': _discFnId,
-        'discfinEntity': discfinEntity,
-      });
-
-      if (!mounted) return;
-
-      final code = response?['messageCode']?.toString() ?? '';
-      if (code.toUpperCase().startsWith('SUCC')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              response?['message']?.toString() ?? 'Updated successfully.',
-            ),
-          ),
-        );
-        Navigator.of(context).pop();
-      } else {
-        setState(() {
-          _submitting = false;
-          _errorMessage = response?['message']?.toString() ?? 'Update failed.';
-        });
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _errorMessage = 'Unable to update right now.';
-      });
-    }
-  }
-
-  // ── build ─────────────────────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) {
-    final accentColor = _isFine ? const Color(0xFFCF8A2E) : _brandColor;
-
-    return AlertDialog(
-      backgroundColor: const Color(0xFFF9F6FB),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      titlePadding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
-      title: Row(
+  Widget _buildRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
+          SizedBox(
+            width: 180,
             child: Text(
-              _isFine ? 'Fine Details' : 'Discount Details',
+              label,
               style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 20,
-                color: _brandTextColor,
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
             ),
           ),
-          if (!_editing && !_submitting)
-            TextButton.icon(
-              onPressed: () => setState(() => _editing = true),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Edit'),
-              style: TextButton.styleFrom(foregroundColor: accentColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: _brandTextColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemView(Map<String, dynamic> item) {
+    return SingleChildScrollView(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD7EAE3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildRow('Discount / Fine ID', _text(item['discFnId'])),
+            _buildRow('Cycle Type', _text(item['discFnCycleType'])),
+            _buildRow('Type', _text(item['discFnType'])),
+            _buildRow('Mode', _text(item['discFnMode'])),
+            _buildRow('Value', _text(item['discFinValue'])),
+            _buildRow('Start Date', _text(item['discFnStrtDt'])),
+            _buildRow('End Date', _text(item['discFnEndDt'])),
+            _buildRow(
+              'Due Date As Start Date',
+              item['dueDateAsStartDateFlag'] == true ? 'Yes' : 'No',
+            ),
+            _buildRow('Cumulation Cycle', _text(item['discFnCumlatonCycle'])),
+            _buildRow(
+              'Minimum Payment Amount',
+              _text(item['minimumPaymentAmount']),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF7FCFA),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: Color(0xFFD7EAE3)),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2F3EF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.discount_outlined,
+              color: _brandColor,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Discount Details',
+              style: TextStyle(
+                color: _brandTextColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
         ],
       ),
       content: SizedBox(
-        width: 560,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ID — always read-only
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: accentColor.withValues(alpha: 0.22),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ID',
-                        style: TextStyle(
-                          color: accentColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _discFnId,
-                        style: const TextStyle(
-                          color: _brandTextColor,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+        width: 640,
+        height: 430,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFD7EAE3)),
+              ),
+              child: Text(
+                'Discount Code: ${widget.discFnId}',
+                style: const TextStyle(
+                  color: _brandColor,
+                  fontWeight: FontWeight.w700,
                 ),
-
-                const SizedBox(height: 16),
-
-                // Kind — DISCOUNT / FINE
-                DropdownButtonFormField<String>(
-                  value: _kind,
-                  decoration: _dec(label: 'Kind'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'DISCOUNT',
-                      child: Text('Discount'),
-                    ),
-                    DropdownMenuItem(value: 'FINE', child: Text('Fine')),
-                  ],
-                  onChanged: _editing
-                      ? (v) {
-                          if (v == null) return;
-                          setState(() {
-                            _kind = v;
-                            if (!_isFine) {
-                              _dueDateAsStartDateFlag = false;
-                              _discFnCumlatonCycle = null;
-                            }
-                          });
-                        }
-                      : null,
-                ),
-
-                const SizedBox(height: 14),
-
-                // Calculation Type — SIMPLE / CUMULATIVE
-                DropdownButtonFormField<String>(
-                  value: _discFnType,
-                  decoration: _dec(label: 'Calculation Type'),
-                  items: const [
-                    DropdownMenuItem(value: 'SIMPLE', child: Text('Simple')),
-                    DropdownMenuItem(
-                      value: 'CUMULATIVE',
-                      child: Text('Cumulative'),
-                    ),
-                  ],
-                  onChanged: _editing
-                      ? (v) {
-                          if (v == null) return;
-                          setState(() {
-                            _discFnType = v;
-                            if (_discFnType != 'CUMULATIVE') {
-                              _discFnCumlatonCycle = null;
-                            }
-                          });
-                        }
-                      : null,
-                ),
-
-                const SizedBox(height: 14),
-
-                // Is Due Date As Start Date (only for Fine)
-                if (_isFine) ...[
-                  CheckboxListTile(
-                    value: _dueDateAsStartDateFlag,
-                    enabled: _editing,
-                    activeColor: _brandColor,
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('Is Due Date As Start Date'),
-                    onChanged: _editing
-                        ? (v) {
-                            setState(() {
-                              _dueDateAsStartDateFlag = v ?? false;
-                              if (_dueDateAsStartDateFlag) {
-                                _startDate = null;
-                                _startDateController.clear();
-                              }
-                            });
-                          }
-                        : null,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // Start / End dates
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _startDateController,
-                        enabled: _editing && _isStartDateInputEnabled,
-                        readOnly: true,
-                        decoration: _dec(
-                          label: 'Start Date',
-                          suffix: (_editing && _isStartDateInputEnabled)
-                              ? const Icon(Icons.calendar_today_rounded)
-                              : null,
-                        ),
-                        onTap: (_editing && _isStartDateInputEnabled)
-                            ? _pickStartDate
-                            : null,
-                        validator: (_) =>
-                            (_startDate == null &&
-                                _isStartDateInputEnabled &&
-                                _editing)
-                            ? 'Required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _endDateController,
-                        enabled: _editing,
-                        readOnly: true,
-                        decoration: _dec(
-                          label: 'End Date',
-                          suffix: _editing
-                              ? const Icon(Icons.calendar_today_rounded)
-                              : null,
-                        ),
-                        onTap: _editing ? _pickEndDate : null,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // Mode
-                DropdownButtonFormField<String>(
-                  value: _discFnMode,
-                  decoration: _dec(label: 'Mode'),
-                  items: const [
-                    DropdownMenuItem(value: 'AMOUNT', child: Text('Amount')),
-                    DropdownMenuItem(
-                      value: 'PERCENTAGE',
-                      child: Text('Percentage'),
-                    ),
-                  ],
-                  onChanged: _editing
-                      ? (v) {
-                          if (v != null) setState(() => _discFnMode = v);
-                        }
-                      : null,
-                ),
-
-                // Cumulation cycle (only when CUMULATIVE fine)
-                if (_showCumulationCycle) ...[
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    value: _discFnCumlatonCycle,
-                    decoration: _dec(label: 'Cumulation Cycle'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'MONTHLY',
-                        child: Text('Monthly'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'QUARTERLY',
-                        child: Text('Quarterly'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'HALF_YEARLY',
-                        child: Text('Half Yearly'),
-                      ),
-                      DropdownMenuItem(value: 'YEARLY', child: Text('Yearly')),
-                    ],
-                    onChanged: _editing
-                        ? (v) => setState(() => _discFnCumlatonCycle = v)
-                        : null,
-                    validator: (v) =>
-                        (_editing && _showCumulationCycle && v == null)
-                        ? 'Select cycle'
-                        : null,
-                  ),
-                ],
-
-                const SizedBox(height: 14),
-
-                // Value
-                TextFormField(
-                  controller: _valueController,
-                  enabled: _editing,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  decoration: _dec(label: 'Value'),
-                  validator: (v) {
-                    if (!_editing) return null;
-                    final n = double.tryParse(v?.trim() ?? '');
-                    if (n == null || n <= 0)
-                      return 'Enter a valid positive value';
-                    return null;
-                  },
-                ),
-
-                // Error banner
-                if (_errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 14),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF2F1),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFF1C8C5)),
-                      ),
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(
-                          color: Color(0xFF8B1E1E),
-                          fontWeight: FontWeight.w600,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              labelColor: _brandColor,
+              unselectedLabelColor: _brandTextColor,
+              indicatorColor: _brandColor,
+              tabs: _items.map((item) => Tab(text: _tabLabel(item))).toList(),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: _items.map(_buildItemView).toList(),
+              ),
+            ),
+          ],
         ),
       ),
       actions: [
         TextButton(
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
         ),
-        if (_editing)
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: accentColor),
-            onPressed: _submitting ? null : _submitUpdate,
-            child: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Update'),
-          ),
       ],
     );
   }

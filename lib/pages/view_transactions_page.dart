@@ -2116,7 +2116,7 @@ class _TenderMetaDataDialogState extends State<_TenderMetaDataDialog>
     }
 
     if (dateTime == null) return '--';
-    return '${dateTime.day}-${_monthAbbr(dateTime.month)}${dateTime.year}';
+    return '${dateTime.day}-${_monthAbbr(dateTime.month)}-${dateTime.year}';
   }
 
   String _monthAbbr(int month) {

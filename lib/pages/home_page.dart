@@ -3772,16 +3772,20 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
 
     final parsed = _parseInstrumentDate(trimmed);
     if (parsed != null) {
-      return _formatInstrumentDate(parsed);
+      final month = parsed.month.toString().padLeft(2, '0');
+      final day = parsed.day.toString().padLeft(2, '0');
+      return '${parsed.year}-$month-${day}T00:00:00';
     }
 
     final dateOnly = trimmed.split(RegExp(r'[ T]')).first;
     final reparsed = _parseInstrumentDate(dateOnly);
     if (reparsed != null) {
-      return _formatInstrumentDate(reparsed);
+      final month = reparsed.month.toString().padLeft(2, '0');
+      final day = reparsed.day.toString().padLeft(2, '0');
+      return '${reparsed.year}-$month-${day}T00:00:00';
     }
 
-    return trimmed;
+    return '';
   }
 
   Widget _buildReadOnlyAmountField() {

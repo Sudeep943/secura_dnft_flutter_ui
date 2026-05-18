@@ -808,41 +808,123 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Download Transactions'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<String>(
-                    value: 'excel',
-                    groupValue: selected,
-                    title: const Text('Excel'),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => selected = value);
-                    },
-                  ),
-                  RadioListTile<String>(
-                    value: 'pdf',
-                    groupValue: selected,
-                    title: const Text('PDF'),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => selected = value);
-                    },
-                  ),
-                ],
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 520),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7FCFA),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color(0xFFD7EAE3)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color.fromRGBO(12, 71, 64, 0.18),
+                      blurRadius: 28,
+                      offset: Offset(0, 18),
+                    ),
+                  ],
                 ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(selected),
-                  child: const Text('Download'),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: _brandColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.download_rounded,
+                              color: _brandColor,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Download Transactions',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: _brandTextColor,
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Choose the format for downloading the current transaction list.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _ExportOptionTile(
+                        icon: Icons.table_chart_rounded,
+                        title: 'Excel Workbook',
+                        subtitle: 'Best for editing, filtering, and analysis',
+                        accentColor: const Color(0xFF0F8F82),
+                        selected: selected == 'excel',
+                        onTap: () => setDialogState(() => selected = 'excel'),
+                      ),
+                      const SizedBox(height: 12),
+                      _ExportOptionTile(
+                        icon: Icons.picture_as_pdf_rounded,
+                        title: 'PDF Report',
+                        subtitle: 'Best for sharing, printing, and records',
+                        accentColor: const Color(0xFFE57373),
+                        selected: selected == 'pdf',
+                        onTap: () => setDialogState(() => selected = 'pdf'),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _brandTextColor,
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(selected),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _brandColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 14,
+                              ),
+                            ),
+                            child: const Text('Download'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             );
           },
         );
@@ -1193,53 +1275,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Tender Meta Data'),
-          content: SizedBox(
-            width: 560,
-            child: list.isEmpty
-                ? const Text(
-                    'No tender metadata available for this transaction.',
-                  )
-                : SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: list.asMap().entries.map((entry) {
-                        final data = entry.value;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5FAF9),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFD9E8E4)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: data.entries
-                                .map(
-                                  (item) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: Text(
-                                      '${item.key}: ${item.value ?? '--'}',
-                                      style: const TextStyle(height: 1.3),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
+        return _TenderMetaDataDialog(items: list);
       },
     );
   }
@@ -1946,6 +1982,491 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         title: const Text('View Transactions'),
       ),
       body: content,
+    );
+  }
+}
+
+class _TenderMetaDataDialog extends StatefulWidget {
+  const _TenderMetaDataDialog({required this.items});
+
+  final List<Map<String, dynamic>> items;
+
+  @override
+  State<_TenderMetaDataDialog> createState() => _TenderMetaDataDialogState();
+}
+
+class _TenderMetaDataDialogState extends State<_TenderMetaDataDialog>
+    with SingleTickerProviderStateMixin {
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  late final List<_TenderMetaGroup> _groups;
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _groups = _groupItemsByTenderType(widget.items);
+    _tabController = TabController(length: _groups.length, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<_TenderMetaGroup> _groupItemsByTenderType(
+    List<Map<String, dynamic>> items,
+  ) {
+    final grouped = <String, List<Map<String, dynamic>>>{};
+
+    for (final item in items) {
+      final tenderType = _tenderTypeLabel(item);
+      grouped.putIfAbsent(tenderType, () => <Map<String, dynamic>>[]).add(item);
+    }
+
+    final groups = grouped.entries
+        .map(
+          (entry) =>
+              _TenderMetaGroup(tenderType: entry.key, items: entry.value),
+        )
+        .toList();
+
+    groups.sort((a, b) => a.tenderType.compareTo(b.tenderType));
+    return groups;
+  }
+
+  String _tenderTypeLabel(Map<String, dynamic> item) {
+    final candidates = [
+      item['tenderType'],
+      item['paymentTenderType'],
+      item['bankInstrumentTenderType'],
+      item['instrumentTenderType'],
+      item['mode'],
+      item['paymentMode'],
+    ];
+
+    for (final candidate in candidates) {
+      final text = candidate?.toString().trim() ?? '';
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text.replaceAll('_', ' ');
+      }
+    }
+
+    return 'Tender ${widget.items.indexOf(item) + 1}';
+  }
+
+  String _formatValue(dynamic value) {
+    if (value == null) return '--';
+    final text = value.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') return '--';
+    return text.replaceAll('_', ' ');
+  }
+
+  bool _hasDisplayValue(dynamic value) {
+    if (value == null) return false;
+    if (value is String) {
+      final text = value.trim();
+      return text.isNotEmpty && text.toLowerCase() != 'null';
+    }
+    if (value is Iterable) return value.isNotEmpty;
+    if (value is Map) return value.isNotEmpty;
+    return true;
+  }
+
+  String _formatTenderDate(dynamic value) {
+    DateTime? dateTime;
+
+    if (value is DateTime) {
+      dateTime = value;
+    } else {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty || text.toLowerCase() == 'null') return '--';
+
+      dateTime = DateTime.tryParse(text);
+      if (dateTime == null) {
+        final normalized = text.replaceAll('/', '-');
+        final parts = normalized.split('-');
+        if (parts.length == 3) {
+          final day = int.tryParse(parts[0]);
+          final monthText = parts[1].trim();
+          final year = int.tryParse(parts[2].replaceAll(RegExp(r'[^0-9]'), ''));
+          const months = {
+            'jan': 1,
+            'feb': 2,
+            'mar': 3,
+            'apr': 4,
+            'may': 5,
+            'jun': 6,
+            'jul': 7,
+            'aug': 8,
+            'sep': 9,
+            'oct': 10,
+            'nov': 11,
+            'dec': 12,
+          };
+          final month =
+              int.tryParse(monthText) ?? months[monthText.toLowerCase()];
+          if (day != null && month != null && year != null) {
+            dateTime = DateTime(year, month, day);
+          }
+        }
+      }
+    }
+
+    if (dateTime == null) return '--';
+    return '${dateTime.day}-${_monthAbbr(dateTime.month)}${dateTime.year}';
+  }
+
+  String _monthAbbr(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
+  }
+
+  bool _isDateField(String key) {
+    final normalized = key.toLowerCase();
+    return normalized.contains('date') ||
+        normalized.endsWith('dt') ||
+        normalized.contains('time');
+  }
+
+  String _displayTenderValue(String key, dynamic value) {
+    if (_isDateField(key)) {
+      return _formatTenderDate(value);
+    }
+    return _formatValue(value);
+  }
+
+  List<Widget> _buildFieldRows(Map<String, dynamic> item) {
+    final entries = item.entries.toList()
+      ..sort((a, b) => a.key.toString().compareTo(b.key.toString()));
+
+    return entries.where((entry) => _hasDisplayValue(entry.value)).map((entry) {
+      final label = entry.key.toString().replaceAll('_', ' ');
+      final displayValue = _displayTenderValue(
+        entry.key.toString(),
+        entry.value,
+      );
+      if (displayValue == '--') {
+        return const SizedBox.shrink();
+      }
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7FCFA),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD7EAE3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 180,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                displayValue,
+                style: const TextStyle(
+                  color: _brandTextColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildTabContent(_TenderMetaGroup group) {
+    final visibleItems = group.items.where((item) {
+      return item.values.any(_hasDisplayValue);
+    }).toList();
+
+    if (visibleItems.isEmpty) {
+      return const Center(
+        child: Text(
+          'No tender metadata available.',
+          style: TextStyle(color: Colors.black54),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      itemCount: visibleItems.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, index) {
+        final item = visibleItems[index];
+        final rows = _buildFieldRows(item).whereType<Widget>().toList();
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFD7EAE3)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(12, 71, 64, 0.05),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2F3F0),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      group.tenderType,
+                      style: const TextStyle(
+                        color: _brandColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Entry ${index + 1}',
+                    style: const TextStyle(
+                      color: _brandTextColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...rows,
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_groups.isEmpty) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Tender Meta Data'),
+        content: const Text(
+          'No tender metadata available for this transaction.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    }
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF7FCFA),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: Color(0xFFD7EAE3)),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+      title: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2F3F0),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.receipt_long_outlined, color: _brandColor),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Tender Meta Data',
+              style: TextStyle(
+                color: _brandTextColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 860,
+        height: 560,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD7EAE3)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: _brandColor,
+                unselectedLabelColor: _brandTextColor,
+                indicatorColor: _brandColor,
+                indicatorWeight: 3,
+                tabs: _groups
+                    .map((group) => Tab(text: group.tenderType))
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: _groups.map(_buildTabContent).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TenderMetaGroup {
+  const _TenderMetaGroup({required this.tenderType, required this.items});
+
+  final String tenderType;
+  final List<Map<String, dynamic>> items;
+}
+
+class _ExportOptionTile extends StatelessWidget {
+  const _ExportOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.accentColor,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accentColor;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: selected
+                ? accentColor.withOpacity(0.14)
+                : accentColor.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? accentColor : accentColor.withOpacity(0.25),
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: accentColor, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _brandTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: accentColor,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

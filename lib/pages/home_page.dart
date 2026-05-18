@@ -3582,11 +3582,14 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
 
   List<Map<String, dynamic>> _buildBankInstrumentTenderDetails() {
     if (_selectedTender == 'CHEQUE') {
+      final chequeDate = _normalizeInstrumentDateForRequest(
+        _chequeDateController.text,
+      );
       return [
         {
           'tenderType': 'CHEQUE',
           'chequeNumber': _chequeNumberController.text.trim(),
-          'chequeDate': _chequeDateController.text.trim(),
+          'chequeDate': chequeDate,
           'bankName': _chequeBankNameController.text.trim(),
           'accountHolderName': _chequeAccountHolderController.text.trim(),
           'accountNumber': _chequeAccountNumberController.text.trim(),
@@ -3600,6 +3603,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     }
 
     if (_selectedTender == 'DEMAND_DRAFT') {
+      final issueDate = _normalizeInstrumentDateForRequest(
+        _ddIssueDateController.text,
+      );
       return [
         {
           'tenderType': 'DEMAND_DRAFT',
@@ -3610,18 +3616,21 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           'amount': _requestAmountText,
           'ddPayAtBranch': _ddPayableAtController.text.trim(),
           'ddNumber': _ddNumberController.text.trim(),
-          'ddIssueDate': _ddIssueDateController.text.trim(),
+          'ddIssueDate': issueDate,
           'remarks': '',
         },
       ];
     }
 
     if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
+      final transferDate = _normalizeInstrumentDateForRequest(
+        _transferDateController.text,
+      );
       return [
         {
           'tenderType': 'OFFLINE_BANK_TRANSFER',
           'chequeNumber': null,
-          'chequeDate': _transferDateController.text.trim(),
+          'chequeDate': transferDate,
           'bankName': _transferBankNameController.text.trim(),
           'accountHolderName': null,
           'accountNumber': _transferAccountNumberController.text.trim(),
@@ -3629,7 +3638,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           'ddPayAtBranch': null,
           'ddNumber': null,
           'ddIssueDate': null,
-          'transferDate': _transferDateController.text.trim(),
+          'transferDate': transferDate,
           'remarks': '',
         },
       ];
@@ -3643,17 +3652,22 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     required TextEditingController controller,
     TextInputType? keyboardType,
     bool readOnly = false,
+    bool isDateField = false,
+    Future<void> Function()? onTap,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
-        readOnly: readOnly,
+        readOnly: readOnly || isDateField,
+        onTap: onTap == null ? null : () => onTap(),
         decoration: InputDecoration(
           labelText: label,
           filled: true,
-          fillColor: readOnly ? const Color(0xFFF0F5F4) : Colors.white,
+          fillColor: (readOnly || isDateField)
+              ? const Color(0xFFF0F5F4)
+              : Colors.white,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
@@ -3666,9 +3680,108 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Color(0xFF0F8F82), width: 1.4),
           ),
+          suffixIcon: isDateField
+              ? const Icon(Icons.calendar_month_outlined)
+              : null,
         ),
       ),
     );
+  }
+
+  Future<void> _pickInstrumentDate(TextEditingController controller) async {
+    final initialDate = _parseInstrumentDate(controller.text) ?? DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: const Color(0xFF0F8F82),
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+
+    if (pickedDate == null) return;
+    controller.text = _formatInstrumentDate(pickedDate);
+  }
+
+  DateTime? _parseInstrumentDate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+
+    final directParse = DateTime.tryParse(trimmed);
+    if (directParse != null) {
+      return DateTime(directParse.year, directParse.month, directParse.day);
+    }
+
+    final parts = trimmed.split('-');
+    if (parts.length != 3) return null;
+
+    final day = int.tryParse(parts[0]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || year == null) return null;
+
+    const months = {
+      'JAN': 1,
+      'FEB': 2,
+      'MAR': 3,
+      'APR': 4,
+      'MAY': 5,
+      'JUN': 6,
+      'JUL': 7,
+      'AUG': 8,
+      'SEP': 9,
+      'OCT': 10,
+      'NOV': 11,
+      'DEC': 12,
+    };
+    final month = months[parts[1].toUpperCase()];
+    if (month == null) return null;
+
+    return DateTime(year, month, day);
+  }
+
+  String _formatInstrumentDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day}-${months[date.month - 1]}-${date.year}';
+  }
+
+  String _normalizeInstrumentDateForRequest(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+
+    final parsed = _parseInstrumentDate(trimmed);
+    if (parsed != null) {
+      return _formatInstrumentDate(parsed);
+    }
+
+    final dateOnly = trimmed.split(RegExp(r'[ T]')).first;
+    final reparsed = _parseInstrumentDate(dateOnly);
+    if (reparsed != null) {
+      return _formatInstrumentDate(reparsed);
+    }
+
+    return trimmed;
   }
 
   Widget _buildReadOnlyAmountField() {
@@ -3721,6 +3834,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         _buildInstrumentField(
           label: 'Cheque Date',
           controller: _chequeDateController,
+          isDateField: true,
+          onTap: () => _pickInstrumentDate(_chequeDateController),
         ),
         _buildInstrumentField(
           label: 'Bank Name',
@@ -3752,6 +3867,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         _buildInstrumentField(
           label: 'DD Issue Date',
           controller: _ddIssueDateController,
+          isDateField: true,
+          onTap: () => _pickInstrumentDate(_ddIssueDateController),
         ),
       ]);
     } else if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
@@ -3767,6 +3884,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         _buildInstrumentField(
           label: 'Transfer Date',
           controller: _transferDateController,
+          isDateField: true,
+          onTap: () => _pickInstrumentDate(_transferDateController),
         ),
       ]);
     }

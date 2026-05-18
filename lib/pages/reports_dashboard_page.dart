@@ -543,86 +543,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     final choice = await showDialog<_BalanceSheetExportType>(
       context: context,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 460),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 28,
-                  offset: const Offset(0, 18),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _brandColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.download_rounded,
-                      color: _brandColor,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Export Balance Sheet',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: _brandTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Choose the format for downloading the current balance sheet with logo, dates, totals, and table data.',
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 20),
-                  _ExportOptionTile(
-                    icon: Icons.picture_as_pdf_rounded,
-                    title: 'PDF Report',
-                    subtitle: 'Best for sharing and printing',
-                    accentColor: const Color(0xFFE57373),
-                    onTap: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_BalanceSheetExportType.pdf),
-                  ),
-                  const SizedBox(height: 12),
-                  _ExportOptionTile(
-                    icon: Icons.table_chart_rounded,
-                    title: 'Excel Workbook',
-                    subtitle: 'Best for editing and analysis',
-                    accentColor: const Color(0xFF0F8F82),
-                    onTap: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_BalanceSheetExportType.excel),
-                  ),
-                  const SizedBox(height: 18),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return _BalanceSheetExportDialog(
+          onPdfSelected: () =>
+              Navigator.of(dialogContext).pop(_BalanceSheetExportType.pdf),
+          onExcelSelected: () =>
+              Navigator.of(dialogContext).pop(_BalanceSheetExportType.excel),
         );
       },
     );
@@ -2366,6 +2291,115 @@ class _ExportOptionTile extends StatelessWidget {
                 ),
               ),
               Icon(Icons.arrow_forward_rounded, color: accentColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceSheetExportDialog extends StatelessWidget {
+  const _BalanceSheetExportDialog({
+    required this.onPdfSelected,
+    required this.onExcelSelected,
+  });
+
+  final VoidCallback onPdfSelected;
+  final VoidCallback onExcelSelected;
+
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7FCFA),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFD7EAE3)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(12, 71, 64, 0.18),
+              blurRadius: 28,
+              offset: Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: _brandColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: _brandColor,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Export Balance Sheet',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: _brandTextColor,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Choose the download format for the current balance sheet.',
+                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _ExportOptionTile(
+                icon: Icons.picture_as_pdf_rounded,
+                title: 'PDF Report',
+                subtitle: 'Best for sharing, printing, and official records',
+                accentColor: const Color(0xFFE57373),
+                onTap: onPdfSelected,
+              ),
+              const SizedBox(height: 12),
+              _ExportOptionTile(
+                icon: Icons.table_chart_rounded,
+                title: 'Excel Workbook',
+                subtitle: 'Best for editing, filtering, and analysis',
+                accentColor: const Color(0xFF0F8F82),
+                onTap: onExcelSelected,
+              ),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(foregroundColor: _brandTextColor),
+                  child: const Text('Cancel'),
+                ),
+              ),
             ],
           ),
         ),

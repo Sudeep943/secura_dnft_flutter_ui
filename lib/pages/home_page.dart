@@ -33,10 +33,17 @@ class _HomePageState extends State<HomePage> {
     return MediaQuery.of(context).size.width < 800;
   }
 
+  // ── Worklist constants ──────────────────────────────────────
+  static const String _worklistStatusPending = 'PENDING';
+  static const String _trnsStatusFailed = 'Failed';
+
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? dueAmountData;
   bool loading = true;
   bool isRefreshing = false;
+
+  List<Map<String, dynamic>> _worklists = [];
+  bool _worklistLoading = false;
   final PageController _dueSliderController = PageController();
   Timer? _dueSliderTimer;
   int _dueSliderIndex = 0;
@@ -68,6 +75,8 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
+    _fetchWorklists();
+
     final results = await Future.wait<Map<String, dynamic>?>([
       ApiService.getDashboardData(),
       ApiService.getDueAmountForFlat(),
@@ -82,6 +91,29 @@ class _HomePageState extends State<HomePage> {
     });
     _configureDueSliderAutoPlay();
   }
+
+  Future<void> _fetchWorklists() async {
+    if (_worklistLoading) return;
+    if (mounted) setState(() => _worklistLoading = true);
+    final response = await ApiService.getWorklists();
+    if (!mounted) return;
+    final raw = response?['worklists'];
+    setState(() {
+      _worklists = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : [];
+      _worklistLoading = false;
+    });
+  }
+
+  int get _pendingWorklistItems => _worklists
+      .where(
+        (w) => w['status']?.toString().toUpperCase() == _worklistStatusPending,
+      )
+      .length;
 
   String _displayName() {
     return ApiService.getDisplayName();
@@ -359,10 +391,22 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  int _pendingWorklistCount() {
-    final value = dashboardData?['pendingWorklistCount'];
-    if (value is int) return value;
-    return int.tryParse(value?.toString() ?? '') ?? 10;
+  void _openWorklistModal(BuildContext context) {
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _WorklistModal(
+        worklists: _worklists,
+        onReject: (transactionId) async {
+          await ApiService.updateTransactionStatus(
+            transactionId: transactionId,
+            trnsStatus: _trnsStatusFailed,
+          );
+          await _fetchWorklists();
+        },
+        onWorklistRefresh: _fetchWorklists,
+      ),
+    );
   }
 
   int _activePollsCount() {
@@ -627,7 +671,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Flat ${_flatNumber()} has ${_pendingWorklistCount()} active worklist tasks, ${_upcomingBookingCount()} upcoming bookings, and ${_recentVisitorCount()} recent visitor entries to review.',
+                  'Flat ${_flatNumber()} has $_pendingWorklistItems active worklist tasks, ${_upcomingBookingCount()} upcoming bookings, and ${_recentVisitorCount()} recent visitor entries to review.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.90),
                     height: 1.5,
@@ -1113,9 +1157,11 @@ class _HomePageState extends State<HomePage> {
             child: Center(child: Text("Pending Dues: ₹1250")),
           ),
 
-          Padding(
-            padding: EdgeInsets.all(10),
-            child: Center(child: Text("Worklist: 10")),
+          _WorklistButton(
+            count: _pendingWorklistItems,
+            loading: _worklistLoading,
+            onTap: _openWorklistModal,
+            onRefresh: _fetchWorklists,
           ),
 
           SizedBox(width: 20),
@@ -4229,6 +4275,782 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           child: const Text('Pay'),
         ),
       ],
+    );
+  }
+}
+
+// ─── Worklist AppBar button ─────────────────────────────────────────────────
+
+class _WorklistButton extends StatelessWidget {
+  const _WorklistButton({
+    required this.count,
+    required this.loading,
+    required this.onTap,
+    required this.onRefresh,
+  });
+
+  final int count;
+  final bool loading;
+  final Function(BuildContext) onTap;
+  final VoidCallback onRefresh;
+
+  static const Color _brandColor = Color(0xFF0F8F82);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => onTap(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.checklist_rounded, size: 20),
+              const SizedBox(width: 6),
+              const Text('Worklist'),
+              const SizedBox(width: 6),
+              if (loading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: count > 0 ? Colors.orange.shade700 : _brandColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Worklist Modal ──────────────────────────────────────────────────────────
+
+class _WorklistModal extends StatefulWidget {
+  const _WorklistModal({
+    required this.worklists,
+    required this.onReject,
+    required this.onWorklistRefresh,
+  });
+
+  final List<Map<String, dynamic>> worklists;
+  final Future<void> Function(String transactionId) onReject;
+  final Future<void> Function() onWorklistRefresh;
+
+  @override
+  State<_WorklistModal> createState() => _WorklistModalState();
+}
+
+class _WorklistModalState extends State<_WorklistModal> {
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const String _statusPending = 'PENDING';
+  static const String _typeTransactionReview = 'TRANSACTION REVIEW';
+
+  final Map<String, bool> _rejecting = {};
+  final Map<String, bool> _fetchingTxn = {};
+
+  Future<void> _openTransactionDetail(
+    BuildContext ctx,
+    Map<String, dynamic> item,
+  ) async {
+    final refId = item['referenceId']?.toString() ?? '';
+    final worklistId = item['worklistId']?.toString() ?? '';
+    if (refId.isEmpty) return;
+    if (_fetchingTxn[refId] == true) return;
+    setState(() => _fetchingTxn[refId] = true);
+
+    final header = ApiService.userHeader;
+    Map<String, dynamic>? txn;
+    if (header != null) {
+      final response = await ApiService.getTransactions({
+        'genericHeader': Map<String, dynamic>.from(header),
+        'transactionId': refId,
+      });
+      final rawList = response?['transactionList'];
+      if (rawList is List && rawList.isNotEmpty) {
+        final first = rawList.first;
+        if (first is Map) txn = Map<String, dynamic>.from(first);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _fetchingTxn.remove(refId));
+
+    if (txn == null) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Could not fetch transaction details.')),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: ctx,
+      useRootNavigator: false,
+      builder: (_) => _TransactionDetailModal(
+        txn: txn!,
+        worklistId: worklistId,
+        onActionDone: widget.onWorklistRefresh,
+      ),
+    );
+  }
+
+  String _formatDate(String? raw) {
+    if (raw == null) return '--';
+    try {
+      final dt = DateTime.parse(raw);
+      const months = [
+        '',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      final d = dt.day.toString().padLeft(2, '0');
+      final m = months[dt.month];
+      final y = dt.year;
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final mm = dt.minute.toString().padLeft(2, '0');
+      return '$d-$m-$y $hh:$mm';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  Future<void> _handleReject(Map<String, dynamic> item) async {
+    final refId = item['referenceId']?.toString() ?? '';
+    if (refId.isEmpty) return;
+    setState(() => _rejecting[refId] = true);
+    await widget.onReject(refId);
+    if (mounted) setState(() => _rejecting.remove(refId));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = widget.worklists
+        .where((w) => w['status']?.toString().toUpperCase() == _statusPending)
+        .toList();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 600),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: const BoxDecoration(
+                color: _brandColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.checklist_rounded, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Pending Worklists (${pending.length})',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+
+            // Table
+            Expanded(
+              child: pending.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No pending worklist items.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Table(
+                        border: TableBorder.all(
+                          color: const Color(0xFFDEEFEC),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        columnWidths: const {
+                          0: FlexColumnWidth(1.8),
+                          1: FlexColumnWidth(1.6),
+                          2: FlexColumnWidth(1.5),
+                          3: FlexColumnWidth(2.0),
+                          4: FlexColumnWidth(1.2),
+                        },
+                        children: [
+                          // Header row
+                          TableRow(
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE9F7F4),
+                            ),
+                            children: [
+                              _th('Worklist ID'),
+                              _th('Type'),
+                              _th('Created At'),
+                              _th('Reference ID'),
+                              _th('Action'),
+                            ],
+                          ),
+                          ...pending.map((item) {
+                            final refId = item['referenceId']?.toString() ?? '';
+                            final isRejecting = _rejecting[refId] == true;
+                            final isFetchingTxn = _fetchingTxn[refId] == true;
+                            final isTransactionReview =
+                                item['worklistType']
+                                    ?.toString()
+                                    .toUpperCase() ==
+                                _typeTransactionReview;
+                            return TableRow(
+                              children: [
+                                _td(item['worklistId']?.toString() ?? '--'),
+                                _td(item['worklistType']?.toString() ?? '--'),
+                                _td(_formatDate(item['creatTs']?.toString())),
+                                _tdWidget(
+                                  refId.isEmpty
+                                      ? const Text(
+                                          '--',
+                                          style: TextStyle(fontSize: 13),
+                                        )
+                                      : isTransactionReview
+                                      ? isFetchingTxn
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : InkWell(
+                                                onTap: () =>
+                                                    _openTransactionDetail(
+                                                      context,
+                                                      item,
+                                                    ),
+                                                child: Text(
+                                                  refId,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: Color(0xFF0F8F82),
+                                                    decoration: TextDecoration
+                                                        .underline,
+                                                    decorationColor: Color(
+                                                      0xFF0F8F82,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                      : Text(
+                                          refId,
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                ),
+                                _tdWidget(
+                                  isRejecting
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.red,
+                                          ),
+                                        )
+                                      : refId.isEmpty
+                                      ? const SizedBox.shrink()
+                                      : TextButton(
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.red,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                            ),
+                                          ),
+                                          onPressed: () => _handleReject(item),
+                                          child: const Text('Reject'),
+                                        ),
+                                ),
+                              ],
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _th(String label) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    child: Text(
+      label,
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF0F8F82),
+        fontSize: 13,
+      ),
+    ),
+  );
+
+  Widget _td(String value) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    child: Text(value, style: const TextStyle(fontSize: 13)),
+  );
+
+  Widget _tdWidget(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    child: child,
+  );
+}
+
+// ─── Transaction Detail Modal (opened from Worklist) ────────────────────────
+
+class _TransactionDetailModal extends StatefulWidget {
+  const _TransactionDetailModal({
+    required this.txn,
+    required this.worklistId,
+    required this.onActionDone,
+  });
+
+  final Map<String, dynamic> txn;
+  final String worklistId;
+  final Future<void> Function() onActionDone;
+
+  @override
+  State<_TransactionDetailModal> createState() =>
+      _TransactionDetailModalState();
+}
+
+class _TransactionDetailModalState extends State<_TransactionDetailModal> {
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const String _actionApprove = 'APPROVE';
+  static const String _actionReject = 'REJECT';
+
+  int _imageIndex = 0;
+  String? _actionLoading; // 'APPROVE' or 'REJECT' while in-flight
+
+  Future<void> _handleAction(BuildContext ctx, String action) async {
+    if (_actionLoading != null || widget.worklistId.isEmpty) return;
+    setState(() => _actionLoading = action);
+
+    await ApiService.actionTransactionReviewWorkList(
+      worklistId: widget.worklistId,
+      action: action,
+    );
+
+    if (!mounted) return;
+    setState(() => _actionLoading = null);
+
+    Navigator.of(ctx).pop(); // close detail modal, return to worklist
+    await widget.onActionDone();
+  }
+
+  List<String> get _trnsFiles {
+    final raw = widget.txn['trnsFiles'];
+    if (raw is List) {
+      return raw
+          .map((e) => e?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  static const List<String> _skipKeys = ['trnsFiles', 'trnsTender'];
+
+  static const Map<String, String> _labelMap = {
+    'trnscId': 'Transaction ID',
+    'trnsDate': 'Transaction Date',
+    'trnsBy': 'Done By',
+    'trnsType': 'Type',
+    'trnsAmt': 'Amount',
+    'trnsStatus': 'Status',
+    'cause': 'Credit/Debit Head',
+    'pymntId': 'Payment ID',
+    'trnsBnkAccnt': 'Bank Account',
+    'receiptNumber': 'Receipt Number',
+    'shortRemark': 'Remark',
+    'flatNo': 'Flat No',
+    'apartmentId': 'Apartment ID',
+  };
+
+  String _label(String key) => _labelMap[key] ?? key;
+
+  String _fmt(String key, dynamic value) {
+    if (value == null || value.toString().trim().isEmpty) return '--';
+    // Format date-like fields
+    if (key.toLowerCase().contains('date') ||
+        key.toLowerCase().endsWith('ts') ||
+        key.toLowerCase().contains('time')) {
+      try {
+        final dt = DateTime.parse(value.toString().trim());
+        const months = [
+          '',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        return '${dt.day.toString().padLeft(2, '0')}-${months[dt.month]}-${dt.year} '
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      } catch (_) {}
+    }
+    return value.toString();
+  }
+
+  List<MapEntry<String, String>> _detailEntries() {
+    final entries = <MapEntry<String, String>>[];
+    // Show priority keys first
+    for (final key in _labelMap.keys) {
+      if (_skipKeys.contains(key)) continue;
+      if (widget.txn.containsKey(key)) {
+        final v = _fmt(key, widget.txn[key]);
+        if (v != '--') entries.add(MapEntry(_label(key), v));
+      }
+    }
+    // Then remaining keys not already shown
+    for (final kv in widget.txn.entries) {
+      if (_skipKeys.contains(kv.key)) continue;
+      if (_labelMap.containsKey(kv.key)) continue;
+      final v = _fmt(kv.key, kv.value);
+      if (v != '--') entries.add(MapEntry(_label(kv.key), v));
+    }
+    return entries;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final files = _trnsFiles;
+    final details = _detailEntries();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 640),
+        child: Column(
+          children: [
+            // ── Header ───────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
+              decoration: const BoxDecoration(
+                color: _brandColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.receipt_long_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Transaction Details',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Body ─────────────────────────────────────────────────────
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left – details
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...details.map(
+                            (e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 150,
+                                    child: Text(
+                                      e.key,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: Color(0xFF124B45),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      e.value,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Tenders section
+                          if (widget.txn['trnsTender'] is List) ...[
+                            const Divider(height: 24),
+                            const Text(
+                              'Tenders',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: Color(0xFF0F8F82),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...(widget.txn['trnsTender'] as List)
+                                .whereType<Map>()
+                                .map(
+                                  (t) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      '${t['tenderName'] ?? '--'}: ${t['amountPaid'] ?? '0'}',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Vertical divider
+                  const VerticalDivider(width: 1, thickness: 1),
+
+                  // Right – images
+                  Expanded(
+                    flex: 4,
+                    child: files.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No attachments',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Builder(
+                                      builder: (ctx) {
+                                        try {
+                                          final bytes = base64Decode(
+                                            files[_imageIndex],
+                                          );
+                                          return Image.memory(
+                                            bytes,
+                                            fit: BoxFit.contain,
+                                          );
+                                        } catch (_) {
+                                          return const Center(
+                                            child: Text(
+                                              'Cannot display image',
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.chevron_left_rounded,
+                                      ),
+                                      onPressed: _imageIndex == 0
+                                          ? null
+                                          : () => setState(() => _imageIndex--),
+                                    ),
+                                    Text(
+                                      '${_imageIndex + 1} / ${files.length}',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.chevron_right_rounded,
+                                      ),
+                                      onPressed: _imageIndex == files.length - 1
+                                          ? null
+                                          : () => setState(() => _imageIndex++),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Action Buttons ────────────────────────────────────────────
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                children: [
+                  // Back
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                    label: const Text('Back'),
+                    onPressed: _actionLoading != null
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF124B45),
+                      side: const BorderSide(color: Color(0xFFD7EAE3)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  // Approve
+                  FilledButton.icon(
+                    icon: _actionLoading == _actionApprove
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle_rounded, size: 16),
+                    label: const Text('Approve'),
+                    onPressed:
+                        _actionLoading != null || widget.worklistId.isEmpty
+                        ? null
+                        : () => _handleAction(context, _actionApprove),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _brandColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Reject
+                  FilledButton.icon(
+                    icon: _actionLoading == _actionReject
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.cancel_rounded, size: 16),
+                    label: const Text('Reject'),
+                    onPressed:
+                        _actionLoading != null || widget.worklistId.isEmpty
+                        ? null
+                        : () => _handleAction(context, _actionReject),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

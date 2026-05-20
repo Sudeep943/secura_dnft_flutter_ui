@@ -272,7 +272,9 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         .where(
           (txn) =>
               (txn['trnsType']?.toString().trim().toUpperCase() ?? '') ==
-              'CREDIT',
+                  'CREDIT' &&
+              (txn['trnsStatus']?.toString().trim().toUpperCase() ?? '') ==
+                  'SUCCESS',
         )
         .fold<double>(0, (sum, txn) => sum + _toAmount(txn['trnsAmt']));
   }

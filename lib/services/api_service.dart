@@ -1753,4 +1753,69 @@ class ApiService {
 
     return Map<String, dynamic>.from(data);
   }
+
+  static Future<Map<String, dynamic>?> getWorklists() async {
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/worklist/getWorkLists',
+      requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> updateTransactionStatus({
+    required String transactionId,
+    required String trnsStatus,
+  }) async {
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/payment/updateTransactionStatus',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'transactionId': transactionId,
+        'trnsStatus': trnsStatus,
+      },
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> actionTransactionReviewWorkList({
+    required String worklistId,
+    required String action,
+  }) async {
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/getWorkLists/actionTransctionReviewWorkList',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'worklistId': worklistId,
+        'action': action,
+      },
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
 }

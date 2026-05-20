@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'app_shell.dart';
+import 'home_page.dart' show PaymentDetailsModal;
 
 class CreatePaymentPage extends StatefulWidget {
   const CreatePaymentPage({super.key, this.embedded = false, this.onBack});
@@ -142,6 +143,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   String? _discountCycleNoticeText;
   bool _showDiscountCycleNotice = false;
   Timer? _discountCycleNoticeTimer;
+  bool _loadingPayDues = false;
 
   bool get _isPerHeadCapita => _paymentCapita == 'PER_HEAD';
 
@@ -513,6 +515,118 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     final decimalPart = parts.length > 1 ? '.${parts.sublist(1).join('')}' : '';
     final sign = isNegative ? '-' : '';
     return '$sign$groupedInteger$decimalPart';
+  }
+
+  String _formatAsCurrencyForDues(String amount) {
+    final cleaned = amount.trim();
+    if (cleaned.isEmpty) {
+      return '₹0';
+    }
+
+    final rawAmount = cleaned.startsWith('₹')
+        ? cleaned.substring(1).trim()
+        : cleaned;
+    return '₹${_formatNumberWithCommas(rawAmount)}';
+  }
+
+  void _showPayDuesSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? const Color(0xFFB3261E) : null,
+      ),
+    );
+  }
+
+  Map<String, List<Map<String, dynamic>>> _dueDetailsByPaymentFromResponse(
+    Map<String, dynamic>? response,
+  ) {
+    final rawDetails = response?['dueDetails'];
+    if (rawDetails is! Map) {
+      return const <String, List<Map<String, dynamic>>>{};
+    }
+
+    final result = <String, List<Map<String, dynamic>>>{};
+    rawDetails.forEach((key, rawValue) {
+      final list = <Map<String, dynamic>>[];
+
+      if (rawValue is List) {
+        for (final item in rawValue.whereType<Map>()) {
+          list.add(Map<String, dynamic>.from(item));
+        }
+      } else if (rawValue is Map) {
+        list.add(Map<String, dynamic>.from(rawValue));
+      }
+
+      if (list.isNotEmpty) {
+        result[key.toString()] = list;
+      }
+    });
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> _flattenDueDetailsByPayment(
+    Map<String, List<Map<String, dynamic>>> dueDetailsByPayment,
+  ) {
+    final flatList = <Map<String, dynamic>>[];
+    for (final entries in dueDetailsByPayment.values) {
+      for (final entry in entries) {
+        flatList.add(Map<String, dynamic>.from(entry));
+      }
+    }
+    return flatList;
+  }
+
+  Future<void> _openDuePaymentsDialog() async {
+    if (_loadingPayDues) return;
+
+    setState(() {
+      _loadingPayDues = true;
+    });
+
+    try {
+      final response = await ApiService.getDueAmountForFlat();
+      final duePaymentList = response?['duePaymentList'];
+      final dueDetailsByPayment = _dueDetailsByPaymentFromResponse(response);
+      if (!mounted) return;
+
+      final normalizedDueList = duePaymentList is List
+          ? duePaymentList
+          : const <dynamic>[];
+      final displayDueList = normalizedDueList.isNotEmpty
+          ? normalizedDueList
+          : _flattenDueDetailsByPayment(dueDetailsByPayment);
+
+      if (displayDueList.isEmpty && dueDetailsByPayment.isEmpty) {
+        _showPayDuesSnack('No due payments found.');
+        return;
+      }
+
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _PayYourDuePage(
+            duePaymentList: displayDueList,
+            dueDetailsByPayment: dueDetailsByPayment,
+            formatAsCurrency: _formatAsCurrencyForDues,
+            onPaymentCompleted: () async {
+              if (!mounted) return;
+              _showPayDuesSnack('Payment completed successfully.');
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      _showPayDuesSnack('Unable to load due payment details.', isError: true);
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _loadingPayDues = false;
+      });
+    }
   }
 
   List<_DueAmountDetail> _listOfDueAmountDetails(
@@ -5901,6 +6015,48 @@ class _ApplicableForDialogState extends State<_ApplicableForDialog> {
           child: const Text('Apply'),
         ),
       ],
+    );
+  }
+}
+
+class _PayYourDuePage extends StatelessWidget {
+  const _PayYourDuePage({
+    required this.duePaymentList,
+    required this.formatAsCurrency,
+    this.dueDetailsByPayment,
+    this.onPaymentCompleted,
+  });
+
+  final List<dynamic> duePaymentList;
+  final Map<String, List<Map<String, dynamic>>>? dueDetailsByPayment;
+  final String Function(String amount) formatAsCurrency;
+  final Future<void> Function()? onPaymentCompleted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7FCFA),
+      appBar: AppBar(
+        backgroundColor: _CreatePaymentPageState._brandColor,
+        foregroundColor: Colors.white,
+        title: const Text('Pay Your Due'),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: PaymentDetailsModal(
+                duePaymentList: duePaymentList,
+                dueDetailsByPayment: dueDetailsByPayment,
+                formatAsCurrency: formatAsCurrency,
+                onPaymentCompleted: onPaymentCompleted,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

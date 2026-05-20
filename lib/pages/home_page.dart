@@ -2469,9 +2469,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
       String thirdPartyTransactionId = '';
       String thirdPartyName = '';
 
-      if (selection.tender == 'CASH') {
-        transactionStatus = 'SUCCESS';
-      } else if (selection.tender == 'ONLINE') {
+      if (selection.tender == 'ONLINE') {
         final onlineOutcome = await _runOnlinePayment(
           payment: payment,
           amount: selection.netPayable,
@@ -2485,7 +2483,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
         thirdPartyName = 'RAZORPAY';
       } else {
-        transactionStatus = 'ONHOLD';
+        transactionStatus = 'Pending';
       }
 
       final requestBody = {

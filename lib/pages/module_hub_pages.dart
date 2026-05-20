@@ -463,6 +463,46 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     );
   }
 
+  Map<String, List<Map<String, dynamic>>> _dueDetailsByPaymentFromResponse(
+    Map<String, dynamic>? response,
+  ) {
+    final rawDetails = response?['dueDetails'];
+    if (rawDetails is! Map) {
+      return const <String, List<Map<String, dynamic>>>{};
+    }
+
+    final result = <String, List<Map<String, dynamic>>>{};
+    rawDetails.forEach((key, rawValue) {
+      final list = <Map<String, dynamic>>[];
+
+      if (rawValue is List) {
+        for (final item in rawValue.whereType<Map>()) {
+          list.add(Map<String, dynamic>.from(item));
+        }
+      } else if (rawValue is Map) {
+        list.add(Map<String, dynamic>.from(rawValue));
+      }
+
+      if (list.isNotEmpty) {
+        result[key.toString()] = list;
+      }
+    });
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> _flattenDueDetailsByPayment(
+    Map<String, List<Map<String, dynamic>>> dueDetailsByPayment,
+  ) {
+    final flatList = <Map<String, dynamic>>[];
+    for (final entries in dueDetailsByPayment.values) {
+      for (final entry in entries) {
+        flatList.add(Map<String, dynamic>.from(entry));
+      }
+    }
+    return flatList;
+  }
+
   Future<void> _openDuePaymentsDialog() async {
     if (_loadingDueDetails) {
       return;
@@ -475,6 +515,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     try {
       final response = await ApiService.getDueAmountForFlat();
       final duePaymentList = response?['duePaymentList'];
+      final dueDetailsByPayment = _dueDetailsByPaymentFromResponse(response);
       if (!mounted) {
         return;
       }
@@ -482,15 +523,21 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       final normalizedDueList = duePaymentList is List
           ? duePaymentList
           : const <dynamic>[];
-      if (normalizedDueList.isEmpty) {
+      final displayDueList = normalizedDueList.isNotEmpty
+          ? normalizedDueList
+          : _flattenDueDetailsByPayment(dueDetailsByPayment);
+
+      if (displayDueList.isEmpty && dueDetailsByPayment.isEmpty) {
         _showSnack('No due payments found.');
         return;
       }
 
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => PaymentDetailsModal(
-          duePaymentList: normalizedDueList,
+        useRootNavigator: false,
+        builder: (_) => PaymentDetailsModal(
+          duePaymentList: displayDueList,
+          dueDetailsByPayment: dueDetailsByPayment,
           formatAsCurrency: _formatAsCurrency,
           onPaymentCompleted: () async {
             if (!mounted) {

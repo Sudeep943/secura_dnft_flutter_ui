@@ -1013,7 +1013,17 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                                 : 'Download Sample Excel',
                           ),
                           style: OutlinedButton.styleFrom(
+                            foregroundColor: _ModuleHubPage._brandColor,
+                            backgroundColor: const Color(0xFFEFF8F5),
+                            side: BorderSide(
+                              color: _ModuleHubPage._brandColor.withValues(
+                                alpha: 0.42,
+                              ),
+                            ),
                             minimumSize: const Size.fromHeight(46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -1024,7 +1034,12 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                           icon: const Icon(Icons.upload_file_outlined),
                           label: const Text('Upload'),
                           style: FilledButton.styleFrom(
+                            backgroundColor: _ModuleHubPage._brandColor,
+                            foregroundColor: Colors.white,
                             minimumSize: const Size.fromHeight(46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),

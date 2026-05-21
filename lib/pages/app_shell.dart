@@ -83,6 +83,13 @@ class _AppShellState extends State<AppShell> {
         .toList();
   }
 
+  int _pendingWorklistCount(List<Map<String, dynamic>> worklists) {
+    return worklists.where((item) {
+      final status = item['status']?.toString().trim().toUpperCase() ?? '';
+      return status == 'PENDING';
+    }).length;
+  }
+
   Future<void> _refreshWorklistCount() async {
     if (_worklistCountLoading) {
       return;
@@ -98,7 +105,7 @@ class _AppShellState extends State<AppShell> {
 
     final worklists = _extractWorklists(response?['worklists']);
     setState(() {
-      _worklistCount = worklists.length;
+      _worklistCount = _pendingWorklistCount(worklists);
       _worklistCountLoading = false;
     });
   }
@@ -187,7 +194,7 @@ class _AppShellState extends State<AppShell> {
     final worklists = _extractWorklists(response?['worklists']);
 
     setState(() {
-      _worklistCount = worklists.length;
+      _worklistCount = _pendingWorklistCount(worklists);
     });
 
     await showDialog<void>(
@@ -248,25 +255,50 @@ class _AppShellState extends State<AppShell> {
   Widget _buildWorklistButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-      child: TextButton.icon(
-        onPressed: _openWorklistModal,
-        style: TextButton.styleFrom(
-          foregroundColor: Colors.white,
-          backgroundColor: Colors.white.withValues(alpha: 0.10),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          TextButton.icon(
+            onPressed: _openWorklistModal,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+              ),
+            ),
+            icon: _worklistCountLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.work_outline_rounded),
+            label: const Text('Worklist'),
           ),
-        ),
-        icon: _worklistCountLoading
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.work_outline_rounded),
-        label: Text('Worklist ($_worklistCount)'),
+          if (!_worklistCountLoading)
+            Positioned(
+              right: -2,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0DA84),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$_worklistCount',
+                  style: const TextStyle(
+                    color: Color(0xFF124B45),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -707,6 +739,8 @@ class _WorklistDialogState extends State<_WorklistDialog>
   Future<void> _openTransactionDetails(Map<String, dynamic> item) async {
     final referenceId = item['referenceId']?.toString().trim() ?? '';
     final worklistId = item['worklistId']?.toString().trim() ?? '';
+    final status = item['status']?.toString().trim().toUpperCase() ?? '';
+    final canTakeAction = !status.startsWith('COMPLETE');
     if (referenceId.isEmpty || worklistId.isEmpty) {
       return;
     }
@@ -758,6 +792,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
       builder: (_) => _TransactionDetailDialog(
         transaction: transaction,
         worklistId: worklistId,
+        canTakeAction: canTakeAction,
         onActionCompleted: _refreshWorklists,
       ),
     );
@@ -934,11 +969,13 @@ class _TransactionDetailDialog extends StatefulWidget {
   const _TransactionDetailDialog({
     required this.transaction,
     required this.worklistId,
+    required this.canTakeAction,
     required this.onActionCompleted,
   });
 
   final Map<String, dynamic> transaction;
   final String worklistId;
+  final bool canTakeAction;
   final Future<void> Function() onActionCompleted;
 
   @override
@@ -1691,33 +1728,37 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                         : null,
                     child: const Text('Back'),
                   ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: _loadingAction == null
-                        ? () => _handleAction(_approveAction)
-                        : null,
-                    child: _loadingAction == _approveAction
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Approve'),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: _loadingAction == null
-                        ? () => _handleAction(_rejectAction)
-                        : null,
-                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                    child: _loadingAction == _rejectAction
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Reject'),
-                  ),
+                  if (widget.canTakeAction) ...[
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: _loadingAction == null
+                          ? () => _handleAction(_approveAction)
+                          : null,
+                      child: _loadingAction == _approveAction
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Approve'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton(
+                      onPressed: _loadingAction == null
+                          ? () => _handleAction(_rejectAction)
+                          : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
+                      child: _loadingAction == _rejectAction
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Reject'),
+                    ),
+                  ],
                 ],
               ),
             ),

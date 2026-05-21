@@ -23,7 +23,9 @@ Future<bool> downloadBase64ReceiptImpl({
     anchor.remove();
     html.Url.revokeObjectUrl(objectUrl);
     return true;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    print('downloadBase64ReceiptImpl(web) failed: $error');
+    print(stackTrace);
     return false;
   }
 }
@@ -43,7 +45,9 @@ Uint8List? _decodeBase64Payload(String rawPayload) {
   payload = payload.replaceAll('\n', '').replaceAll('\r', '');
   try {
     return base64Decode(payload);
-  } catch (_) {
+  } catch (error, stackTrace) {
+    print('downloadBase64ReceiptImpl(web) decode failed: $error');
+    print(stackTrace);
     return null;
   }
 }

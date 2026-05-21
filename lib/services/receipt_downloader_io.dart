@@ -29,7 +29,9 @@ Future<bool> downloadBase64ReceiptImpl({
     final file = File(savePath);
     await file.writeAsBytes(bytes, flush: true);
     return true;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    print('downloadBase64ReceiptImpl(io) failed: $error');
+    print(stackTrace);
     return false;
   }
 }
@@ -49,7 +51,9 @@ Uint8List? _decodeBase64Payload(String rawPayload) {
   payload = payload.replaceAll('\n', '').replaceAll('\r', '');
   try {
     return base64Decode(payload);
-  } catch (_) {
+  } catch (error, stackTrace) {
+    print('downloadBase64ReceiptImpl(io) decode failed: $error');
+    print(stackTrace);
     return null;
   }
 }

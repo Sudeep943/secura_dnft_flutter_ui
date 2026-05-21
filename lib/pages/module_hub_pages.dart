@@ -4,9 +4,11 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
+import '../services/receipt_downloader.dart';
 import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'app_shell.dart';
@@ -39,7 +41,6 @@ class _MeetingAndNoticeManagementPageState
   Widget build(BuildContext context) {
     if (_showViewAllNotices) {
       return ViewAllNoticesPage(
-        embedded: true,
         onBack: () {
           setState(() {
             _showViewAllNotices = false;
@@ -672,12 +673,369 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
-        const _ModuleHubItem(
+        _ModuleHubItem(
           'Upload Other Due Payments',
           Icons.upload_file_rounded,
+          onTap: () {
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const _UploadOtherDuesDialog(),
+            );
+          },
         ),
         const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
       ],
+    );
+  }
+}
+
+class _UploadOtherDuesDialog extends StatefulWidget {
+  const _UploadOtherDuesDialog();
+
+  @override
+  State<_UploadOtherDuesDialog> createState() => _UploadOtherDuesDialogState();
+}
+
+class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
+  final TextEditingController _fileController = TextEditingController();
+  bool _downloadingSample = false;
+  String? _selectedFileName;
+
+  @override
+  void dispose() {
+    _fileController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _pickExcelFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx', 'xls'],
+      withData: true,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final file = result.files.single;
+    if ((file.bytes?.isEmpty ?? true) &&
+        (file.path == null || file.path!.isEmpty)) {
+      _showSnackBar('Unable to read the selected Excel file.');
+      return;
+    }
+
+    setState(() {
+      _selectedFileName = file.name;
+      _fileController.text = file.name;
+    });
+  }
+
+  Future<void> _downloadSampleExcel() async {
+    if (_downloadingSample) {
+      return;
+    }
+    _downloadingSample = true;
+
+    xlsio.Workbook? workbook;
+
+    try {
+      workbook = xlsio.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Due Details';
+
+      final headers = <String>[
+        'Flat Id',
+        'Due From',
+        'Due Till',
+        'Due Name',
+        'Due Amount',
+        'Penalty Amount',
+        'Fine Eligible',
+        'Fine %',
+        'Fine Type',
+      ];
+
+      for (var i = 0; i < headers.length; i++) {
+        sheet.getRangeByIndex(1, i + 1).setText(headers[i]);
+      }
+
+      final headerRange = sheet.getRangeByIndex(1, 1, 1, headers.length);
+      headerRange.cellStyle.bold = true;
+      headerRange.cellStyle.backColor = '#FFF3CD';
+
+      sheet.getRangeByIndex(2, 1).setText('A-101');
+      sheet.getRangeByIndex(2, 2).setText('1-Mar-2026');
+      sheet.getRangeByIndex(2, 3).setText('31-Mar-2026');
+      sheet.getRangeByIndex(2, 4).setText('Maintenance');
+      sheet.getRangeByIndex(2, 5).setNumber(2500);
+      sheet.getRangeByIndex(2, 6).setNumber(100);
+      sheet.getRangeByIndex(2, 7).setText('Yes');
+      sheet.getRangeByIndex(2, 8).setNumber(5);
+      sheet.getRangeByIndex(2, 9).setText('Simple');
+
+      final fineEligibleValidation = sheet
+          .getRangeByName('G2:G200')
+          .dataValidation;
+      fineEligibleValidation.allowType = xlsio.ExcelDataValidationType.user;
+      fineEligibleValidation.listOfValues = <String>['Yes', 'No'];
+
+      final fineTypeValidation = sheet.getRangeByName('I2:I200').dataValidation;
+      fineTypeValidation.allowType = xlsio.ExcelDataValidationType.user;
+      fineTypeValidation.listOfValues = <String>['Simple', 'Cumulative'];
+
+      sheet.getRangeByName('E2:E200').numberFormat = '0.00';
+      sheet.getRangeByName('F2:F200').numberFormat = '0.00';
+      sheet.getRangeByName('H2:H200').numberFormat = '0.##';
+
+      for (var col = 1; col <= 9; col++) {
+        sheet.autoFitColumn(col);
+      }
+
+      final bytes = workbook.saveAsStream();
+      if (bytes.isEmpty) {
+        throw StateError('Generated sample Excel is empty.');
+      }
+
+      final downloaded = await downloadBase64Receipt(
+        base64Data: base64Encode(bytes),
+        fileName: 'due_details_sample.xlsx',
+      );
+
+      if (!mounted) {
+        return;
+      }
+      if (!downloaded) {
+        _showSnackBar(
+          'Unable to download the sample Excel file. Downloader returned false.',
+        );
+        return;
+      }
+      _showSnackBar('Sample Excel downloaded successfully.');
+    } catch (error, stackTrace) {
+      debugPrint('UploadOtherDues sample download failed: $error\n$stackTrace');
+      if (mounted) {
+        _showSnackBar('Unable to download sample Excel: $error');
+      }
+    } finally {
+      workbook?.dispose();
+      _downloadingSample = false;
+    }
+  }
+
+  void _handleUpload() {
+    if ((_selectedFileName ?? '').trim().isEmpty) {
+      _showSnackBar('Please choose an Excel document first.');
+      return;
+    }
+    _showSnackBar('Selected file: $_selectedFileName');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: _ModuleHubPage._brandColor, width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(18, 75, 69, 0.14),
+                  blurRadius: 28,
+                  offset: Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.request_quote_outlined,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Upload Other Dues',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Upload due details Excel and validate format using sample file.',
+                                style: TextStyle(
+                                  color: Color(0xFFE9FAF6),
+                                  height: 1.35,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: IconButton(
+                            onPressed: _downloadingSample
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4FAF8),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFD4EAE4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Upload Document',
+                          style: TextStyle(
+                            color: _ModuleHubPage._brandTextColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _fileController,
+                          readOnly: true,
+                          onTap: _downloadingSample ? null : _pickExcelFile,
+                          decoration: InputDecoration(
+                            labelText: 'Excel file',
+                            hintText: 'Select .xlsx or .xls file',
+                            filled: true,
+                            fillColor: Colors.white,
+                            suffixIcon: IconButton(
+                              onPressed: _downloadingSample
+                                  ? null
+                                  : _pickExcelFile,
+                              icon: const Icon(Icons.attach_file),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFBFDCD5),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: _ModuleHubPage._brandColor,
+                                width: 1.4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _downloadingSample
+                              ? null
+                              : _downloadSampleExcel,
+                          icon: _downloadingSample
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.download_outlined),
+                          label: Text(
+                            _downloadingSample
+                                ? 'Downloading...'
+                                : 'Download Sample Excel',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _downloadingSample ? null : _handleUpload,
+                          icon: const Icon(Icons.upload_file_outlined),
+                          label: const Text('Upload'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

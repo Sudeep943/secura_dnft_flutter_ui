@@ -579,6 +579,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return flatList;
   }
 
+  // ignore: unused_element
   Future<void> _openDuePaymentsDialog() async {
     if (_loadingPayDues) return;
 

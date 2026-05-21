@@ -1803,7 +1803,7 @@ class ApiService {
     if (genericHeader == null) return null;
 
     final response = await _postWithOptionalAuthorization(
-      path: '/getWorkLists/actionTransctionReviewWorkList',
+      path: '/worklist/actionTransctionReviewWorkList',
       requestBody: {
         'genericHeader': genericHeader,
         'worklistId': worklistId,

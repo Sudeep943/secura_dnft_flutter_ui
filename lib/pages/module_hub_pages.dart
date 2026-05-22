@@ -700,7 +700,14 @@ class _UploadOtherDuesDialog extends StatefulWidget {
 class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
   final TextEditingController _fileController = TextEditingController();
   bool _downloadingSample = false;
+  bool _downloadingResponseFile = false;
+  bool _uploading = false;
   String? _selectedFileName;
+  String? _selectedFileBase64;
+  String? _uploadMessage;
+  int? _successRows;
+  int? _failedRows;
+  String? _responseFileBase64;
 
   @override
   void dispose() {
@@ -726,14 +733,15 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
     }
 
     final file = result.files.single;
-    if ((file.bytes?.isEmpty ?? true) &&
-        (file.path == null || file.path!.isEmpty)) {
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
       _showSnackBar('Unable to read the selected Excel file.');
       return;
     }
 
     setState(() {
       _selectedFileName = file.name;
+      _selectedFileBase64 = base64Encode(bytes);
       _fileController.text = file.name;
     });
   }
@@ -830,12 +838,138 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
     }
   }
 
-  void _handleUpload() {
-    if ((_selectedFileName ?? '').trim().isEmpty) {
+  Future<void> _handleUpload() async {
+    if (_uploading || _downloadingSample) {
+      return;
+    }
+
+    if ((_selectedFileName ?? '').trim().isEmpty ||
+        (_selectedFileBase64 ?? '').trim().isEmpty) {
       _showSnackBar('Please choose an Excel document first.');
       return;
     }
-    _showSnackBar('Selected file: $_selectedFileName');
+
+    setState(() {
+      _uploading = true;
+      _uploadMessage = null;
+      _successRows = null;
+      _failedRows = null;
+      _responseFileBase64 = null;
+    });
+
+    try {
+      final response = await ApiService.uploadPastDue(
+        fileBase64: _selectedFileBase64!,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        _showSnackBar('Unable to upload due details. Empty server response.');
+        return;
+      }
+
+      final messageCode = response['messageCode']?.toString().trim() ?? '';
+      final message =
+          response['message']?.toString().trim() ??
+          response['statusMessage']?.toString().trim() ??
+          response['errorMessage']?.toString().trim() ??
+          '';
+      final successRows = _readIntValue(response['successRows']);
+      final failedRows = _readIntValue(response['failedRows']);
+      final responseFile = response['file']?.toString().trim() ?? '';
+      final upperMessageCode = messageCode.toUpperCase();
+      final headerStatus = response['genericHeader'] is Map
+          ? response['genericHeader']['status']?.toString().trim().toUpperCase()
+          : '';
+      final isSuccess =
+          upperMessageCode.startsWith('SUCC') ||
+          upperMessageCode.contains('SUCCESS') ||
+          headerStatus == 'SUCCESS';
+
+      setState(() {
+        _uploadMessage = message.isNotEmpty
+            ? message
+            : (isSuccess
+                  ? 'Past due upload processed successfully.'
+                  : 'Unable to upload due details.');
+        _successRows = successRows;
+        _failedRows = failedRows;
+        _responseFileBase64 = responseFile.isEmpty ? null : responseFile;
+      });
+
+      if (isSuccess) {
+        _showSnackBar('Due details uploaded successfully.');
+        return;
+      }
+
+      _showSnackBar('Unable to upload due details.');
+    } catch (error, stackTrace) {
+      debugPrint('UploadOtherDues upload failed: $error\n$stackTrace');
+      if (mounted) {
+        _showSnackBar('Unable to upload due details: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+        });
+      }
+    }
+  }
+
+  int? _readIntValue(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> _downloadResponseFile() async {
+    if (_downloadingResponseFile ||
+        (_responseFileBase64 ?? '').trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _downloadingResponseFile = true;
+    });
+
+    try {
+      final downloaded = await downloadBase64Receipt(
+        base64Data: _responseFileBase64!,
+        fileName: 'past_due_upload_errors.xlsx',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!downloaded) {
+        _showSnackBar('Unable to download response error file.');
+        return;
+      }
+
+      _showSnackBar('Response error file downloaded successfully.');
+    } catch (error, stackTrace) {
+      debugPrint(
+        'UploadOtherDues response file download failed: $error\n$stackTrace',
+      );
+      if (mounted) {
+        _showSnackBar('Unable to download response error file: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingResponseFile = false;
+        });
+      }
+    }
   }
 
   @override
@@ -957,14 +1091,16 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                         TextField(
                           controller: _fileController,
                           readOnly: true,
-                          onTap: _downloadingSample ? null : _pickExcelFile,
+                          onTap: _downloadingSample || _uploading
+                              ? null
+                              : _pickExcelFile,
                           decoration: InputDecoration(
                             labelText: 'Excel file',
                             hintText: 'Select .xlsx or .xls file',
                             filled: true,
                             fillColor: Colors.white,
                             suffixIcon: IconButton(
-                              onPressed: _downloadingSample
+                              onPressed: _downloadingSample || _uploading
                                   ? null
                                   : _pickExcelFile,
                               icon: const Icon(Icons.attach_file),
@@ -990,12 +1126,76 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                       ],
                     ),
                   ),
+                  if (_uploadMessage != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3FAF8),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFCFE5DF)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _uploadMessage!,
+                            style: const TextStyle(
+                              color: _ModuleHubPage._brandTextColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 18,
+                            runSpacing: 8,
+                            children: [
+                              Text('Success Entry: ${_successRows ?? 0}'),
+                              Text('Failed Entry: ${_failedRows ?? 0}'),
+                            ],
+                          ),
+                          if ((_responseFileBase64 ?? '')
+                              .trim()
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                onPressed:
+                                    _downloadingResponseFile || _uploading
+                                    ? null
+                                    : _downloadResponseFile,
+                                icon: _downloadingResponseFile
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.download_outlined),
+                                label: Text(
+                                  _downloadingResponseFile
+                                      ? 'Downloading...'
+                                      : 'Download Error File',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _downloadingSample
+                          onPressed:
+                              _downloadingSample ||
+                                  _uploading ||
+                                  _downloadingResponseFile
                               ? null
                               : _downloadSampleExcel,
                           icon: _downloadingSample
@@ -1030,9 +1230,22 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: _downloadingSample ? null : _handleUpload,
-                          icon: const Icon(Icons.upload_file_outlined),
-                          label: const Text('Upload'),
+                          onPressed:
+                              _downloadingSample ||
+                                  _uploading ||
+                                  _downloadingResponseFile
+                              ? null
+                              : _handleUpload,
+                          icon: _uploading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.upload_file_outlined),
+                          label: Text(_uploading ? 'Uploading...' : 'Upload'),
                           style: FilledButton.styleFrom(
                             backgroundColor: _ModuleHubPage._brandColor,
                             foregroundColor: Colors.white,

@@ -1601,6 +1601,31 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> uploadPastDue({
+    required String fileBase64,
+  }) async {
+    final genericHeader = _buildLoginResponseHeader() ?? _buildGenericHeader();
+    if (genericHeader == null || fileBase64.trim().isEmpty) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/payment/uploadPastDue',
+      requestBody: {'genericHeader': genericHeader, 'file': fileBase64.trim()},
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> onboardEmployee({
     required String employeeCode,
     required String fullName,

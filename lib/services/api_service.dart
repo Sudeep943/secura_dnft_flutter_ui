@@ -24,8 +24,14 @@ class ApiService {
   static Map<String, dynamic>? rawLoginHeader;
   static String? dashboardProfilePic;
   static Map<String, dynamic>? profileData;
+  static String? _publicPayFlatNo;
 
   static String get baseUrl => _baseUrl;
+
+  static void setPublicPayFlatNo(String? flatNo) {
+    final value = flatNo?.trim() ?? '';
+    _publicPayFlatNo = value.isEmpty ? null : value;
+  }
 
   static void clearSession() {
     token = null;
@@ -1135,6 +1141,15 @@ class ApiService {
     required String eventDate,
     String transactionType = 'BOOKING',
   }) async {
+    if (_publicPayFlatNo != null) {
+      return createRazorPayOrderPublic(
+        amountInPaisa: amountInPaisa,
+        eventDate: eventDate,
+        flatId: _publicPayFlatNo!,
+        transactionType: transactionType,
+      );
+    }
+
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
@@ -1162,6 +1177,16 @@ class ApiService {
   static Future<Map<String, dynamic>?> payDues(
     Map<String, dynamic> requestBody,
   ) async {
+    if (_publicPayFlatNo != null) {
+      final publicRequest = Map<String, dynamic>.from(requestBody);
+      publicRequest['genericHeader'] = {
+        'access': null,
+        'apartmentId': 'APRT001',
+        'flatNo': _publicPayFlatNo,
+      };
+      return payDuesPublic(publicRequest);
+    }
+
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
@@ -1190,26 +1215,115 @@ class ApiService {
     required String razorpayPaymentId,
     required String razorpaySignature,
   }) async {
-    if (token == null) return null;
-
-    final response = await http.post(
-      Uri.parse("$_baseUrl/payment/verifyPayment"),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
-        'razorpay_order_id': razorpayOrderId,
-        'razorpay_payment_id': razorpayPaymentId,
-        'razorpay_signature': razorpaySignature,
-      }),
-    );
+    http.Response response;
+    if (_publicPayFlatNo != null) {
+      response = await http.post(
+        Uri.parse("$_baseUrl/publicapis/verifyPaymentPublic"),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'razorpay_order_id': razorpayOrderId,
+          'razorpay_payment_id': razorpayPaymentId,
+          'razorpay_signature': razorpaySignature,
+        }),
+      );
+    } else if (token != null) {
+      response = await http.post(
+        Uri.parse("$_baseUrl/payment/verifyPayment"),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'razorpay_order_id': razorpayOrderId,
+          'razorpay_payment_id': razorpayPaymentId,
+          'razorpay_signature': razorpaySignature,
+        }),
+      );
+    } else {
+      response = await http.post(
+        Uri.parse("$_baseUrl/payment/verifyPayment"),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'razorpay_order_id': razorpayOrderId,
+          'razorpay_payment_id': razorpayPaymentId,
+          'razorpay_signature': razorpaySignature,
+        }),
+      );
+    }
 
     if (response.body.isEmpty) {
       return null;
     }
 
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> payDuesPublic(
+    Map<String, dynamic> requestBody,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/payduesPublic'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> createRazorPayOrderPublic({
+    required String amountInPaisa,
+    required String eventDate,
+    required String flatId,
+    String transactionType = 'BOOKING',
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    const paths = [
+      '/publicapis/razorPayCreateOrderPublic',
+      '/publicapis/razorPayCreateOrder',
+      '/payment/razorPayCreateOrder',
+    ];
+
+    for (final path in paths) {
+      final response = await http.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'genericHeader': {
+            'access': null,
+            'apartmentId': 'APRT001',
+            'flatNo': trimmedFlatId,
+          },
+          'amountInPaisa': amountInPaisa,
+          'currency': 'INR',
+          'eventDate': eventDate,
+          'transactionType': transactionType,
+        }),
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
   }
 
   static Future<Map<String, dynamic>?> getDuePaymentAmountDetails(
@@ -1514,6 +1628,64 @@ class ApiService {
     final response = await _postWithOptionalAuthorization(
       path: '/flat/getAllFlats',
       requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getFlatsPublic() async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/getFlatsPublic'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'genericHeader': {
+          'userId': 'External',
+          'apartmentId': 'APRT001',
+          'profileName': 'External',
+        },
+      }),
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getDueDetailsForFlatPublic({
+    required String flatId,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/detDueDetailsForFlatPublic'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'genericHeader': {
+          'access': null,
+          'apartmentId': 'APRT001',
+          'flatNo': trimmedFlatId,
+        },
+        'flatId': trimmedFlatId,
+      }),
     );
 
     if (response.statusCode == 404 || response.body.isEmpty) {

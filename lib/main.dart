@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
-import 'pages/login_page.dart';
+import 'DN_fairytale_pages/dn_fairytale_landing_page.dart';
 
 void main() {
   runApp(MyApp());
@@ -27,7 +27,7 @@ class MyApp extends StatelessWidget {
         primaryColor: Color(0xFF0F8F82),
         scaffoldBackgroundColor: Colors.white,
       ),
-      home: LoginPage(),
+      home: const DnFairytaleLandingPage(),
     );
   }
 }

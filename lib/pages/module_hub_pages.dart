@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
+import 'package:xml/xml.dart';
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
@@ -746,6 +748,217 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
     });
   }
 
+  List<String> _extractSharedStrings(Archive archive) {
+    final shared = archive.files.where((file) {
+      return file.isFile && file.name == 'xl/sharedStrings.xml';
+    }).toList();
+    if (shared.isEmpty) {
+      return const <String>[];
+    }
+
+    final content = shared.first.content as List<int>;
+
+    final document = XmlDocument.parse(utf8.decode(content));
+    final values = <String>[];
+    final items = document.descendants.whereType<XmlElement>().where(
+      (element) => element.name.local == 'si',
+    );
+
+    for (final item in items) {
+      final parts = item.descendants
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 't')
+          .map((element) => element.innerText)
+          .toList();
+      values.add(parts.join());
+    }
+
+    return values;
+  }
+
+  XmlElement? _cellByColumn(XmlElement rowElement, String columnLetter) {
+    for (final cell in rowElement.children.whereType<XmlElement>().where(
+      (element) => element.name.local == 'c',
+    )) {
+      final reference = cell.getAttribute('r')?.trim() ?? '';
+      if (reference.startsWith(columnLetter)) {
+        return cell;
+      }
+    }
+    return null;
+  }
+
+  double? _parseCellToDouble(XmlElement? cell, List<String> sharedStrings) {
+    if (cell == null) {
+      return null;
+    }
+
+    final type = cell.getAttribute('t')?.trim() ?? '';
+    final valueNode = cell.children.whereType<XmlElement>().firstWhere(
+      (element) => element.name.local == 'v',
+      orElse: () => XmlElement(XmlName('v')),
+    );
+    final rawValue = valueNode.innerText.trim();
+
+    String parsedSource = rawValue;
+    if (type == 's' && rawValue.isNotEmpty) {
+      final sharedIndex = int.tryParse(rawValue);
+      if (sharedIndex != null &&
+          sharedIndex >= 0 &&
+          sharedIndex < sharedStrings.length) {
+        parsedSource = sharedStrings[sharedIndex];
+      }
+    }
+
+    if (parsedSource.isEmpty) {
+      final inlineText = cell.descendants
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 't')
+          .map((element) => element.innerText)
+          .join()
+          .trim();
+      parsedSource = inlineText;
+    }
+
+    if (parsedSource.isEmpty) {
+      return null;
+    }
+
+    final normalized = parsedSource.replaceAll(RegExp(r'[^0-9.-]'), '');
+    return double.tryParse(normalized);
+  }
+
+  bool _replaceFormulaWithValue(
+    XmlDocument document,
+    List<String> sharedStrings,
+  ) {
+    var updated = false;
+
+    final rows = document.descendants.whereType<XmlElement>().where(
+      (element) => element.name.local == 'row',
+    );
+
+    for (final row in rows) {
+      final rowNumber = int.tryParse(row.getAttribute('r')?.trim() ?? '');
+      if (rowNumber == null || rowNumber < 2) {
+        continue;
+      }
+
+      final totalCell = _cellByColumn(row, 'G');
+      if (totalCell == null) {
+        continue;
+      }
+
+      final formulaElements = totalCell.children
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 'f')
+          .toList();
+      if (formulaElements.isEmpty) {
+        continue;
+      }
+
+      final dueAmount = _parseCellToDouble(
+        _cellByColumn(row, 'E'),
+        sharedStrings,
+      );
+      final gstPercent =
+          _parseCellToDouble(_cellByColumn(row, 'F'), sharedStrings) ?? 0;
+
+      for (final formula in formulaElements) {
+        formula.parent?.children.remove(formula);
+      }
+
+      totalCell.removeAttribute('t');
+
+      final valueElements = totalCell.children
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 'v')
+          .toList();
+
+      if (dueAmount == null) {
+        for (final valueElement in valueElements) {
+          valueElement.parent?.children.remove(valueElement);
+        }
+        updated = true;
+        continue;
+      }
+
+      final totalDue = dueAmount + (dueAmount * gstPercent / 100);
+      final totalDueText = totalDue.toStringAsFixed(2);
+
+      if (valueElements.isNotEmpty) {
+        valueElements.first.innerText = totalDueText;
+      } else {
+        totalCell.children.add(
+          XmlElement(XmlName('v'), [], [XmlText(totalDueText)]),
+        );
+      }
+
+      updated = true;
+    }
+
+    return updated;
+  }
+
+  String _sanitizeUploadExcelBase64(String fileName, String fileBase64) {
+    final normalizedName = fileName.trim().toLowerCase();
+    if (!normalizedName.endsWith('.xlsx')) {
+      return fileBase64;
+    }
+
+    try {
+      final bytes = base64Decode(fileBase64);
+      final archive = ZipDecoder().decodeBytes(bytes, verify: true);
+      final sharedStrings = _extractSharedStrings(archive);
+      final updatedEntries = <String, List<int>>{};
+      var changed = false;
+
+      for (final file in archive.files) {
+        if (!file.isFile) {
+          continue;
+        }
+        final content = file.content as List<int>;
+
+        if (file.name.startsWith('xl/worksheets/sheet') &&
+            file.name.endsWith('.xml')) {
+          final document = XmlDocument.parse(utf8.decode(content));
+          final updated = _replaceFormulaWithValue(document, sharedStrings);
+          if (updated) {
+            updatedEntries[file.name] = utf8.encode(
+              document.toXmlString(pretty: false),
+            );
+            changed = true;
+          }
+        }
+      }
+
+      if (!changed) {
+        return fileBase64;
+      }
+
+      final sanitized = Archive();
+      for (final file in archive.files) {
+        if (!file.isFile) {
+          continue;
+        }
+        final originalContent = file.content as List<int>;
+        final outputContent = updatedEntries[file.name] ?? originalContent;
+        sanitized.addFile(
+          ArchiveFile(file.name, outputContent.length, outputContent),
+        );
+      }
+
+      final outputBytes = ZipEncoder().encode(sanitized);
+      if (outputBytes.isEmpty) {
+        return fileBase64;
+      }
+
+      return base64Encode(outputBytes);
+    } catch (_) {
+      return fileBase64;
+    }
+  }
+
   Future<void> _downloadSampleExcel() async {
     if (_downloadingSample) {
       return;
@@ -763,12 +976,10 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
         'Flat Id',
         'Due From',
         'Due Till',
-        'Due Name',
+        'Due Cause',
         'Due Amount',
-        'Penalty Amount',
-        'Fine Eligible',
-        'Fine %',
-        'Fine Type',
+        'GST%',
+        'Total Due Amount',
       ];
 
       for (var i = 0; i < headers.length; i++) {
@@ -784,26 +995,16 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
       sheet.getRangeByIndex(2, 3).setText('31-Mar-2026');
       sheet.getRangeByIndex(2, 4).setText('Maintenance');
       sheet.getRangeByIndex(2, 5).setNumber(2500);
-      sheet.getRangeByIndex(2, 6).setNumber(100);
-      sheet.getRangeByIndex(2, 7).setText('Yes');
-      sheet.getRangeByIndex(2, 8).setNumber(5);
-      sheet.getRangeByIndex(2, 9).setText('Simple');
-
-      final fineEligibleValidation = sheet
-          .getRangeByName('G2:G200')
-          .dataValidation;
-      fineEligibleValidation.allowType = xlsio.ExcelDataValidationType.user;
-      fineEligibleValidation.listOfValues = <String>['Yes', 'No'];
-
-      final fineTypeValidation = sheet.getRangeByName('I2:I200').dataValidation;
-      fineTypeValidation.allowType = xlsio.ExcelDataValidationType.user;
-      fineTypeValidation.listOfValues = <String>['Simple', 'Cumulative'];
+      sheet.getRangeByIndex(2, 6).setNumber(18);
+      sheet.getRangeByIndex(2, 7).formula = '=IF(E2="","",E2+(E2*F2/100))';
 
       sheet.getRangeByName('E2:E200').numberFormat = '0.00';
       sheet.getRangeByName('F2:F200').numberFormat = '0.00';
-      sheet.getRangeByName('H2:H200').numberFormat = '0.##';
+      sheet.getRangeByName('G2:G200').numberFormat = '0.00';
 
-      for (var col = 1; col <= 9; col++) {
+      // Keep all cells editable in the downloaded sample.
+
+      for (var col = 1; col <= headers.length; col++) {
         sheet.autoFitColumn(col);
       }
 
@@ -858,8 +1059,12 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
     });
 
     try {
+      final sanitizedFileBase64 = _sanitizeUploadExcelBase64(
+        _selectedFileName ?? '',
+        _selectedFileBase64!,
+      );
       final response = await ApiService.uploadPastDue(
-        fileBase64: _selectedFileBase64!,
+        fileBase64: sanitizedFileBase64,
       );
 
       if (!mounted) {
@@ -1976,6 +2181,12 @@ class UpdateSocietyDetailsPage extends StatefulWidget {
 }
 
 class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
+  static const List<String> _paymentGatewayOptions = <String>[
+    'RazorPay',
+    'PhonePay',
+    'NTT Atoms',
+  ];
+
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _apartmentNameController =
@@ -2241,15 +2452,90 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(isSuccess ? 'Update Successful' : 'Update Failed'),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('OK'),
+          final accentColor = isSuccess
+              ? const Color(0xFF0F8F82)
+              : const Color(0xFFB3261E);
+          final iconData = isSuccess
+              ? Icons.check_circle_rounded
+              : Icons.error_rounded;
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFDCEAE7)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(iconData, color: accentColor),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            isSuccess ? 'Update Successful' : 'Update Failed',
+                            style: const TextStyle(
+                              color: Color(0xFF124B45),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FBFA),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: Color(0xFF2B3F3B),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F8F82),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           );
         },
       );
@@ -2763,11 +3049,22 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
                   decoration: _decoration('Bank Name'),
                 ),
               ),
-              const SizedBox(width: 10),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
               Expanded(
                 child: TextFormField(
                   controller: input.accountNumber,
                   decoration: _decoration('Account Number'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.upiId,
+                  decoration: _decoration('Upi Id'),
                 ),
               ),
             ],
@@ -2799,19 +3096,52 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
                   decoration: _decoration('Account Name'),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextFormField(
-                  controller: input.razorPayKey,
-                  decoration: _decoration('Razor Pay Key'),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
-          TextFormField(
-            controller: input.razorPaySecret,
-            decoration: _decoration('Razor Pay Secret'),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value:
+                      _paymentGatewayOptions.contains(
+                        input.paymentGateway.text.trim(),
+                      )
+                      ? input.paymentGateway.text.trim()
+                      : null,
+                  decoration: _decoration('Payment Gateway'),
+                  items: _paymentGatewayOptions
+                      .map(
+                        (option) => DropdownMenuItem<String>(
+                          value: option,
+                          child: Text(option),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _updating
+                      ? null
+                      : (value) {
+                          setState(() {
+                            input.paymentGateway.text = value ?? '';
+                          });
+                        },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.paymentGatewayKey,
+                  decoration: _decoration('Payment Gateway Key'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: input.paymentGatewaySecret,
+                  decoration: _decoration('Payment Gateway Secret'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3067,8 +3397,10 @@ class _BankAccountInput {
     required this.ifscCode,
     required this.branch,
     required this.accountName,
-    required this.razorPayKey,
-    required this.razorPaySecret,
+    required this.paymentGatewayKey,
+    required this.paymentGatewaySecret,
+    required this.paymentGateway,
+    required this.upiId,
   });
 
   factory _BankAccountInput.empty() {
@@ -3078,8 +3410,10 @@ class _BankAccountInput {
       ifscCode: TextEditingController(),
       branch: TextEditingController(),
       accountName: TextEditingController(),
-      razorPayKey: TextEditingController(),
-      razorPaySecret: TextEditingController(),
+      paymentGatewayKey: TextEditingController(),
+      paymentGatewaySecret: TextEditingController(),
+      paymentGateway: TextEditingController(),
+      upiId: TextEditingController(),
     );
   }
 
@@ -3094,12 +3428,19 @@ class _BankAccountInput {
       accountName: TextEditingController(
         text: map['accountName']?.toString() ?? '',
       ),
-      razorPayKey: TextEditingController(
-        text: map['razorPayKey']?.toString() ?? '',
+      paymentGatewayKey: TextEditingController(
+        text: map['pgKey']?.toString() ?? map['razorPayKey']?.toString() ?? '',
       ),
-      razorPaySecret: TextEditingController(
-        text: map['razorPaySecret']?.toString() ?? '',
+      paymentGatewaySecret: TextEditingController(
+        text:
+            map['pgSecret']?.toString() ??
+            map['razorPaySecret']?.toString() ??
+            '',
       ),
+      paymentGateway: TextEditingController(
+        text: map['pgName']?.toString() ?? '',
+      ),
+      upiId: TextEditingController(text: map['upiId']?.toString() ?? ''),
     );
   }
 
@@ -3108,8 +3449,10 @@ class _BankAccountInput {
   final TextEditingController ifscCode;
   final TextEditingController branch;
   final TextEditingController accountName;
-  final TextEditingController razorPayKey;
-  final TextEditingController razorPaySecret;
+  final TextEditingController paymentGatewayKey;
+  final TextEditingController paymentGatewaySecret;
+  final TextEditingController paymentGateway;
+  final TextEditingController upiId;
 
   bool get hasAnyValue {
     return bankName.text.trim().isNotEmpty ||
@@ -3117,8 +3460,10 @@ class _BankAccountInput {
         ifscCode.text.trim().isNotEmpty ||
         branch.text.trim().isNotEmpty ||
         accountName.text.trim().isNotEmpty ||
-        razorPayKey.text.trim().isNotEmpty ||
-        razorPaySecret.text.trim().isNotEmpty;
+        paymentGatewayKey.text.trim().isNotEmpty ||
+        paymentGatewaySecret.text.trim().isNotEmpty ||
+        paymentGateway.text.trim().isNotEmpty ||
+        upiId.text.trim().isNotEmpty;
   }
 
   Map<String, dynamic> toMap() {
@@ -3128,8 +3473,10 @@ class _BankAccountInput {
       'ifscCode': ifscCode.text.trim(),
       'branch': branch.text.trim(),
       'accountName': accountName.text.trim(),
-      'razorPayKey': razorPayKey.text.trim(),
-      'razorPaySecret': razorPaySecret.text.trim(),
+      'pgKey': paymentGatewayKey.text.trim(),
+      'pgSecret': paymentGatewaySecret.text.trim(),
+      'pgName': paymentGateway.text.trim(),
+      'upiId': upiId.text.trim(),
     };
   }
 
@@ -3139,7 +3486,9 @@ class _BankAccountInput {
     ifscCode.dispose();
     branch.dispose();
     accountName.dispose();
-    razorPayKey.dispose();
-    razorPaySecret.dispose();
+    paymentGatewayKey.dispose();
+    paymentGatewaySecret.dispose();
+    paymentGateway.dispose();
+    upiId.dispose();
   }
 }

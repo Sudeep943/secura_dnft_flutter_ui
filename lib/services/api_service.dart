@@ -889,6 +889,34 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> getBankDetails() async {
+    if (token == null || userHeader == null) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/apartments/getBankDetails"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': Map<String, dynamic>.from(userHeader!),
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> updateApartmentDetails(
     Map<String, dynamic> requestBody,
   ) async {
@@ -1153,7 +1181,7 @@ class ApiService {
     if (token == null || userHeader == null) return null;
 
     final response = await http.post(
-      Uri.parse("$_baseUrl/payment/razorPayCreateOrder"),
+      Uri.parse("$_baseUrl/payment/payGatewayCreateOrder"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -1162,6 +1190,7 @@ class ApiService {
         'genericHeader': userHeader,
         'amountInPaisa': amountInPaisa,
         'currency': 'INR',
+        'paymentGateway': 'RAZORPAY',
         'eventDate': eventDate,
         'transactionType': transactionType,
       }),
@@ -1215,16 +1244,33 @@ class ApiService {
     required String razorpayPaymentId,
     required String razorpaySignature,
   }) async {
+    Map<String, dynamic> verifyRequestBody() {
+      final genericHeader = _publicPayFlatNo != null
+          ? <String, dynamic>{
+              'access': null,
+              'apartmentId': 'APRT001',
+              'flatNo': _publicPayFlatNo,
+            }
+          : Map<String, dynamic>.from(userHeader ?? <String, dynamic>{});
+
+      return {
+        'genericHeader': genericHeader,
+        'paymentGateway': 'RAZORPAY',
+        'data': {
+          'razorpay_order_id': razorpayOrderId,
+          'razorpay_payment_id': razorpayPaymentId,
+          'razorpay_signature': razorpaySignature,
+          'paymentGateway': 'RAZORPAY',
+        },
+      };
+    }
+
     http.Response response;
     if (_publicPayFlatNo != null) {
       response = await http.post(
         Uri.parse("$_baseUrl/publicapis/verifyPaymentPublic"),
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'razorpay_order_id': razorpayOrderId,
-          'razorpay_payment_id': razorpayPaymentId,
-          'razorpay_signature': razorpaySignature,
-        }),
+        body: jsonEncode(verifyRequestBody()),
       );
     } else if (token != null) {
       response = await http.post(
@@ -1233,21 +1279,13 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'razorpay_order_id': razorpayOrderId,
-          'razorpay_payment_id': razorpayPaymentId,
-          'razorpay_signature': razorpaySignature,
-        }),
+        body: jsonEncode(verifyRequestBody()),
       );
     } else {
       response = await http.post(
         Uri.parse("$_baseUrl/payment/verifyPayment"),
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'razorpay_order_id': razorpayOrderId,
-          'razorpay_payment_id': razorpayPaymentId,
-          'razorpay_signature': razorpaySignature,
-        }),
+        body: jsonEncode(verifyRequestBody()),
       );
     }
 
@@ -1291,9 +1329,9 @@ class ApiService {
     }
 
     const paths = [
-      '/publicapis/razorPayCreateOrderPublic',
-      '/publicapis/razorPayCreateOrder',
-      '/payment/razorPayCreateOrder',
+      '/publicapis/paygatewayCreateOrderPublic',
+      '/publicapis/paygatewayCreateOrder',
+      '/payment/paygatewayCreateOrder',
     ];
 
     for (final path in paths) {

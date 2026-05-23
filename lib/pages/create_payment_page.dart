@@ -86,12 +86,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _PaymentChoice(label: 'Optional', value: 'OPTIONAL'),
   ];
 
-  static const List<_PaymentChoice> _bankAccountOptions = [
-    _PaymentChoice(label: 'Axis Bank • 123456', value: 'BANK123456'),
-    _PaymentChoice(label: 'HDFC Bank • 654321', value: 'BANK654321'),
-    _PaymentChoice(label: 'ICICI Bank • 112233', value: 'BANK112233'),
-  ];
-
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _paymentNameController = TextEditingController();
   final TextEditingController _shortDetailsController = TextEditingController();
@@ -109,6 +103,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   List<_SocietyCollectionType> _societyCollectionTypes = [];
   Map<String, _SocietyCollectionType> _societyCollectionTypeMap = {};
   bool _loadingSocietyCollectionTypes = false;
+  bool _loadingBankAccounts = false;
   String? _paymentCauseTypeConstant;
   bool _isCustomPaymentCause = false;
   String? _paymentCapita;
@@ -117,6 +112,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
   Set<String> _allowedPaymentModes = <String>{};
   String? _paymentType;
   String? _bankAccountId;
+  List<_PaymentChoice> _bankAccountOptions = const <_PaymentChoice>[];
   bool _isPartialPaymentAllowed = false;
   DateTime? _collectionStartDate;
   DateTime? _collectionEndDate;
@@ -187,6 +183,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _paymentNameController.addListener(_onSectionProgressChanged);
     _shortDetailsController.addListener(_onSectionProgressChanged);
     _fetchSocietyCollectionTypes();
+    _fetchBankAccountOptions();
   }
 
   @override
@@ -448,6 +445,146 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         });
       }
     }
+  }
+
+  String _firstNonEmptyText(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  List<_PaymentChoice> _extractBankAccountChoices(
+    Map<String, dynamic>? response,
+  ) {
+    final payload = response ?? const <String, dynamic>{};
+    dynamic rawList = payload['bankAccountDetails'];
+    rawList ??= payload['bankDetails'];
+    rawList ??= payload['bankAccounts'];
+    rawList ??= payload['data'];
+
+    if (rawList is! List) {
+      return const <_PaymentChoice>[];
+    }
+
+    final seen = <String>{};
+    final options = <_PaymentChoice>[];
+
+    for (final entry in rawList.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(entry);
+      final value = _firstNonEmptyText(item, [
+        'BankDetailsID',
+        'bankAccountId',
+        'accountId',
+        'bankId',
+        'id',
+        'accountNumber',
+      ]);
+      if (value.isEmpty || !seen.add(value)) {
+        continue;
+      }
+
+      final bankName = _firstNonEmptyText(item, ['bankName', 'bank', 'name']);
+      final accountName = _firstNonEmptyText(item, ['accountName']);
+      final accountNumber = _firstNonEmptyText(item, [
+        'accountNumber',
+        'accountNo',
+      ]);
+
+      var label = bankName;
+      if (label.isEmpty) {
+        label = accountName.isNotEmpty ? accountName : 'Bank Account';
+      }
+
+      final maskedAccount = accountNumber.isEmpty
+          ? ''
+          : 'XXXX${accountNumber.substring(accountNumber.length >= 4 ? accountNumber.length - 4 : 0)}';
+
+      options.add(
+        _PaymentChoice(
+          label: label,
+          value: value,
+          trailingLabel: maskedAccount,
+        ),
+      );
+    }
+
+    return options;
+  }
+
+  Future<void> _fetchBankAccountOptions() async {
+    if (_loadingBankAccounts) {
+      return;
+    }
+
+    setState(() {
+      _loadingBankAccounts = true;
+    });
+
+    try {
+      final response = await ApiService.getBankDetails();
+      if (!mounted) {
+        return;
+      }
+
+      final messageCode = response?['messageCode']?.toString().trim() ?? '';
+      if (!messageCode.toUpperCase().startsWith('SUCC_')) {
+        return;
+      }
+
+      final options = _extractBankAccountChoices(response);
+      if (options.isEmpty) {
+        return;
+      }
+
+      final hasSelected = options.any((item) => item.value == _bankAccountId);
+
+      setState(() {
+        _bankAccountOptions = options;
+        if (!hasSelected) {
+          _bankAccountId = null;
+        }
+      });
+    } catch (_) {
+      // Ignore failures and keep existing options.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingBankAccounts = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildBankAccountDropdownItem(_PaymentChoice option) {
+    final trailing = option.trailingLabel?.trim() ?? '';
+    if (trailing.isEmpty) {
+      return Text(option.label, overflow: TextOverflow.ellipsis);
+    }
+
+    return SizedBox(
+      width: 260,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(option.label, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 88,
+            child: Text(
+              trailing,
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Colors.black45),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPaymentCauseDropdownItem(String collectionType, String sacCode) {
@@ -3297,16 +3434,22 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                   SizedBox(
                     width: mobile ? double.infinity : 320,
                     child: DropdownButtonFormField<String>(
-                      initialValue: _bankAccountId,
+                      initialValue: (() {
+                        final matches = _bankAccountOptions
+                            .where((option) => option.value == _bankAccountId)
+                            .length;
+                        return matches == 1 ? _bankAccountId : null;
+                      })(),
                       decoration: _inputDecoration(label: 'Bank Account'),
                       items: _bankAccountOptions
                           .map(
                             (option) => DropdownMenuItem<String>(
                               value: option.value,
-                              child: Text(option.label),
+                              child: _buildBankAccountDropdownItem(option),
                             ),
                           )
                           .toList(),
+                      onTap: _fetchBankAccountOptions,
                       onChanged: (value) {
                         setState(() {
                           _bankAccountId = value;
@@ -4020,10 +4163,15 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
 }
 
 class _PaymentChoice {
-  const _PaymentChoice({required this.label, required this.value});
+  const _PaymentChoice({
+    required this.label,
+    required this.value,
+    this.trailingLabel,
+  });
 
   final String label;
   final String value;
+  final String? trailingLabel;
 }
 
 class _SocietyCollectionType {

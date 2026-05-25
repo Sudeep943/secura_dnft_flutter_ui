@@ -711,6 +711,51 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
   int? _failedRows;
   String? _responseFileBase64;
 
+  // Dropdown data for sample Excel
+  List<String> _collectionTypes = [];
+  List<String> _bankAccountIds = [];
+  late Future<void> _dataFetchFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataFetchFuture = _fetchDropdownData();
+  }
+
+  Future<void> _fetchDropdownData() async {
+    // Fetch collection types independently so a bank-details failure doesn't
+    // also lose the collection types (and vice-versa).
+    try {
+      final response = await ApiService.getSocietyCollectionTypes();
+      if (mounted && response != null) {
+        final rawList = response['societyCollectionTypes'];
+        if (rawList is List) {
+          final types = rawList
+              .whereType<Map>()
+              .map((item) => item['collectionType']?.toString().trim() ?? '')
+              .where((t) => t.isNotEmpty)
+              .toList();
+          if (mounted) setState(() => _collectionTypes = types);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final response = await ApiService.getBankDetails();
+      if (mounted && response != null) {
+        final rawList = response['bankAccountDetails'];
+        if (rawList is List) {
+          final ids = rawList
+              .whereType<Map>()
+              .map((item) => item['BankDetailsID']?.toString().trim() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toList();
+          if (mounted) setState(() => _bankAccountIds = ids);
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _fileController.dispose();
@@ -965,6 +1010,11 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
     }
     _downloadingSample = true;
 
+    // Ensure dropdown data is ready before generating the Excel file.
+    // If _fetchDropdownData has already completed this returns immediately;
+    // if it is still in flight we wait for it so the dropdowns are populated.
+    await _dataFetchFuture;
+
     xlsio.Workbook? workbook;
 
     try {
@@ -980,6 +1030,8 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
         'Due Amount',
         'GST%',
         'Total Due Amount',
+        'Cause',
+        'BankAccountID',
       ];
 
       for (var i = 0; i < headers.length; i++) {
@@ -1001,6 +1053,50 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
       sheet.getRangeByName('E2:E200').numberFormat = '0.00';
       sheet.getRangeByName('F2:F200').numberFormat = '0.00';
       sheet.getRangeByName('G2:G200').numberFormat = '0.00';
+
+      // Write dropdown source values into a hidden sheet to avoid Excel's
+      // 255-character formula1 limit that applies to inline list validation.
+      // Using a range reference (dataRange) has no such limit.
+      if (_collectionTypes.isNotEmpty || _bankAccountIds.isNotEmpty) {
+        final dropSheet = workbook.worksheets.addWithName('_Dropdowns');
+        dropSheet.visibility = xlsio.WorksheetVisibility.hidden;
+
+        // Column A — Cause values
+        for (var i = 0; i < _collectionTypes.length; i++) {
+          dropSheet.getRangeByIndex(i + 1, 1).setText(_collectionTypes[i]);
+        }
+
+        // Column B — BankAccountID values
+        for (var i = 0; i < _bankAccountIds.length; i++) {
+          dropSheet.getRangeByIndex(i + 1, 2).setText(_bankAccountIds[i]);
+        }
+
+        // Cause dropdown (col H) → reference _Dropdowns column A
+        if (_collectionTypes.isNotEmpty) {
+          final causeValidation = sheet
+              .getRangeByName('H2:H200')
+              .dataValidation;
+          causeValidation.allowType = xlsio.ExcelDataValidationType.user;
+          causeValidation.dataRange = dropSheet.getRangeByIndex(
+            1,
+            1,
+            _collectionTypes.length,
+            1,
+          );
+        }
+
+        // BankAccountID dropdown (col I) → reference _Dropdowns column B
+        if (_bankAccountIds.isNotEmpty) {
+          final bankValidation = sheet.getRangeByName('I2:I200').dataValidation;
+          bankValidation.allowType = xlsio.ExcelDataValidationType.user;
+          bankValidation.dataRange = dropSheet.getRangeByIndex(
+            1,
+            2,
+            _bankAccountIds.length,
+            2,
+          );
+        }
+      }
 
       // Keep all cells editable in the downloaded sample.
 
@@ -2204,6 +2300,13 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
   final TextEditingController _pinController = TextEditingController();
   final TextEditingController _addressTypeController = TextEditingController();
 
+  // Contact details controllers
+  final TextEditingController _contactMobileController =
+      TextEditingController();
+  final TextEditingController _contactLandlineController =
+      TextEditingController();
+  final TextEditingController _contactEmailController = TextEditingController();
+
   final List<_ExecutiveMemberInput> _executiveMembers =
       <_ExecutiveMemberInput>[];
   final List<_BankAccountInput> _bankAccounts = <_BankAccountInput>[];
@@ -2213,6 +2316,7 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
   String? _error;
   bool _expandApartmentIdentity = false;
   bool _expandAddress = false;
+  bool _expandContactDetails = false;
   bool _expandExecutiveMembers = false;
   bool _expandBankAccounts = false;
   String _apartmentLogoData = '';
@@ -2241,6 +2345,9 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
     _policeStationController.dispose();
     _pinController.dispose();
     _addressTypeController.dispose();
+    _contactMobileController.dispose();
+    _contactLandlineController.dispose();
+    _contactEmailController.dispose();
     for (final member in _executiveMembers) {
       member.dispose();
     }
@@ -2328,6 +2435,15 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
       _bankAccounts.add(_BankAccountInput.empty());
     }
 
+    // Contact details
+    final contactDetails = response['contactDetails'];
+    if (contactDetails is Map) {
+      final c = Map<String, dynamic>.from(contactDetails);
+      _contactMobileController.text = c['mobileNumber']?.toString() ?? '';
+      _contactLandlineController.text = c['landlinenumber']?.toString() ?? '';
+      _contactEmailController.text = c['emailId']?.toString() ?? '';
+    }
+
     setState(() {
       _loading = false;
     });
@@ -2377,6 +2493,14 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
         _apartmentLetterHeadName = selected.name;
       }
     });
+  }
+
+  Map<String, dynamic> _buildContactDetailsRequest() {
+    return {
+      'mobileNumber': _contactMobileController.text.trim(),
+      'landlinenumber': _contactLandlineController.text.trim(),
+      'emailId': _contactEmailController.text.trim(),
+    };
   }
 
   Map<String, dynamic> _buildAddressRequest() {
@@ -2435,6 +2559,7 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
       'address': _buildAddressRequest(),
       'executiveMemberList': _buildExecutiveMembersRequest(),
       'apartmentLetterHead': _apartmentLetterHeadData,
+      'contactDetails': _buildContactDetailsRequest(),
     };
 
     try {
@@ -2784,6 +2909,39 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
             controller: _apartmentNameController,
             readOnly: true,
             decoration: _decoration('Apartment Name'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactDetailsSection() {
+    return _buildSection(
+      title: 'Contact Details',
+      expanded: _expandContactDetails,
+      onExpansionChanged: (expanded) {
+        setState(() {
+          _expandContactDetails = expanded;
+        });
+      },
+      child: Column(
+        children: [
+          TextFormField(
+            controller: _contactMobileController,
+            keyboardType: TextInputType.phone,
+            decoration: _decoration('Mobile Number'),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _contactLandlineController,
+            keyboardType: TextInputType.phone,
+            decoration: _decoration('Landline Number'),
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _contactEmailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: _decoration('Email Address'),
           ),
         ],
       ),
@@ -3248,6 +3406,7 @@ class _UpdateSocietyDetailsPageState extends State<UpdateSocietyDetailsPage> {
             const SizedBox(height: 20),
             _buildTopSection(),
             _buildAddressSection(),
+            _buildContactDetailsSection(),
             _buildExecutiveMembersSection(),
             _buildBankAccountsSection(),
             const SizedBox(height: 6),

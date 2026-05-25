@@ -1203,6 +1203,44 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> createPaymentGatewayOrder({
+    required String paymentGateway,
+    required String amountInPaisa,
+    required String eventDate,
+    required String transactionType,
+    String currency = 'INR',
+    Map<String, dynamic>? data,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': userHeader,
+      'amountInPaisa': amountInPaisa,
+      'currency': currency,
+      'paymentGateway': paymentGateway,
+      'eventDate': eventDate,
+      'transactionType': transactionType,
+    };
+    if (data != null && data.isNotEmpty) {
+      requestBody['data'] = data;
+    }
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/payment/payGatewayCreateOrder"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> payDues(
     Map<String, dynamic> requestBody,
   ) async {

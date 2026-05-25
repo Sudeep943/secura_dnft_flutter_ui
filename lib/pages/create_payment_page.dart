@@ -57,6 +57,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     ),
     _PaymentChoice(label: 'ONLINE', value: 'ONLINE'),
     _PaymentChoice(label: 'Credit Note', value: 'CREDIT_NOTE'),
+    _PaymentChoice(label: 'QR Payment', value: 'SOCIETY_QR'),
   ];
 
   static const List<_PaymentChoice> _chargeTypeOptions = [
@@ -3041,7 +3042,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
           onTap: () => _openAllowedPaymentModesDialog(field),
           child: InputDecorator(
             decoration: _inputDecoration(
-              label: 'Allowes Tenders',
+              label: 'Allowed Tender',
               suffix: const Icon(Icons.keyboard_arrow_down_rounded),
             ).copyWith(errorText: field.errorText),
             child: Text(

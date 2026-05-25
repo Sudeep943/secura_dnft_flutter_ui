@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
@@ -35,6 +36,7 @@ class _HomePageState extends State<HomePage> {
 
   // ── Worklist constants ──────────────────────────────────────
   static const String _worklistStatusPending = 'PENDING';
+
   static const String _trnsStatusFailed = 'Failed';
 
   Map<String, dynamic>? dashboardData;
@@ -1916,12 +1918,14 @@ class _DueGroupData {
     required this.groupId,
     required this.paymentId,
     required this.paymentName,
+    required this.bankId,
     required this.dues,
   });
 
   final String groupId;
   final String paymentId;
   final String paymentName;
+  final String bankId;
   final List<Map<String, dynamic>> dues;
 }
 
@@ -2006,6 +2010,27 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     return '';
   }
 
+  String _bankIdFromGroupKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map) {
+        final bankId = decoded['bankId']?.toString().trim() ?? '';
+        if (bankId.isNotEmpty && bankId.toLowerCase() != 'null') {
+          return bankId;
+        }
+      }
+    } catch (_) {
+      // Not a JSON key, use fallback below.
+    }
+
+    return '';
+  }
+
   List<Map<String, dynamic>> _normalizePaymentMaps(dynamic rawValue) {
     final list = <Map<String, dynamic>>[];
 
@@ -2033,6 +2058,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
 
         final paymentName = _paymentNameFromGroupKey(rawKey);
         final paymentId = _paymentIdFromGroupKey(rawKey);
+        final bankId = _bankIdFromGroupKey(rawKey);
         final groupId = paymentId.isNotEmpty
             ? paymentId
             : '$paymentName-${rawKey.hashCode}';
@@ -2042,6 +2068,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
             groupId: groupId,
             paymentId: paymentId,
             paymentName: paymentName,
+            bankId: bankId,
             dues: dues,
           ),
         );
@@ -2081,6 +2108,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           groupId: groupId,
           paymentId: groupId,
           paymentName: paymentNames[groupId] ?? '--',
+          bankId: '',
           dues: _sortDuesByCycleSequence(dues),
         ),
       );
@@ -2202,6 +2230,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     }
 
     return modes.toSet().toList();
+  }
+
+  bool _isSocietyQrTender(String tender) {
+    return tender.trim().toUpperCase() == 'SOCIETY_QR';
   }
 
   String _rowPaymentKey(Map<String, dynamic> payment) {
@@ -2477,7 +2509,91 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     );
   }
 
-  Future<void> _handlePayPressed(Map<String, dynamic> payment) async {
+  Future<bool> _createDeepLinkOrder({
+    required Map<String, dynamic> payment,
+    required double netPayable,
+    required String transactionId,
+    required String bankId,
+  }) async {
+    final tid = transactionId.trim();
+    if (tid.isEmpty || tid == '--') {
+      _showStatusSnack(
+        'Payment recorded, but transaction ID was missing for Society QR order creation.',
+        isError: true,
+      );
+      return false;
+    }
+
+    if (bankId.trim().isEmpty) {
+      _showStatusSnack(
+        'Payment recorded, but bank ID was missing for Society QR order creation.',
+        isError: true,
+      );
+      return false;
+    }
+
+    final response = await ApiService.createPaymentGatewayOrder(
+      paymentGateway: 'DEEPLINK',
+      amountInPaisa: _toPaise(netPayable).toString(),
+      eventDate: DateTime.now().toIso8601String(),
+      transactionType: 'DEEPLINK',
+      data: {'tid': tid, 'tn': tid, 'bankId': bankId.trim()},
+    );
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    final responseData = response?['data'];
+    final responseMap = responseData is Map
+        ? Map<String, dynamic>.from(responseData)
+        : <String, dynamic>{};
+    final upiPaymentURL =
+        responseMap['upiPaymentURL']?.toString().trim() ??
+        responseMap['upiUrl']?.toString().trim() ??
+        '';
+
+    if (messageCode != 'SUCC_MESSAGE_44' && upiPaymentURL.isEmpty) {
+      _showStatusSnack(
+        response?['message']?.toString() ??
+            'Unable to create Society QR payment order.',
+        isError: true,
+      );
+      return false;
+    }
+
+    await _showDeepLinkPaymentModal(
+      upiPaymentURL: upiPaymentURL,
+      amount: _formatAmountForRequest(netPayable),
+      bankName: responseMap['bankName']?.toString().trim() ?? '',
+      accountHolderName:
+          responseMap['accountHolderName']?.toString().trim() ?? '',
+    );
+
+    return true;
+  }
+
+  Future<void> _showDeepLinkPaymentModal({
+    required String upiPaymentURL,
+    required String amount,
+    required String bankName,
+    required String accountHolderName,
+  }) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _DeepLinkPaymentDialog(
+        upiPaymentURL: upiPaymentURL,
+        amount: amount,
+        bankName: bankName,
+        accountHolderName: accountHolderName,
+      ),
+    );
+  }
+
+  Future<void> _handlePayPressed(
+    Map<String, dynamic> payment, {
+    String bankId = '',
+  }) async {
     final selection = await showDialog<_DueTenderSelection>(
       context: context,
       builder: (dialogContext) => _DueTenderDialog(
@@ -2528,6 +2644,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         transactionStatus = onlineOutcome.transactionStatus;
         thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
         thirdPartyName = 'RAZORPAY';
+      } else if (_isSocietyQrTender(selection.tender)) {
+        transactionStatus = 'ON_HOLD';
+        thirdPartyName = 'DEEPLINKUPI';
       } else {
         transactionStatus = 'Pending';
       }
@@ -2541,7 +2660,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         'amount': _formatAmountForRequest(selection.netPayable),
         'paymentTenderDataList': [
           {
-            'tenderName': selection.tender,
+            'tenderName': _isSocietyQrTender(selection.tender)
+                ? 'QR_PAYMENT'
+                : selection.tender,
             'amountPaid': _formatAmountForRequest(selection.netPayable),
           },
         ],
@@ -2580,6 +2701,21 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           return;
         }
         Navigator.of(context).pop();
+        if (_isSocietyQrTender(selection.tender)) {
+          await _createDeepLinkOrder(
+            payment: payment,
+            netPayable: selection.netPayable,
+            transactionId: transactionId,
+            bankId: bankId,
+          );
+          await _showPayDuesSuccessDialog(
+            hostContext: hostContext,
+            message: successMessage,
+            transactionId: transactionId,
+            receiptBase64: receiptBase64,
+          );
+          return;
+        }
         await _showPayDuesSuccessDialog(
           hostContext: hostContext,
           message: successMessage,
@@ -2680,7 +2816,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     );
   }
 
-  Widget _buildSelectedDueSummary(Map<String, dynamic> due) {
+  Widget _buildSelectedDueSummary(
+    Map<String, dynamic> due, {
+    required String bankId,
+  }) {
     final amount = due['amount']?.toString().trim() ?? '0';
     final gstAmount = due['gstAmount']?.toString().trim() ?? '0';
     final gstPercentage = due['gstPercentage']?.toString().trim() ?? '';
@@ -2861,7 +3000,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                   vertical: 10,
                 ),
               ),
-              onPressed: isSubmitting ? null : () => _handlePayPressed(due),
+              onPressed: isSubmitting
+                  ? null
+                  : () => _handlePayPressed(due, bankId: bankId),
               child: isSubmitting
                   ? const SizedBox(
                       height: 16,
@@ -2957,7 +3098,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     return _toCamelCase(rawCycle);
   }
 
-  Widget _buildOverdueDueItem(Map<String, dynamic> due) {
+  Widget _buildOverdueDueItem(
+    Map<String, dynamic> due, {
+    required String bankId,
+  }) {
     final cycle = _displayCycle(due);
     final dueDateText = due['dueDate']?.toString().trim() ?? '--';
 
@@ -2992,7 +3136,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           ],
         ),
         childrenPadding: const EdgeInsets.all(12),
-        children: [_buildSelectedDueSummary(due)],
+        children: [_buildSelectedDueSummary(due, bankId: bankId)],
       ),
     );
   }
@@ -3084,7 +3228,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           else if (selectedTab == _DueSectionTab.overdue)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: dues.map((due) => _buildOverdueDueItem(due)).toList(),
+              children: dues
+                  .map((due) => _buildOverdueDueItem(due, bankId: group.bankId))
+                  .toList(),
             )
           else ...[
             Align(
@@ -3126,7 +3272,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
               ),
             ),
             const SizedBox(height: 8),
-            if (selectedDue.isNotEmpty) _buildSelectedDueSummary(selectedDue),
+            if (selectedDue.isNotEmpty)
+              _buildSelectedDueSummary(selectedDue, bankId: group.bankId),
           ],
         ],
       ),
@@ -3432,6 +3579,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   String _displayMode(String mode) {
+    if (mode.trim().toUpperCase() == 'SOCIETY_QR') return 'QR Payment';
     final normalized = mode.replaceAll('_', ' ');
     final words = normalized
         .split(' ')
@@ -5051,6 +5199,278 @@ class _TransactionDetailModalState extends State<_TransactionDetailModal> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DeepLinkPaymentDialog extends StatefulWidget {
+  const _DeepLinkPaymentDialog({
+    required this.upiPaymentURL,
+    required this.amount,
+    required this.bankName,
+    required this.accountHolderName,
+  });
+
+  final String upiPaymentURL;
+  final String amount;
+  final String bankName;
+  final String accountHolderName;
+
+  @override
+  State<_DeepLinkPaymentDialog> createState() => _DeepLinkPaymentDialogState();
+}
+
+class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
+  static const Duration _countdownDuration = Duration(minutes: 3);
+
+  late int _remainingSeconds;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _remainingSeconds = _countdownDuration.inSeconds;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_remainingSeconds <= 1) {
+        timer.cancel();
+        Navigator.of(context).pop();
+        return;
+      }
+
+      setState(() {
+        _remainingSeconds--;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _countdownLabel {
+    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQr = widget.upiPaymentURL.isNotEmpty;
+    // Ensure amount always has ₹ prefix
+    final displayAmount = widget.amount.startsWith('₹')
+        ? widget.amount
+        : '₹${widget.amount}';
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF7FCFA),
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFD7EAE3)),
+      ),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2F3EF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.qr_code_rounded,
+              color: Color(0xFF0F8F82),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'QR Payment',
+              style: TextStyle(
+                color: Color(0xFF124B45),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── QR code ──────────────────────────────────────
+              if (hasQr)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFD7EAE3)),
+                  ),
+                  child: QrImageView(
+                    data: widget.upiPaymentURL,
+                    version: QrVersions.auto,
+                    size: 220,
+                    backgroundColor: Colors.white,
+                    eyeStyle: const QrEyeStyle(
+                      eyeShape: QrEyeShape.square,
+                      color: Color(0xFF124B45),
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Color(0xFF0F8F82),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFCC80)),
+                  ),
+                  child: const Text(
+                    'QR code not available — UPI URL was not returned by the payment gateway.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF7C4D00), fontSize: 13),
+                  ),
+                ),
+              const SizedBox(height: 14),
+              // ── Amount ───────────────────────────────────────
+              Text(
+                displayAmount,
+                style: const TextStyle(
+                  color: Color(0xFF0F8F82),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Scan this QR code using any UPI app to pay',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+              if (widget.bankName.isNotEmpty ||
+                  widget.accountHolderName.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD7EAE3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.bankName.isNotEmpty)
+                        Text(
+                          'Bank: ${widget.bankName}',
+                          style: const TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      if (widget.accountHolderName.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Account Holder: ${widget.accountHolderName}',
+                          style: const TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              // ── Instruction text ─────────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5F2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFB2DFDB)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pay Using This QR.',
+                      style: TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'After Payment Close The Modal, Transaction Receipt Will be Mailed To The Registered Mail Id Once The Payment is Verified.',
+                      style: TextStyle(
+                        color: Color(0xFF124B45),
+                        fontSize: 12,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // ── Countdown ────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.timer_outlined,
+                    size: 14,
+                    color: Colors.black45,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Closes in $_countdownLabel',
+                    style: const TextStyle(color: Colors.black45, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

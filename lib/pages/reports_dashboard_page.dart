@@ -215,6 +215,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   static const Color _panelBg = Color(0xFFF5FBF9);
 
   late TabController _tabController;
+  final ScrollController _defaulterTableScrollController = ScrollController();
   int _activeTabIndex = 0;
 
   // Pie chart touch state
@@ -227,6 +228,14 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   String _balanceSheetToDate = '';
   List<_BalanceSheetCreditRow> _creditRows = const [];
   List<_BalanceSheetDebitRow> _debitRows = const [];
+
+  // Defaulter report state
+  bool _isDefaulterLoading = false;
+  String? _defaulterError;
+  List<Map<String, dynamic>> _defaulterList = const [];
+  int _totalDefaulters = 0;
+  String _totalExpectedToBeCollect = '0';
+  String _totalMoneyCollected = '0';
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -249,6 +258,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         setState(() {});
       }
     });
+    _loadDefaulterData();
   }
 
   Future<void> _loadBalanceSheet() async {
@@ -298,6 +308,97 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           _isBalanceSheetLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadDefaulterData() async {
+    if (_isDefaulterLoading) return;
+    setState(() {
+      _isDefaulterLoading = true;
+      _defaulterError = null;
+    });
+    try {
+      final header = ApiService.userHeader;
+      if (header == null || header.isEmpty) {
+        setState(() {
+          _isDefaulterLoading = false;
+          _defaulterError = 'Session expired. Please log in again.';
+        });
+        return;
+      }
+      final hdr = Map<String, dynamic>.from(header);
+
+      // Step 1: fetch all payments to extract active payment IDs
+      final pmtRes = await ApiService.getPayment({
+        'genericHeader': hdr,
+        'paymentId': '',
+      });
+      if (!mounted) return;
+
+      final rawPmtList = pmtRes?['paymentList'];
+      final activeIds = (rawPmtList is List)
+          ? rawPmtList
+                .whereType<Map>()
+                .where(
+                  (p) =>
+                      (p['status']?.toString() ?? '').toLowerCase() == 'active',
+                )
+                .map((p) => p['paymentId']?.toString() ?? '')
+                .where((id) => id.isNotEmpty)
+                .toList()
+          : <String>[];
+
+      if (activeIds.isEmpty) {
+        setState(() {
+          _isDefaulterLoading = false;
+          _defaulterList = const [];
+          _totalDefaulters = 0;
+          _totalExpectedToBeCollect = '0';
+          _totalMoneyCollected = '0';
+        });
+        return;
+      }
+
+      // Step 2: fetch defaulter list using active payment IDs
+      final dfRes = await ApiService.getDefaulterList({
+        'genericHeader': hdr,
+        'paymentId': activeIds,
+      });
+      if (!mounted) return;
+
+      if (dfRes == null) {
+        setState(() {
+          _isDefaulterLoading = false;
+          _defaulterError = 'Failed to load defaulter list.';
+        });
+        return;
+      }
+
+      final rawDfList = dfRes['defaulterList'];
+      final dfList = (rawDfList is List)
+          ? rawDfList
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      setState(() {
+        _isDefaulterLoading = false;
+        _defaulterList = dfList;
+        _totalDefaulters = (dfRes['totalDefaulters'] is int)
+            ? dfRes['totalDefaulters'] as int
+            : int.tryParse(dfRes['totalDefaulters']?.toString() ?? '') ??
+                  dfList.length;
+        _totalExpectedToBeCollect =
+            dfRes['totalExpectedToBeCollect']?.toString() ?? '0';
+        _totalMoneyCollected = dfRes['totalMoneyCollected']?.toString() ?? '0';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isDefaulterLoading = false;
+        _defaulterError = 'Unable to load defaulter data. Please try again.';
+      });
     }
   }
 
@@ -369,6 +470,13 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       parts.insert(0, prefix);
     }
     return '$sign₹${parts.join(',')},$last3';
+  }
+
+  String _fmtAmt(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    if (s.isEmpty || s == '-') return '-';
+    final v = double.tryParse(s.replaceAll(RegExp(r'[^0-9.-]'), ''));
+    return v != null ? _formatInr(v) : s;
   }
 
   List<_BalanceSheetCreditRow> _orderedCreditRows() {
@@ -1148,6 +1256,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   @override
   void dispose() {
+    _defaulterTableScrollController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -1359,10 +1468,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       ),
       _KpiData(
         'Defaulters',
-        '2 / 8',
+        _isDefaulterLoading ? '…' : '$_totalDefaulters',
         Icons.warning_amber_rounded,
         const Color(0xFFFFB300),
-        note: 'To collect: ₹20,000',
       ),
       _KpiData(
         'Income/Expense Ratio',
@@ -2090,31 +2198,397 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   }
 
   Widget _buildDefaulterTab() {
-    return _ReportSheetScaffold(
-      title: 'Defaulter Report',
-      subtitle: 'April 2026 – Pending owners list',
-      icon: Icons.warning_amber_rounded,
-      summaryCards: const [
-        _SummaryCard(
-          label: 'Defaulters',
-          value: '4 Units',
-          color: Color(0xFFFFB300),
+    if (_isDefaulterLoading) {
+      return const Center(child: CircularProgressIndicator(color: _brandColor));
+    }
+    if (_defaulterError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _defaulterError!,
+              style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _brandColor),
+              onPressed: _loadDefaulterData,
+              child: const Text('Retry'),
+            ),
+          ],
         ),
-        _SummaryCard(
-          label: 'Amount To Be Collected',
-          value: '₹38,000',
-          color: Color(0xFFE57373),
+      );
+    }
+
+    return Scrollbar(
+      controller: _defaulterTableScrollController,
+      thumbVisibility: false,
+      trackVisibility: false,
+      interactive: true,
+      notificationPredicate: (notification) {
+        return notification.metrics.axis == Axis.horizontal;
+      },
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title row
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _brandColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: _brandColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Defaulter Report',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _brandTextColor,
+                      ),
+                    ),
+                    Text(
+                      'Live – Pending dues by unit',
+                      style: TextStyle(fontSize: 12, color: Colors.black45),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: _isDefaulterLoading ? null : _loadDefaulterData,
+                  icon: const Icon(Icons.refresh_rounded, color: _brandColor),
+                  tooltip: 'Refresh',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Summary cards
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDfSummaryCard(
+                    'Defaulters',
+                    '$_totalDefaulters Units',
+                    const Color(0xFFFFB300),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDfSummaryCard(
+                    'Yet To Collect',
+                    _fmtAmt(_totalExpectedToBeCollect),
+                    const Color(0xFFE57373),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDfSummaryCard(
+                    'Collected Amount',
+                    _fmtAmt(_totalMoneyCollected),
+                    const Color(0xFF0F8F82),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Table
+            _buildDefaulterTable(),
+          ],
         ),
-        _SummaryCard(
-          label: 'Late Fee Expected',
-          value: '₹3,800',
-          color: Color(0xFF124B45),
+      ),
+    );
+  }
+
+  Widget _buildDfSummaryCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Column widths for the defaulter table (14 columns)
+  static const List<double> _dfColW = [
+    50, // Sl
+    100, // Flat
+    180, // Owner Name
+    140, // Phone Number
+    180, // Email ID
+    110, // Built Up Area
+    130, // Payment ID
+    160, // Payment Name
+    130, // Payment Capita
+    110, // Total Due
+    130, // Penalty Amount
+    110, // Amount Paid
+    110, // Amount Left
+    120, // Last Due Date
+  ];
+
+  static const List<String> _dfHeaders = [
+    'Sl',
+    'Flat',
+    'Owner Name',
+    'Phone Number',
+    'Email ID',
+    'Built Up Area',
+    'Payment ID',
+    'Payment Name',
+    'Payment Capita',
+    'Total Due',
+    'Penalty Amount',
+    'Amount Paid',
+    'Amount Left',
+    'Last Due Date',
+  ];
+
+  static const Color _dfGridColor = Color(0xFFB8C7C5);
+
+  Widget _buildDefaulterTable() {
+    // Width of the payment-details block (cols 6–13)
+    const double pmtBlockW =
+        130 + 160 + 130 + 110 + 130 + 110 + 110 + 120; // 990
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE0F0EE)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SingleChildScrollView(
+          controller: _defaulterTableScrollController,
+          scrollDirection: Axis.horizontal,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header row ──────────────────────────────────────────────
+              Container(
+                color: const Color(0xFFE8F7F5),
+                child: Row(
+                  children: List.generate(
+                    _dfHeaders.length,
+                    (i) => _dfHeaderCell(_dfColW[i], _dfHeaders[i]),
+                  ),
+                ),
+              ),
+              const Divider(height: 1, thickness: 1, color: _dfGridColor),
+
+              // ── Data rows ───────────────────────────────────────────────
+              if (_defaulterList.isEmpty)
+                SizedBox(
+                  width: _dfColW.fold<double>(0.0, (a, b) => a + b),
+                  child: const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                      child: Text(
+                        'No defaulters found.',
+                        style: TextStyle(color: Colors.black45),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...List.generate(_defaulterList.length, (i) {
+                  final entry = _defaulterList[i];
+                  final rawPayments = entry['defaultPaymentList'];
+                  final payments = (rawPayments is List)
+                      ? rawPayments
+                            .whereType<Map>()
+                            .map((p) => Map<String, dynamic>.from(p))
+                            .toList()
+                      : <Map<String, dynamic>>[];
+                  final rawOwners = entry['ownerNames'];
+                  final ownerNames = (rawOwners is List)
+                      ? rawOwners.join(', ')
+                      : rawOwners?.toString() ?? '-';
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // ── Spanned flat-level cells ────────────────
+                            _dfSpannedCell(
+                              _dfColW[0],
+                              '${i + 1}',
+                              centerText: true,
+                            ),
+                            _dfSpannedCell(
+                              _dfColW[1],
+                              entry['flatId']?.toString() ?? '-',
+                            ),
+                            _dfSpannedCell(_dfColW[2], ownerNames),
+                            _dfSpannedCell(
+                              _dfColW[3],
+                              entry['phoneNumber']?.toString() ?? '-',
+                            ),
+                            _dfSpannedCell(
+                              _dfColW[4],
+                              entry['emailId']?.toString() ?? '-',
+                            ),
+                            _dfSpannedCell(
+                              _dfColW[5],
+                              entry['builtUpArea']?.toString() ?? '-',
+                            ),
+                            // ── Payment sub-rows ─────────────────────────
+                            SizedBox(
+                              width: pmtBlockW,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: payments.isEmpty
+                                    ? [_dfPaymentSubRow({}, isLast: true)]
+                                    : List.generate(
+                                        payments.length,
+                                        (j) => _dfPaymentSubRow(
+                                          payments[j],
+                                          isLast: j == payments.length - 1,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+            ],
+          ),
         ),
-      ],
-      headers: _defaulterRows[0].cast<String>(),
-      rows: _defaulterRows.sublist(1),
-      sectionRows: const {},
-      statusCol: -1,
+      ),
+    );
+  }
+
+  Widget _dfHeaderCell(double width, String label) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: const Border(right: BorderSide(color: _dfGridColor)),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          color: _brandTextColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _dfSpannedCell(double width, String text, {bool centerText = false}) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF9FCFB),
+        border: Border(
+          right: BorderSide(color: _dfGridColor),
+          bottom: BorderSide(color: _dfGridColor),
+        ),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.black87,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _dfPaymentSubRow(Map<String, dynamic> p, {bool isLast = false}) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _dfGridColor)),
+      ),
+      child: Row(
+        children: [
+          _dfPaymentCell(_dfColW[6], p['paymentId']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[7], p['paymentName']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[8], p['paymentCapita']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[9], _fmtAmt(p['totalDue'])),
+          _dfPaymentCell(_dfColW[10], _fmtAmt(p['penalty'])),
+          _dfPaymentCell(_dfColW[11], _fmtAmt(p['amountPaid'])),
+          _dfPaymentCell(_dfColW[12], _fmtAmt(p['amountTobePaid'])),
+          _dfPaymentCell(
+            _dfColW[13],
+            p['lastDueDate']?.toString() ?? '-',
+            lastCol: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dfPaymentCell(double width, String text, {bool lastCol = false}) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(color: lastCol ? _dfGridColor : _dfGridColor),
+        ),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12, color: Colors.black54),
+      ),
     );
   }
 

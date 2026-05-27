@@ -2091,4 +2091,26 @@ class ApiService {
 
     return Map<String, dynamic>.from(data);
   }
+
+  static Future<Map<String, dynamic>?> getDefaulterList(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/transactionAndReports/getDeaulterList'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
 }

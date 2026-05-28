@@ -669,29 +669,36 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       }
 
       final visibleRows = _visibleDefaulterRows();
+      final rowChunks = _chunkDefaulterRowsForPdf(
+        visibleRows,
+        firstPageMaxPaymentRows: 10,
+        nextPageMaxPaymentRows: 15,
+      );
 
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
-          header: (pdfContext) => pw.Column(
+          header: (pdfContext) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
             children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  if (logoImage != null)
-                    pw.Container(
-                      width: 84,
-                      height: 84,
-                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                    ),
-                ],
-              ),
-              pw.SizedBox(height: pdfContext.pageNumber == 1 ? 0 : 24),
+              if (logoImage != null)
+                pw.Container(
+                  width: 84,
+                  height: 84,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
             ],
           ),
+          footer: (pdfContext) => pw.Container(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Page ${pdfContext.pageNumber}',
+              style: const pw.TextStyle(fontSize: 8.5),
+            ),
+          ),
           build: (pdfContext) {
-            return [
+            final widgets = <pw.Widget>[
               pw.Text(
                 'Defaulter Report',
                 style: pw.TextStyle(
@@ -732,7 +739,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 ],
               ),
               pw.SizedBox(height: 10),
-              if (visibleRows.isEmpty)
+            ];
+
+            if (visibleRows.isEmpty) {
+              widgets.add(
                 pw.Center(
                   child: pw.Text(
                     'No defaulters found.',
@@ -741,10 +751,25 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
-                )
-              else
-                _buildDefaulterPdfGroupedTable(visibleRows),
-            ];
+                ),
+              );
+            } else {
+              var serialStart = 1;
+              for (var i = 0; i < rowChunks.length; i++) {
+                if (i > 0) {
+                  widgets.add(pw.NewPage());
+                }
+                widgets.add(
+                  _buildDefaulterPdfGroupedTable(
+                    rowChunks[i],
+                    serialStart: serialStart,
+                  ),
+                );
+                serialStart += rowChunks[i].length;
+              }
+            }
+
+            return widgets;
           },
         ),
       );
@@ -782,6 +807,42 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         ),
       );
     }
+  }
+
+  List<List<_DefaulterVisibleRow>> _chunkDefaulterRowsForPdf(
+    List<_DefaulterVisibleRow> rows, {
+    int firstPageMaxPaymentRows = 10,
+    int nextPageMaxPaymentRows = 15,
+  }) {
+    if (rows.isEmpty) {
+      return const [];
+    }
+
+    final chunks = <List<_DefaulterVisibleRow>>[];
+    var current = <_DefaulterVisibleRow>[];
+    var used = 0;
+    var currentLimit = firstPageMaxPaymentRows;
+
+    for (final row in rows) {
+      final weight = row.payments.length;
+      final safeWeight = weight <= 0 ? 1 : weight;
+
+      if (current.isNotEmpty && used + safeWeight > currentLimit) {
+        chunks.add(current);
+        current = <_DefaulterVisibleRow>[];
+        used = 0;
+        currentLimit = nextPageMaxPaymentRows;
+      }
+
+      current.add(row);
+      used += safeWeight;
+    }
+
+    if (current.isNotEmpty) {
+      chunks.add(current);
+    }
+
+    return chunks;
   }
 
   Future<void> _downloadDefaulterAsExcel() async {
@@ -996,8 +1057,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   ];
 
   pw.Widget _buildDefaulterPdfGroupedTable(
-    List<_DefaulterVisibleRow> visibleRows,
-  ) {
+    List<_DefaulterVisibleRow> visibleRows, {
+    required int serialStart,
+  }) {
     const rowHeight = 22.0;
     final rightFlex = _dfPdfFlex.sublist(7).fold<int>(0, (sum, f) => sum + f);
 
@@ -1034,7 +1096,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 pw.Expanded(
                   flex: _dfPdfFlex[0],
                   child: _pdfDfCell(
-                    '${index + 1}',
+                    '${serialStart + index}',
                     height: groupHeight,
                     drawBottom: true,
                     drawRight: true,

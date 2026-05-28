@@ -1288,7 +1288,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 ? pw.BorderSide(color: PdfColor.fromInt(0xFF000000), width: 0.5)
                 : pw.BorderSide(
                     color: PdfColor.fromInt(0xFF000000),
-                    width: 0.35,
+                    width: 0.5,
                   ),
           ),
         ),
@@ -3348,6 +3348,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   ];
 
   static const Color _dfGridColor = Color(0xFFB8C7C5);
+  static const double _dfGridWidth = 1.0;
 
   Widget _buildDefaulterTable() {
     // Width of the payment-details block (cols 7–14)
@@ -3421,7 +3422,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                     ],
                   ),
                 ),
-                const Divider(height: 1, thickness: 1, color: _dfGridColor),
+                const Divider(
+                  height: _dfGridWidth,
+                  thickness: _dfGridWidth,
+                  color: _dfGridColor,
+                ),
 
                 // ── Data rows ───────────────────────────────────────────────
                 if (visibleRows.isEmpty)
@@ -3531,7 +3536,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         alignment: Alignment.center,
         decoration: const BoxDecoration(
-          border: Border(right: BorderSide(color: _dfGridColor)),
+          border: Border(
+            right: BorderSide(color: _dfGridColor, width: _dfGridWidth),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -3581,7 +3588,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        border: const Border(right: BorderSide(color: _dfGridColor)),
+        border: const Border(
+          right: BorderSide(color: _dfGridColor, width: _dfGridWidth),
+        ),
       ),
       child: SelectableText(
         label,
@@ -3603,8 +3612,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       decoration: const BoxDecoration(
         color: Color(0xFFF9FCFB),
         border: Border(
-          right: BorderSide(color: _dfGridColor),
-          bottom: BorderSide(color: _dfGridColor),
+          right: BorderSide(color: _dfGridColor, width: _dfGridWidth),
+          bottom: BorderSide(color: _dfGridColor, width: _dfGridWidth),
         ),
       ),
       child: SelectableText(
@@ -3622,7 +3631,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   Widget _dfPaymentSubRow(Map<String, dynamic> p, {bool isLast = false}) {
     return Container(
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _dfGridColor)),
+        border: Border(
+          bottom: BorderSide(color: _dfGridColor, width: _dfGridWidth),
+        ),
       ),
       child: Row(
         children: [
@@ -3650,7 +3661,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       alignment: Alignment.center,
       decoration: BoxDecoration(
         border: Border(
-          right: BorderSide(color: lastCol ? _dfGridColor : _dfGridColor),
+          right: BorderSide(
+            color: lastCol ? _dfGridColor : _dfGridColor,
+            width: _dfGridWidth,
+          ),
         ),
       ),
       child: SelectableText(

@@ -563,6 +563,710 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     );
   }
 
+  List<_DefaulterVisibleRow> _visibleDefaulterRows() {
+    return _defaulterList
+        .map((entry) {
+          final rawPayments = entry['defaultPaymentList'];
+          final payments = (rawPayments is List)
+              ? rawPayments
+                    .whereType<Map>()
+                    .map((p) => Map<String, dynamic>.from(p))
+                    .toList(growable: false)
+              : <Map<String, dynamic>>[];
+
+          final filteredPayments = _selectedPaymentIdFilters.isEmpty
+              ? payments
+              : payments
+                    .where(
+                      (p) => _selectedPaymentIdFilters.contains(
+                        p['paymentId']?.toString().trim() ?? '',
+                      ),
+                    )
+                    .toList(growable: false);
+
+          if (filteredPayments.isEmpty) {
+            return null;
+          }
+
+          final rawOwners = entry['ownerNames'];
+          final ownerNames = (rawOwners is List)
+              ? rawOwners.join(', ')
+              : rawOwners?.toString() ?? '-';
+          final pendingDueTotal = filteredPayments.fold<double>(
+            0,
+            (sum, payment) => sum + _toAmount(payment['amountTobePaid']),
+          );
+
+          return _DefaulterVisibleRow(
+            entry: Map<String, dynamic>.from(entry),
+            payments: filteredPayments,
+            ownerNames: ownerNames,
+            pendingDueTotal: pendingDueTotal,
+          );
+        })
+        .whereType<_DefaulterVisibleRow>()
+        .toList(growable: false);
+  }
+
+  Future<void> _handleDefaulterExport() async {
+    if (_isDefaulterLoading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Defaulter Report is still loading.')),
+      );
+      return;
+    }
+
+    if (_defaulterError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to export Defaulter Report right now.'),
+        ),
+      );
+      return;
+    }
+
+    final choice = await showDialog<_DefaulterExportType>(
+      context: context,
+      builder: (dialogContext) {
+        return _DefaulterExportDialog(
+          onPdfSelected: () =>
+              Navigator.of(dialogContext).pop(_DefaulterExportType.pdf),
+          onExcelSelected: () =>
+              Navigator.of(dialogContext).pop(_DefaulterExportType.excel),
+        );
+      },
+    );
+
+    if (choice == null) {
+      return;
+    }
+
+    if (choice == _DefaulterExportType.pdf) {
+      await _downloadDefaulterAsPdf();
+      return;
+    }
+
+    await _downloadDefaulterAsExcel();
+  }
+
+  Future<void> _downloadDefaulterAsPdf() async {
+    try {
+      final generatedOn = _formatDefaulterExportDateTime(DateTime.now());
+      final pdfBaseFont = await PdfGoogleFonts.notoSansRegular();
+      final pdfBoldFont = await PdfGoogleFonts.notoSansBold();
+      final document = pw.Document(
+        theme: pw.ThemeData.withFont(base: pdfBaseFont, bold: pdfBoldFont),
+      );
+
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          logoImage = pw.MemoryImage(logoBytes);
+        }
+      } catch (_) {
+        logoImage = null;
+      }
+
+      final visibleRows = _visibleDefaulterRows();
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
+          header: (pdfContext) => pw.Column(
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  if (logoImage != null)
+                    pw.Container(
+                      width: 84,
+                      height: 84,
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: pdfContext.pageNumber == 1 ? 0 : 24),
+            ],
+          ),
+          build: (pdfContext) {
+            return [
+              pw.Text(
+                'Defaulter Report',
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Apartment Name: $_balanceSheetApartmentName',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Generated on: $generatedOn',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Row(
+                children: [
+                  _pdfSummaryCard(
+                    'Defaulters',
+                    '$_totalDefaulters Units',
+                    PdfColor.fromInt(0xFFFFB300),
+                  ),
+                  pw.SizedBox(width: 10),
+                  _pdfSummaryCard(
+                    'Yet To Collect',
+                    _fmtAmt(_totalExpectedToBeCollect),
+                    PdfColor.fromInt(0xFFE57373),
+                  ),
+                  pw.SizedBox(width: 10),
+                  _pdfSummaryCard(
+                    'Collected Amount',
+                    _fmtAmt(_totalMoneyCollected),
+                    PdfColor.fromInt(0xFF0F8F82),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              if (visibleRows.isEmpty)
+                pw.Center(
+                  child: pw.Text(
+                    'No defaulters found.',
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                )
+              else
+                _buildDefaulterPdfGroupedTable(visibleRows),
+            ];
+          },
+        ),
+      );
+
+      final bytes = Uint8List.fromList(await document.save());
+      final saved = await _saveBytesToFile(
+        fileName:
+            'defaulter_report_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        bytes: bytes,
+        dialogTitle: 'Download Defaulter Report PDF',
+        allowedExtensions: const ['pdf'],
+      );
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved ? 'PDF downloaded successfully.' : 'Download was cancelled.',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Defaulter PDF export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to generate PDF right now. ${error.toString()}',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _downloadDefaulterAsExcel() async {
+    final workbook = xlsio.Workbook();
+    try {
+      final generatedOn = _formatDefaulterExportDateTime(DateTime.now());
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Defaulter Report';
+
+      try {
+        final logoBytes = await _loadSecuraLogoBytes();
+        if (logoBytes != null) {
+          final picture = sheet.pictures.addStream(1, 1, logoBytes);
+          picture.height = 112;
+          picture.width = 112;
+        }
+      } catch (_) {}
+
+      var row = 1;
+      sheet.getRangeByName('F$row').setText('Defaulter Report');
+      row++;
+      sheet
+          .getRangeByName('F$row')
+          .setText('Apartment Name: $_balanceSheetApartmentName');
+      row++;
+      sheet.getRangeByName('F$row').setText('Generated on: $generatedOn');
+      row = 8;
+
+      final summaryRows = [
+        ['Defaulters', '$_totalDefaulters Units'],
+        ['Yet To Collect', _fmtAmtNoSymbol(_totalExpectedToBeCollect)],
+        ['Collected Amount', _fmtAmtNoSymbol(_totalMoneyCollected)],
+      ];
+      for (final summary in summaryRows) {
+        sheet.getRangeByIndex(row, 1).setText(summary[0]);
+        sheet.getRangeByIndex(row, 2).setText(summary[1]);
+        row++;
+      }
+
+      row += 1;
+      for (var c = 0; c < _dfHeaders.length; c++) {
+        sheet.getRangeByIndex(row, c + 1).setText(_dfHeaders[c]);
+      }
+      final headerRow = row;
+      row++;
+
+      final visibleRows = _visibleDefaulterRows();
+      for (var i = 0; i < visibleRows.length; i++) {
+        final flat = visibleRows[i];
+        final groupStartRow = row;
+
+        for (var j = 0; j < flat.payments.length; j++) {
+          final payment = flat.payments[j];
+          final isFirstPaymentRow = j == 0;
+          final rowValues = <String>[
+            isFirstPaymentRow ? '${i + 1}' : '',
+            isFirstPaymentRow ? flat.entry['flatId']?.toString() ?? '-' : '',
+            isFirstPaymentRow ? flat.ownerNames : '',
+            isFirstPaymentRow
+                ? flat.entry['phoneNumber']?.toString() ?? '-'
+                : '',
+            isFirstPaymentRow ? flat.entry['emailId']?.toString() ?? '-' : '',
+            isFirstPaymentRow
+                ? flat.entry['builtUpArea']?.toString() ?? '-'
+                : '',
+            isFirstPaymentRow ? _fmtAmtNoSymbol(flat.pendingDueTotal) : '',
+            payment['paymentId']?.toString() ?? '-',
+            payment['paymentName']?.toString() ?? '-',
+            payment['paymentCapita']?.toString() ?? '-',
+            _fmtAmtNoSymbol(payment['totalDue']),
+            _fmtAmtNoSymbol(payment['penalty']),
+            _fmtAmtNoSymbol(payment['amountPaid']),
+            _fmtAmtNoSymbol(payment['amountTobePaid']),
+            payment['lastDueDate']?.toString() ?? '-',
+          ];
+
+          for (var c = 0; c < rowValues.length; c++) {
+            sheet.getRangeByIndex(row, c + 1).setText(rowValues[c]);
+          }
+          row++;
+        }
+
+        final groupEndRow = row - 1;
+        if (groupEndRow > groupStartRow) {
+          for (var col = 1; col <= 7; col++) {
+            final merged = sheet.getRangeByIndex(
+              groupStartRow,
+              col,
+              groupEndRow,
+              col,
+            );
+            merged.merge();
+            merged.cellStyle.hAlign = xlsio.HAlignType.center;
+            merged.cellStyle.vAlign = xlsio.VAlignType.center;
+          }
+        }
+      }
+
+      final endRow = row - 1;
+      final headerRange = sheet.getRangeByIndex(
+        headerRow,
+        1,
+        headerRow,
+        _dfHeaders.length,
+      );
+      headerRange.cellStyle.backColor = '#E8F7F5';
+      headerRange.cellStyle.bold = true;
+      headerRange.cellStyle.hAlign = xlsio.HAlignType.center;
+
+      if (endRow >= headerRow) {
+        final tableRange = sheet.getRangeByIndex(
+          headerRow,
+          1,
+          endRow,
+          _dfHeaders.length,
+        );
+        tableRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
+        tableRange.cellStyle.borders.all.color = '#000000';
+      }
+
+      final excelRows = <List<String>>[];
+      for (final flat in visibleRows) {
+        for (var j = 0; j < flat.payments.length; j++) {
+          final p = flat.payments[j];
+          excelRows.add([
+            j == 0 ? flat.entry['flatId']?.toString() ?? '-' : '',
+            j == 0 ? flat.ownerNames : '',
+            j == 0 ? flat.entry['phoneNumber']?.toString() ?? '-' : '',
+            j == 0 ? flat.entry['emailId']?.toString() ?? '-' : '',
+            j == 0 ? flat.entry['builtUpArea']?.toString() ?? '-' : '',
+            j == 0 ? _fmtAmtNoSymbol(flat.pendingDueTotal) : '',
+            p['paymentId']?.toString() ?? '-',
+            p['paymentName']?.toString() ?? '-',
+            p['paymentCapita']?.toString() ?? '-',
+            _fmtAmtNoSymbol(p['totalDue']),
+            _fmtAmtNoSymbol(p['penalty']),
+            _fmtAmtNoSymbol(p['amountPaid']),
+            _fmtAmtNoSymbol(p['amountTobePaid']),
+            p['lastDueDate']?.toString() ?? '-',
+          ]);
+        }
+      }
+
+      for (var i = 0; i < _dfHeaders.length; i++) {
+        final columnValues = <String>[_dfHeaders[i]];
+        for (final rowValues in excelRows) {
+          final offsetIndex = i == 0 ? -1 : i - 1;
+          if (offsetIndex >= 0 && offsetIndex < rowValues.length) {
+            columnValues.add(rowValues[offsetIndex]);
+          }
+        }
+        sheet.getRangeByIndex(1, i + 1).columnWidth = _excelColumnWidth(
+          columnValues,
+        );
+      }
+
+      final bytes = Uint8List.fromList(workbook.saveSync());
+      final saved = await _saveBytesToFile(
+        fileName:
+            'defaulter_report_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+        bytes: bytes,
+        dialogTitle: 'Download Defaulter Report Excel',
+        allowedExtensions: const ['xlsx'],
+      );
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Excel downloaded successfully.'
+                : 'Download was cancelled.',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Defaulter Excel export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to generate Excel right now. ${error.toString()}',
+          ),
+        ),
+      );
+    } finally {
+      workbook.dispose();
+    }
+  }
+
+  static const List<int> _dfPdfFlex = [
+    7,
+    10,
+    17,
+    13,
+    16,
+    10,
+    11,
+    10,
+    13,
+    10,
+    9,
+    10,
+    9,
+    9,
+    11,
+  ];
+
+  pw.Widget _buildDefaulterPdfGroupedTable(
+    List<_DefaulterVisibleRow> visibleRows,
+  ) {
+    const rowHeight = 22.0;
+    final rightFlex = _dfPdfFlex.sublist(7).fold<int>(0, (sum, f) => sum + f);
+
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColor.fromInt(0xFF000000), width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Row(
+            children: List.generate(
+              _dfHeaders.length,
+              (i) => pw.Expanded(
+                flex: _dfPdfFlex[i],
+                child: _pdfDfCell(
+                  _dfHeaders[i],
+                  height: rowHeight + 2,
+                  isHeader: true,
+                  drawBottom: true,
+                  drawRight: i < _dfHeaders.length - 1,
+                ),
+              ),
+            ),
+          ),
+          ...List.generate(visibleRows.length, (index) {
+            final flat = visibleRows[index];
+            final payments = flat.payments;
+            final groupHeight = rowHeight * payments.length;
+
+            return pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  flex: _dfPdfFlex[0],
+                  child: _pdfDfCell(
+                    '${index + 1}',
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[1],
+                  child: _pdfDfCell(
+                    flat.entry['flatId']?.toString() ?? '-',
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[2],
+                  child: _pdfDfCell(
+                    flat.ownerNames,
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[3],
+                  child: _pdfDfCell(
+                    flat.entry['phoneNumber']?.toString() ?? '-',
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[4],
+                  child: _pdfDfCell(
+                    flat.entry['emailId']?.toString() ?? '-',
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[5],
+                  child: _pdfDfCell(
+                    flat.entry['builtUpArea']?.toString() ?? '-',
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: _dfPdfFlex[6],
+                  child: _pdfDfCell(
+                    _fmtAmt(flat.pendingDueTotal),
+                    height: groupHeight,
+                    drawBottom: true,
+                    drawRight: true,
+                  ),
+                ),
+                pw.Expanded(
+                  flex: rightFlex,
+                  child: pw.Column(
+                    children: List.generate(payments.length, (pIndex) {
+                      final p = payments[pIndex];
+                      final isLastPaymentRow = pIndex == payments.length - 1;
+                      return pw.Row(
+                        children: [
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[7],
+                            p['paymentId']?.toString() ?? '-',
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[8],
+                            p['paymentName']?.toString() ?? '-',
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[9],
+                            p['paymentCapita']?.toString() ?? '-',
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[10],
+                            _fmtAmt(p['totalDue']),
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[11],
+                            _fmtAmt(p['penalty']),
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[12],
+                            _fmtAmt(p['amountPaid']),
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[13],
+                            _fmtAmt(p['amountTobePaid']),
+                            rowHeight,
+                            isLastPaymentRow,
+                          ),
+                          _pdfDfPaymentCell(
+                            _dfPdfFlex[14],
+                            p['lastDueDate']?.toString() ?? '-',
+                            rowHeight,
+                            isLastPaymentRow,
+                            isLastCol: true,
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfDfCell(
+    String text, {
+    required double height,
+    bool isHeader = false,
+    bool drawBottom = false,
+    bool drawRight = false,
+  }) {
+    return pw.Container(
+      height: height,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      alignment: isHeader ? pw.Alignment.center : pw.Alignment.topCenter,
+      decoration: pw.BoxDecoration(
+        color: isHeader ? PdfColor.fromInt(0xFFE8F7F5) : PdfColors.white,
+        border: pw.Border(
+          left: pw.BorderSide.none,
+          top: pw.BorderSide.none,
+          right: drawRight
+              ? pw.BorderSide(color: PdfColor.fromInt(0xFF000000), width: 0.5)
+              : pw.BorderSide.none,
+          bottom: drawBottom
+              ? pw.BorderSide(color: PdfColor.fromInt(0xFF000000), width: 0.5)
+              : pw.BorderSide.none,
+        ),
+      ),
+      child: pw.Text(
+        text,
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(
+          fontSize: isHeader ? 7.2 : 7.0,
+          fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _pdfDfPaymentCell(
+    int flex,
+    String text,
+    double rowHeight,
+    bool isLastPaymentRow, {
+    bool isLastCol = false,
+  }) {
+    return pw.Expanded(
+      flex: flex,
+      child: pw.Container(
+        height: rowHeight,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        alignment: pw.Alignment.center,
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            left: pw.BorderSide.none,
+            top: pw.BorderSide.none,
+            right: isLastCol
+                ? pw.BorderSide.none
+                : pw.BorderSide(
+                    color: PdfColor.fromInt(0xFF000000),
+                    width: 0.5,
+                  ),
+            bottom: isLastPaymentRow
+                ? pw.BorderSide(color: PdfColor.fromInt(0xFF000000), width: 0.5)
+                : pw.BorderSide(
+                    color: PdfColor.fromInt(0xFF000000),
+                    width: 0.35,
+                  ),
+          ),
+        ),
+        child: pw.Text(
+          text,
+          textAlign: pw.TextAlign.center,
+          style: const pw.TextStyle(fontSize: 7.0),
+        ),
+      ),
+    );
+  }
+
+  String _formatDefaulterExportDateTime(DateTime dt) {
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day}-${months[dt.month - 1]}-${dt.year} $hour:$minute hrs';
+  }
+
+  String _fmtAmtNoSymbol(dynamic raw) {
+    final formatted = _fmtAmt(raw);
+    if (formatted == '-') {
+      return formatted;
+    }
+    return formatted.replaceAll('₹', '');
+  }
+
   List<_BalanceSheetCreditRow> _toCreditRows(dynamic raw) {
     if (raw is! List) {
       return const [];
@@ -2470,6 +3174,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                       ),
                   ],
                 ),
+                IconButton(
+                  onPressed: _handleDefaulterExport,
+                  icon: const Icon(Icons.download_rounded, color: _brandColor),
+                  tooltip: 'Export Defaulter Report',
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -3180,7 +3889,118 @@ class _BalanceSheetExportDialog extends StatelessWidget {
   }
 }
 
+class _DefaulterExportDialog extends StatelessWidget {
+  const _DefaulterExportDialog({
+    required this.onPdfSelected,
+    required this.onExcelSelected,
+  });
+
+  final VoidCallback onPdfSelected;
+  final VoidCallback onExcelSelected;
+
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7FCFA),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFD7EAE3)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(12, 71, 64, 0.18),
+              blurRadius: 28,
+              offset: Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: _brandColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: _brandColor,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Export Defaulter Report',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: _brandTextColor,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Choose the download format for the current defaulter table.',
+                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _ExportOptionTile(
+                icon: Icons.picture_as_pdf_rounded,
+                title: 'PDF Report',
+                subtitle: 'Best for sharing, printing, and official records',
+                accentColor: const Color(0xFFE57373),
+                onTap: onPdfSelected,
+              ),
+              const SizedBox(height: 12),
+              _ExportOptionTile(
+                icon: Icons.table_chart_rounded,
+                title: 'Excel Workbook',
+                subtitle: 'Best for editing, filtering, and analysis',
+                accentColor: const Color(0xFF0F8F82),
+                onTap: onExcelSelected,
+              ),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(foregroundColor: _brandTextColor),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _BalanceSheetExportType { pdf, excel }
+
+enum _DefaulterExportType { pdf, excel }
 
 class _ReportOptionItem {
   const _ReportOptionItem(this.title, this.icon, this.tabIndex);
@@ -3213,6 +4033,20 @@ class _BalanceSheetDebitRow {
 
   final String expenseHead;
   final double totalAmount;
+}
+
+class _DefaulterVisibleRow {
+  const _DefaulterVisibleRow({
+    required this.entry,
+    required this.payments,
+    required this.ownerNames,
+    required this.pendingDueTotal,
+  });
+
+  final Map<String, dynamic> entry;
+  final List<Map<String, dynamic>> payments;
+  final String ownerNames;
+  final double pendingDueTotal;
 }
 
 class _BalanceTableCard extends StatelessWidget {

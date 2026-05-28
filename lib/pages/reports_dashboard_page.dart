@@ -238,6 +238,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   String _totalMoneyCollected = '0';
   bool _showFlatSortControls = false;
   bool _flatSortAscending = true;
+  Set<String> _selectedPaymentIdFilters = <String>{};
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -387,6 +388,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       setState(() {
         _isDefaulterLoading = false;
         _defaulterList = dfList;
+        final availablePaymentIds = _paymentIdFilterOptions(dfList).toSet();
+        _selectedPaymentIdFilters = _selectedPaymentIdFilters
+            .where(availablePaymentIds.contains)
+            .toSet();
         _totalDefaulters = (dfRes['totalDefaulters'] is int)
             ? dfRes['totalDefaulters'] as int
             : int.tryParse(dfRes['totalDefaulters']?.toString() ?? '') ??
@@ -457,6 +462,105 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     }
 
     return KeyEventResult.ignored;
+  }
+
+  List<String> _paymentIdFilterOptions([List<Map<String, dynamic>>? source]) {
+    final list = source ?? _defaulterList;
+    final ids = <String>{};
+    for (final entry in list) {
+      final rawPayments = entry['defaultPaymentList'];
+      if (rawPayments is! List) continue;
+      for (final p in rawPayments.whereType<Map>()) {
+        final id = p['paymentId']?.toString().trim() ?? '';
+        if (id.isNotEmpty) {
+          ids.add(id);
+        }
+      }
+    }
+    final sorted = ids.toList()..sort();
+    return sorted;
+  }
+
+  Future<void> _openPaymentIdFilterDialog() async {
+    final options = _paymentIdFilterOptions();
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No Payment IDs available to filter.')),
+      );
+      return;
+    }
+
+    final tempSelected = Set<String>.from(_selectedPaymentIdFilters);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Filter By Payment ID'),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              tempSelected.clear();
+                            });
+                          },
+                          child: const Text('Clear All'),
+                        ),
+                      ),
+                      ...options.map((id) {
+                        final checked = tempSelected.contains(id);
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          value: checked,
+                          title: Text(id),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              if (value ?? false) {
+                                tempSelected.add(id);
+                              } else {
+                                tempSelected.remove(id);
+                              }
+                            });
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: _brandColor),
+                  onPressed: () {
+                    setState(() {
+                      _selectedPaymentIdFilters = Set<String>.from(
+                        tempSelected,
+                      );
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   List<_BalanceSheetCreditRow> _toCreditRows(dynamic raw) {
@@ -2320,7 +2424,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                       ),
                     ),
                     Text(
-                      'Live – Pending dues by unit',
+                      'Pending dues by unit',
                       style: TextStyle(fontSize: 12, color: Colors.black45),
                     ),
                   ],
@@ -2330,6 +2434,41 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                   onPressed: _isDefaulterLoading ? null : _loadDefaulterData,
                   icon: const Icon(Icons.refresh_rounded, color: _brandColor),
                   tooltip: 'Refresh',
+                ),
+                Stack(
+                  children: [
+                    IconButton(
+                      onPressed: _openPaymentIdFilterDialog,
+                      icon: const Icon(
+                        Icons.filter_alt_outlined,
+                        color: _brandColor,
+                      ),
+                      tooltip: 'Filter by Payment ID',
+                    ),
+                    if (_selectedPaymentIdFilters.isNotEmpty)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE57373),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _selectedPaymentIdFilters.length.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -2444,6 +2583,35 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     const double pmtBlockW =
         130 + 160 + 130 + 110 + 130 + 110 + 110 + 120; // 990
 
+    final visibleRows = _defaulterList
+        .map((entry) {
+          final rawPayments = entry['defaultPaymentList'];
+          final payments = (rawPayments is List)
+              ? rawPayments
+                    .whereType<Map>()
+                    .map((p) => Map<String, dynamic>.from(p))
+                    .toList()
+              : <Map<String, dynamic>>[];
+
+          final filteredPayments = _selectedPaymentIdFilters.isEmpty
+              ? payments
+              : payments
+                    .where(
+                      (p) => _selectedPaymentIdFilters.contains(
+                        p['paymentId']?.toString().trim() ?? '',
+                      ),
+                    )
+                    .toList();
+
+          if (filteredPayments.isEmpty) {
+            return null;
+          }
+
+          return {'entry': entry, 'payments': filteredPayments};
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+
     return Focus(
       autofocus: true,
       onKeyEvent: _handleDefaulterTableKey,
@@ -2485,7 +2653,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 const Divider(height: 1, thickness: 1, color: _dfGridColor),
 
                 // ── Data rows ───────────────────────────────────────────────
-                if (_defaulterList.isEmpty)
+                if (visibleRows.isEmpty)
                   SizedBox(
                     width: _dfColW.fold<double>(0.0, (a, b) => a + b),
                     child: const Padding(
@@ -2500,15 +2668,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                     ),
                   )
                 else
-                  ...List.generate(_defaulterList.length, (i) {
-                    final entry = _defaulterList[i];
-                    final rawPayments = entry['defaultPaymentList'];
-                    final payments = (rawPayments is List)
-                        ? rawPayments
-                              .whereType<Map>()
-                              .map((p) => Map<String, dynamic>.from(p))
-                              .toList()
-                        : <Map<String, dynamic>>[];
+                  ...List.generate(visibleRows.length, (i) {
+                    final row = visibleRows[i];
+                    final entry = Map<String, dynamic>.from(
+                      row['entry'] as Map,
+                    );
+                    final payments = (row['payments'] as List)
+                        .whereType<Map>()
+                        .map((p) => Map<String, dynamic>.from(p))
+                        .toList(growable: false);
                     final rawOwners = entry['ownerNames'];
                     final ownerNames = (rawOwners is List)
                         ? rawOwners.join(', ')

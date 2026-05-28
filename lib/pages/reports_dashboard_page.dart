@@ -236,6 +236,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   int _totalDefaulters = 0;
   String _totalExpectedToBeCollect = '0';
   String _totalMoneyCollected = '0';
+  bool _showFlatSortControls = false;
+  bool _flatSortAscending = true;
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -400,6 +402,61 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         _defaulterError = 'Unable to load defaulter data. Please try again.';
       });
     }
+  }
+
+  void _sortDefaulterByFlat({required bool ascending}) {
+    final sorted = List<Map<String, dynamic>>.from(_defaulterList)
+      ..sort((a, b) {
+        final left = a['flatId']?.toString().toLowerCase() ?? '';
+        final right = b['flatId']?.toString().toLowerCase() ?? '';
+        return ascending ? left.compareTo(right) : right.compareTo(left);
+      });
+
+    setState(() {
+      _flatSortAscending = ascending;
+      _defaulterList = sorted;
+    });
+  }
+
+  KeyEventResult _handleDefaulterTableKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_defaulterTableScrollController.hasClients) {
+      return KeyEventResult.ignored;
+    }
+
+    const step = 120.0;
+    final position = _defaulterTableScrollController.position;
+    final current = _defaulterTableScrollController.offset;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      final target = (current + step).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      _defaulterTableScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+      );
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      final target = (current - step).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      _defaulterTableScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+      );
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   List<_BalanceSheetCreditRow> _toCreditRows(dynamic raw) {
@@ -2343,7 +2400,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     );
   }
 
-  // Column widths for the defaulter table (14 columns)
+  // Column widths for the defaulter table (15 columns)
   static const List<double> _dfColW = [
     50, // Sl
     100, // Flat
@@ -2351,6 +2408,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     140, // Phone Number
     180, // Email ID
     110, // Built Up Area
+    130, // Total Pending Due
     130, // Payment ID
     160, // Payment Name
     130, // Payment Capita
@@ -2367,140 +2425,212 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     'Owner Name',
     'Phone Number',
     'Email ID',
-    'Built Up Area',
+    'Built Up Area\n(in sqft)',
+    'Total Pending Due',
     'Payment ID',
     'Payment Name',
     'Payment Capita',
-    'Total Due',
+    'Due Amount',
     'Penalty Amount',
     'Amount Paid',
     'Amount Left',
-    'Last Due Date',
+    'Last Missed\nDue Date',
   ];
 
   static const Color _dfGridColor = Color(0xFFB8C7C5);
 
   Widget _buildDefaulterTable() {
-    // Width of the payment-details block (cols 6–13)
+    // Width of the payment-details block (cols 7–14)
     const double pmtBlockW =
         130 + 160 + 130 + 110 + 130 + 110 + 110 + 120; // 990
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE0F0EE)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SingleChildScrollView(
-          controller: _defaulterTableScrollController,
-          scrollDirection: Axis.horizontal,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Header row ──────────────────────────────────────────────
-              Container(
-                color: const Color(0xFFE8F7F5),
-                child: Row(
-                  children: List.generate(
-                    _dfHeaders.length,
-                    (i) => _dfHeaderCell(_dfColW[i], _dfHeaders[i]),
-                  ),
-                ),
-              ),
-              const Divider(height: 1, thickness: 1, color: _dfGridColor),
-
-              // ── Data rows ───────────────────────────────────────────────
-              if (_defaulterList.isEmpty)
-                SizedBox(
-                  width: _dfColW.fold<double>(0.0, (a, b) => a + b),
-                  child: const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(
-                      child: Text(
-                        'No defaulters found.',
-                        style: TextStyle(color: Colors.black45),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                ...List.generate(_defaulterList.length, (i) {
-                  final entry = _defaulterList[i];
-                  final rawPayments = entry['defaultPaymentList'];
-                  final payments = (rawPayments is List)
-                      ? rawPayments
-                            .whereType<Map>()
-                            .map((p) => Map<String, dynamic>.from(p))
-                            .toList()
-                      : <Map<String, dynamic>>[];
-                  final rawOwners = entry['ownerNames'];
-                  final ownerNames = (rawOwners is List)
-                      ? rawOwners.join(', ')
-                      : rawOwners?.toString() ?? '-';
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handleDefaulterTableKey,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE0F0EE)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SingleChildScrollView(
+            controller: _defaulterTableScrollController,
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header row ──────────────────────────────────────────────
+                Container(
+                  color: const Color(0xFFE8F7F5),
+                  child: Row(
                     children: [
-                      IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // ── Spanned flat-level cells ────────────────
-                            _dfSpannedCell(
-                              _dfColW[0],
-                              '${i + 1}',
-                              centerText: true,
-                            ),
-                            _dfSpannedCell(
-                              _dfColW[1],
-                              entry['flatId']?.toString() ?? '-',
-                            ),
-                            _dfSpannedCell(_dfColW[2], ownerNames),
-                            _dfSpannedCell(
-                              _dfColW[3],
-                              entry['phoneNumber']?.toString() ?? '-',
-                            ),
-                            _dfSpannedCell(
-                              _dfColW[4],
-                              entry['emailId']?.toString() ?? '-',
-                            ),
-                            _dfSpannedCell(
-                              _dfColW[5],
-                              entry['builtUpArea']?.toString() ?? '-',
-                            ),
-                            // ── Payment sub-rows ─────────────────────────
-                            SizedBox(
-                              width: pmtBlockW,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: payments.isEmpty
-                                    ? [_dfPaymentSubRow({}, isLast: true)]
-                                    : List.generate(
-                                        payments.length,
-                                        (j) => _dfPaymentSubRow(
-                                          payments[j],
-                                          isLast: j == payments.length - 1,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      _dfHeaderCell(_dfColW[0], _dfHeaders[0]),
+                      _dfFlatSortableHeader(),
+                      ...List.generate(
+                        _dfHeaders.length - 2,
+                        (i) => _dfHeaderCell(_dfColW[i + 2], _dfHeaders[i + 2]),
                       ),
                     ],
-                  );
-                }),
-            ],
+                  ),
+                ),
+                const Divider(height: 1, thickness: 1, color: _dfGridColor),
+
+                // ── Data rows ───────────────────────────────────────────────
+                if (_defaulterList.isEmpty)
+                  SizedBox(
+                    width: _dfColW.fold<double>(0.0, (a, b) => a + b),
+                    child: const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(
+                        child: SelectableText(
+                          'No defaulters found.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.black45),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ...List.generate(_defaulterList.length, (i) {
+                    final entry = _defaulterList[i];
+                    final rawPayments = entry['defaultPaymentList'];
+                    final payments = (rawPayments is List)
+                        ? rawPayments
+                              .whereType<Map>()
+                              .map((p) => Map<String, dynamic>.from(p))
+                              .toList()
+                        : <Map<String, dynamic>>[];
+                    final rawOwners = entry['ownerNames'];
+                    final ownerNames = (rawOwners is List)
+                        ? rawOwners.join(', ')
+                        : rawOwners?.toString() ?? '-';
+                    final pendingDueTotal = payments.fold<double>(
+                      0,
+                      (sum, payment) =>
+                          sum + _toAmount(payment['amountTobePaid']),
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // ── Spanned flat-level cells ────────────────
+                              _dfSpannedCell(
+                                _dfColW[0],
+                                '${i + 1}',
+                                centerText: true,
+                              ),
+                              _dfSpannedCell(
+                                _dfColW[1],
+                                entry['flatId']?.toString() ?? '-',
+                              ),
+                              _dfSpannedCell(_dfColW[2], ownerNames),
+                              _dfSpannedCell(
+                                _dfColW[3],
+                                entry['phoneNumber']?.toString() ?? '-',
+                              ),
+                              _dfSpannedCell(
+                                _dfColW[4],
+                                entry['emailId']?.toString() ?? '-',
+                              ),
+                              _dfSpannedCell(
+                                _dfColW[5],
+                                entry['builtUpArea']?.toString() ?? '-',
+                              ),
+                              _dfSpannedCell(
+                                _dfColW[6],
+                                _fmtAmt(pendingDueTotal),
+                              ),
+                              // ── Payment sub-rows ─────────────────────────
+                              SizedBox(
+                                width: pmtBlockW,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: payments.isEmpty
+                                      ? [_dfPaymentSubRow({}, isLast: true)]
+                                      : List.generate(
+                                          payments.length,
+                                          (j) => _dfPaymentSubRow(
+                                            payments[j],
+                                            isLast: j == payments.length - 1,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dfFlatSortableHeader() {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _showFlatSortControls = true),
+      onExit: (_) => setState(() => _showFlatSortControls = false),
+      child: Container(
+        width: _dfColW[1],
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          border: Border(right: BorderSide(color: _dfGridColor)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SelectableText(
+              'Flat',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+                color: _brandTextColor,
+              ),
+            ),
+            AnimatedOpacity(
+              opacity: _showFlatSortControls ? 1 : 0,
+              duration: const Duration(milliseconds: 120),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () => _sortDefaulterByFlat(ascending: true),
+                    child: Icon(
+                      Icons.keyboard_arrow_up,
+                      size: 16,
+                      color: _flatSortAscending ? _brandColor : Colors.black45,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _sortDefaulterByFlat(ascending: false),
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      size: 16,
+                      color: !_flatSortAscending ? _brandColor : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2514,7 +2644,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       decoration: BoxDecoration(
         border: const Border(right: BorderSide(color: _dfGridColor)),
       ),
-      child: Text(
+      child: SelectableText(
         label,
         textAlign: TextAlign.center,
         style: const TextStyle(
@@ -2538,7 +2668,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           bottom: BorderSide(color: _dfGridColor),
         ),
       ),
-      child: Text(
+      child: SelectableText(
         text,
         textAlign: TextAlign.center,
         style: const TextStyle(
@@ -2557,15 +2687,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       ),
       child: Row(
         children: [
-          _dfPaymentCell(_dfColW[6], p['paymentId']?.toString() ?? '-'),
-          _dfPaymentCell(_dfColW[7], p['paymentName']?.toString() ?? '-'),
-          _dfPaymentCell(_dfColW[8], p['paymentCapita']?.toString() ?? '-'),
-          _dfPaymentCell(_dfColW[9], _fmtAmt(p['totalDue'])),
-          _dfPaymentCell(_dfColW[10], _fmtAmt(p['penalty'])),
-          _dfPaymentCell(_dfColW[11], _fmtAmt(p['amountPaid'])),
-          _dfPaymentCell(_dfColW[12], _fmtAmt(p['amountTobePaid'])),
+          _dfPaymentCell(_dfColW[7], p['paymentId']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[8], p['paymentName']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[9], p['paymentCapita']?.toString() ?? '-'),
+          _dfPaymentCell(_dfColW[10], _fmtAmt(p['totalDue'])),
+          _dfPaymentCell(_dfColW[11], _fmtAmt(p['penalty'])),
+          _dfPaymentCell(_dfColW[12], _fmtAmt(p['amountPaid'])),
+          _dfPaymentCell(_dfColW[13], _fmtAmt(p['amountTobePaid'])),
           _dfPaymentCell(
-            _dfColW[13],
+            _dfColW[14],
             p['lastDueDate']?.toString() ?? '-',
             lastCol: true,
           ),
@@ -2584,7 +2714,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           right: BorderSide(color: lastCol ? _dfGridColor : _dfGridColor),
         ),
       ),
-      child: Text(
+      child: SelectableText(
         text,
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 12, color: Colors.black54),

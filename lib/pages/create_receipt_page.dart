@@ -65,6 +65,7 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
   String? _selectedFlatId;
   bool _loadingFlatIds = false;
   String? _flatIdError;
+  bool _flatIdsAscending = true;
 
   final List<_ReceiptItemInput> _items = [];
   final List<_AddedChargeInput> _addedCharges = [];
@@ -260,6 +261,24 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
         });
       }
     }
+  }
+
+  void _toggleFlatIdSort() {
+    if (_flatIdOptions.isEmpty) return;
+
+    final selected = _selectedFlatId;
+    final sorted = List<String>.from(_flatIdOptions)
+      ..sort((a, b) => _flatIdsAscending ? a.compareTo(b) : b.compareTo(a));
+
+    setState(() {
+      _flatIdsAscending = !_flatIdsAscending;
+      _flatIdOptions = sorted;
+      if (selected != null && sorted.contains(selected)) {
+        _selectedFlatId = selected;
+      } else if (sorted.isNotEmpty) {
+        _selectedFlatId = sorted.first;
+      }
+    });
   }
 
   double _parseAmount(String value) {
@@ -1476,9 +1495,31 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
                   value: _selectedFlatId,
                   decoration: _dec(
                     label: _loadingFlatIds ? 'Flat Id (Loading...)' : 'Flat Id',
-                    suffix: IconButton(
-                      onPressed: _loadingFlatIds ? null : _loadFlatIds,
-                      icon: const Icon(Icons.refresh),
+                    suffix: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 88),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: _loadingFlatIds ? null : _loadFlatIds,
+                            icon: const Icon(Icons.refresh),
+                            tooltip: 'Reload flats',
+                          ),
+                          IconButton(
+                            onPressed: _loadingFlatIds
+                                ? null
+                                : _toggleFlatIdSort,
+                            icon: Icon(
+                              _flatIdsAscending
+                                  ? Icons.sort_by_alpha
+                                  : Icons.sort_by_alpha_outlined,
+                            ),
+                            tooltip: _flatIdsAscending
+                                ? 'Sort Z to A'
+                                : 'Sort A to Z',
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   items: _flatIdOptions

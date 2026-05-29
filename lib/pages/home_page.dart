@@ -2677,6 +2677,52 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         'thirdPartyName': thirdPartyName,
         'noOfPersons': selection.noOfPersons.toString(),
         'files': selection.listOfFiles,
+        'paidDueDetails': {
+          'dueId': dueId,
+          'collectionCycle':
+              payment['collectionCycle']?.toString().trim() ?? '',
+          'flatArea': payment['flatArea']?.toString().trim() ?? '',
+          'dueDate': payment['dueDate']?.toString().trim() ?? '',
+          'paymentId': paymentId,
+          'amount': payment['amount']?.toString().trim() ?? '',
+          'gstAmount': payment['gstAmount']?.toString().trim() ?? '',
+          'totalAmount': payment['totalAmount']?.toString().trim() ?? '',
+          'paymentName': payment['paymentName']?.toString().trim() ?? '',
+          'paymentType': payment['paymentType']?.toString().trim() ?? '',
+          'cause': payment['cause']?.toString().trim() ?? '',
+          'paymentCapita': payment['paymentCapita']?.toString().trim() ?? '',
+          'addedCharges': payment['addedCharges']?.toString().trim() ?? '',
+          'amountPerMonth': payment['amountPerMonth']?.toString().trim() ?? '',
+          'totalAddedCharges':
+              payment['totalAddedCharges']?.toString().trim() ?? '',
+          'estimatedCollectionAmount':
+              payment['estimatedCollectionAmount']?.toString().trim() ?? '',
+          'gstPercentage': payment['gstPercentage']?.toString().trim() ?? '',
+          'discountCode': payment['discountCode']?.toString().trim() ?? '',
+          'discountMode': payment['discountMode']?.toString().trim() ?? '',
+          'cummilationCycle':
+              payment['cummilationCycle']?.toString().trim() ?? '',
+          'fineCode': payment['fineCode']?.toString().trim() ?? '',
+          'discValue': payment['discValue']?.toString().trim() ?? '',
+          'fnValue': payment['fnValue']?.toString().trim() ?? '',
+          'discountedAmount':
+              payment['discountedAmount']?.toString().trim() ?? '',
+          'fineAmount': payment['fineAmount']?.toString().trim() ?? '',
+          'fineMode': payment['fineMode']?.toString().trim() ?? '',
+          'fineType': payment['fineType']?.toString().trim() ?? '',
+          'roundUpAmount': payment['roundUpAmount']?.toString().trim() ?? '',
+          'alreadyPaidAmount':
+              payment['alreadyPaidAmount']?.toString().trim() ?? '',
+          'adminDiscount': payment['adminDiscount']?.toString().trim() ?? '',
+          'applicableFlats':
+              payment['applicableFlats']?.toString().trim() ?? '',
+          'paidFlats': payment['paidFlats']?.toString().trim() ?? '',
+          'allowedTenders': payment['allowedTenders']?.toString().trim() ?? '',
+          'paymentStatus': payment['paymentStatus']?.toString().trim() ?? '',
+          'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+          'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
+          'paymentDate': payment['paymentDate']?.toString().trim() ?? '',
+        },
       };
 
       final response = await ApiService.payDues(requestBody);

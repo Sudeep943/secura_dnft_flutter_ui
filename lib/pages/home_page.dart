@@ -113,7 +113,9 @@ class _HomePageState extends State<HomePage> {
 
   int get _pendingWorklistItems => _worklists
       .where(
-        (w) => w['status']?.toString().toUpperCase() == _worklistStatusPending,
+        (w) =>
+            (w['status']?.toString().trim().toUpperCase() ?? '') ==
+            _worklistStatusPending,
       )
       .length;
 
@@ -3505,7 +3507,7 @@ class _DueTenderDialog extends StatefulWidget {
 
 class _DueTenderDialogState extends State<_DueTenderDialog> {
   final TextEditingController _personCountController = TextEditingController(
-    text: '1',
+    text: '',
   );
   final List<_PickedReceipt> _receipts = <_PickedReceipt>[];
   final TextEditingController _chequeNumberController = TextEditingController();
@@ -3533,6 +3535,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   String? _perHeadAmountError;
   double? _perHeadTotalAmount;
   int _perHeadRequestId = 0;
+  String? _receiptFileError;
 
   @override
   void initState() {
@@ -3540,7 +3543,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     _selectedTender = widget.allowedModes.isNotEmpty
         ? widget.allowedModes.first
         : 'ONLINE';
-    _personCount = 1;
+    _personCount = 0;
     if (_isPerHeadCapita) {
       _schedulePerHeadAmountRefresh(immediate: true);
     }
@@ -3721,7 +3724,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   Future<void> _pickReceipts() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf'],
+      allowedExtensions: ['jpg', 'jpeg', 'png'],
       allowMultiple: true,
       withData: true,
     );
@@ -3730,14 +3733,20 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       return;
     }
 
+    final invalidFileNames = <String>[];
     final pickedReceipts = <_PickedReceipt>[];
     for (final file in result.files) {
+      final extension = (file.extension ?? '').toLowerCase().trim();
+      if (!(extension == 'jpg' || extension == 'jpeg' || extension == 'png')) {
+        invalidFileNames.add(file.name);
+        continue;
+      }
+
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
         continue;
       }
 
-      final extension = (file.extension ?? '').toLowerCase();
       final mimeType = _mimeTypeFromExtension(extension);
       final encoded = base64Encode(bytes);
       pickedReceipts.add(
@@ -3748,11 +3757,20 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       );
     }
 
+    if (invalidFileNames.isNotEmpty) {
+      setState(() {
+        _receiptFileError =
+            'Only JPG, JPEG, or PNG files are allowed. Please select a valid image file.';
+      });
+      return;
+    }
+
     if (pickedReceipts.isEmpty) {
       return;
     }
 
     setState(() {
+      _receiptFileError = null;
       _receipts.addAll(pickedReceipts);
     });
   }
@@ -3764,14 +3782,6 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         return 'image/jpeg';
       case 'png':
         return 'image/png';
-      case 'gif':
-        return 'image/gif';
-      case 'webp':
-        return 'image/webp';
-      case 'bmp':
-        return 'image/bmp';
-      case 'pdf':
-        return 'application/pdf';
       default:
         return 'application/octet-stream';
     }
@@ -4190,7 +4200,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       _DueTenderSelection(
         tender: _selectedTender,
         netPayable: _netPayable,
-        noOfPersons: _isPerHeadCapita ? _personCount : 1,
+        noOfPersons: _isPerHeadCapita ? _personCount : 0,
         listOfFiles: _receipts.map((receipt) => receipt.filePayload).toList(),
         bankInstrumentTenderDetails: _buildBankInstrumentTenderDetails(),
       ),
@@ -4357,9 +4367,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                     ),
                   ),
                   onChanged: (value) {
-                    final parsed = int.tryParse(value.trim()) ?? 1;
+                    final parsed = int.tryParse(value.trim()) ?? 0;
                     setState(() {
-                      _personCount = parsed < 1 ? 1 : parsed;
+                      _personCount = parsed < 0 ? 0 : parsed;
                     });
                     _schedulePerHeadAmountRefresh();
                   },
@@ -4385,9 +4395,21 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                if (_receiptFileError != null && _receiptFileError!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _receiptFileError!,
+                      style: const TextStyle(
+                        color: Color(0xFFB3261E),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 if (_receipts.isEmpty)
                   const Text(
-                    'Accepted formats: image or PDF',
+                    'Accepted formats: JPG, JPEG, PNG',
                     style: TextStyle(color: Color(0xFF51605F), fontSize: 13),
                   )
                 else
@@ -4465,7 +4487,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          onPressed: _confirmSelection,
+          onPressed:
+              (_receiptFileError != null && _receiptFileError!.isNotEmpty)
+              ? null
+              : _confirmSelection,
           child: const Text('Pay'),
         ),
       ],
@@ -4559,6 +4584,7 @@ class _WorklistModal extends StatefulWidget {
 class _WorklistModalState extends State<_WorklistModal> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const String _statusPending = 'PENDING';
+  static const String _statusComplete = 'COMPLETE';
   static const String _typeTransactionReview = 'TRANSACTION REVIEW';
 
   final Map<String, bool> _rejecting = {};
@@ -4647,10 +4673,17 @@ class _WorklistModalState extends State<_WorklistModal> {
     if (mounted) setState(() => _rejecting.remove(refId));
   }
 
+  String _statusOf(Map<String, dynamic> item) {
+    return item['status']?.toString().trim().toUpperCase() ?? '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = widget.worklists
-        .where((w) => w['status']?.toString().toUpperCase() == _statusPending)
+        .where((w) => _statusOf(w) == _statusPending)
+        .toList();
+    final completed = widget.worklists
+        .where((w) => _statusOf(w) == _statusComplete)
         .toList();
 
     return Dialog(
@@ -4658,167 +4691,192 @@ class _WorklistModalState extends State<_WorklistModal> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900, maxHeight: 600),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-              decoration: const BoxDecoration(
-                color: _brandColor,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
+        child: DefaultTabController(
+          length: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                decoration: const BoxDecoration(
+                  color: _brandColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.checklist_rounded,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Worklists',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    TabBar(
+                      isScrollable: true,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.white70,
+                      indicatorColor: Colors.white,
+                      indicatorWeight: 2.6,
+                      tabs: [
+                        Tab(text: 'Pending (${pending.length})'),
+                        Tab(text: 'Completed (${completed.length})'),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.checklist_rounded, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Pending Worklists (${pending.length})',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
 
-            // Table
-            Expanded(
-              child: pending.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No pending worklist items.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Table(
-                        border: TableBorder.all(
-                          color: const Color(0xFFDEEFEC),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        columnWidths: const {
-                          0: FlexColumnWidth(1.8),
-                          1: FlexColumnWidth(1.6),
-                          2: FlexColumnWidth(1.5),
-                          3: FlexColumnWidth(2.0),
-                          4: FlexColumnWidth(1.2),
-                        },
-                        children: [
-                          // Header row
-                          TableRow(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE9F7F4),
-                            ),
-                            children: [
-                              _th('Worklist ID'),
-                              _th('Type'),
-                              _th('Created At'),
-                              _th('Reference ID'),
-                              _th('Action'),
-                            ],
-                          ),
-                          ...pending.map((item) {
-                            final refId = item['referenceId']?.toString() ?? '';
-                            final isRejecting = _rejecting[refId] == true;
-                            final isFetchingTxn = _fetchingTxn[refId] == true;
-                            final isTransactionReview =
-                                item['worklistType']
-                                    ?.toString()
-                                    .toUpperCase() ==
-                                _typeTransactionReview;
-                            return TableRow(
-                              children: [
-                                _td(item['worklistId']?.toString() ?? '--'),
-                                _td(item['worklistType']?.toString() ?? '--'),
-                                _td(_formatDate(item['creatTs']?.toString())),
-                                _tdWidget(
-                                  refId.isEmpty
-                                      ? const Text(
-                                          '--',
-                                          style: TextStyle(fontSize: 13),
-                                        )
-                                      : isTransactionReview
-                                      ? isFetchingTxn
-                                            ? const SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              )
-                                            : InkWell(
-                                                onTap: () =>
-                                                    _openTransactionDetail(
-                                                      context,
-                                                      item,
-                                                    ),
-                                                child: Text(
-                                                  refId,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Color(0xFF0F8F82),
-                                                    decoration: TextDecoration
-                                                        .underline,
-                                                    decorationColor: Color(
-                                                      0xFF0F8F82,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                      : Text(
-                                          refId,
-                                          style: const TextStyle(fontSize: 13),
-                                        ),
-                                ),
-                                _tdWidget(
-                                  isRejecting
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.red,
-                                          ),
-                                        )
-                                      : refId.isEmpty
-                                      ? const SizedBox.shrink()
-                                      : TextButton(
-                                          style: TextButton.styleFrom(
-                                            foregroundColor: Colors.red,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                            ),
-                                          ),
-                                          onPressed: () => _handleReject(item),
-                                          child: const Text('Reject'),
-                                        ),
-                                ),
-                              ],
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildWorklistTable(pending, isCompletedTab: false),
+                    _buildWorklistTable(completed, isCompletedTab: true),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildWorklistTable(
+    List<Map<String, dynamic>> rows, {
+    required bool isCompletedTab,
+  }) {
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(
+          isCompletedTab
+              ? 'No completed worklist items.'
+              : 'No pending worklist items.',
+          style: const TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Table(
+        border: TableBorder.all(
+          color: const Color(0xFFDEEFEC),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        columnWidths: const {
+          0: FlexColumnWidth(1.8),
+          1: FlexColumnWidth(1.6),
+          2: FlexColumnWidth(1.5),
+          3: FlexColumnWidth(2.0),
+          4: FlexColumnWidth(1.2),
+        },
+        children: [
+          TableRow(
+            decoration: const BoxDecoration(color: Color(0xFFE9F7F4)),
+            children: [
+              _th('Worklist ID'),
+              _th('Type'),
+              _th('Created At'),
+              _th('Reference ID'),
+              _th('Action'),
+            ],
+          ),
+          ...rows.map((item) {
+            final refId = item['referenceId']?.toString() ?? '';
+            final isRejecting = _rejecting[refId] == true;
+            final isFetchingTxn = _fetchingTxn[refId] == true;
+            final isTransactionReview =
+                item['worklistType']?.toString().toUpperCase() ==
+                _typeTransactionReview;
+            return TableRow(
+              children: [
+                _td(item['worklistId']?.toString() ?? '--'),
+                _td(item['worklistType']?.toString() ?? '--'),
+                _td(_formatDate(item['creatTs']?.toString())),
+                _tdWidget(
+                  refId.isEmpty
+                      ? const Text('--', style: TextStyle(fontSize: 13))
+                      : isTransactionReview
+                      ? isFetchingTxn
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : InkWell(
+                                onTap: () =>
+                                    _openTransactionDetail(context, item),
+                                child: Text(
+                                  refId,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF0F8F82),
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Color(0xFF0F8F82),
+                                  ),
+                                ),
+                              )
+                      : Text(refId, style: const TextStyle(fontSize: 13)),
+                ),
+                _tdWidget(
+                  isCompletedTab
+                      ? const Text(
+                          'Completed',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF5E6D6B),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : isRejecting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.red,
+                          ),
+                        )
+                      : refId.isEmpty
+                      ? const SizedBox.shrink()
+                      : TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          onPressed: () => _handleReject(item),
+                          child: const Text('Reject'),
+                        ),
+                ),
+              ],
+            );
+          }),
+        ],
       ),
     );
   }

@@ -729,6 +729,101 @@ class _WorklistDialogState extends State<_WorklistDialog>
     );
   }
 
+  String _worklistStatus(Map<String, dynamic> item) {
+    return item['status']?.toString().trim().toUpperCase() ?? '';
+  }
+
+  List<Map<String, dynamic>> get _pendingWorklists {
+    return _worklists
+        .where((item) => _worklistStatus(item) == 'PENDING')
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _completedWorklists {
+    return _worklists
+        .where((item) => _worklistStatus(item) == 'COMPLETE')
+        .toList();
+  }
+
+  Widget _buildWorklistTabBody({
+    required List<Map<String, dynamic>> rows,
+    required String emptyMessage,
+  }) {
+    if (rows.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF7F5),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.playlist_remove_rounded,
+                color: _brandColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              emptyMessage,
+              style: const TextStyle(
+                color: Color(0xFF2A4A47),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'You are all caught up for now.',
+              style: TextStyle(color: Color(0xFF667B78)),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _refreshWorklists,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandColor,
+                side: const BorderSide(color: _brandColor),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Refresh'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _metaPill(
+                icon: Icons.format_list_bulleted_rounded,
+                text: '${rows.length} total items',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.separated(
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, index) => _buildWorklistCard(rows[index]),
+          ),
+        ),
+      ],
+    );
+  }
+
   double _modalMaxHeight(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final preferred = 220 + (_worklists.length * 122.0);
@@ -800,6 +895,9 @@ class _WorklistDialogState extends State<_WorklistDialog>
 
   @override
   Widget build(BuildContext context) {
+    final pending = _pendingWorklists;
+    final completed = _completedWorklists;
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -808,157 +906,112 @@ class _WorklistDialogState extends State<_WorklistDialog>
           maxWidth: 920,
           maxHeight: _modalMaxHeight(context),
         ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 14, 16),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF0F8F82), Color(0xFF11A193)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.work_outline_rounded,
-                      color: Colors.white,
-                    ),
+        child: DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 14, 8),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0F8F82), Color(0xFF11A193)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          'Worklists (${_worklists.length})',
-                          style: const TextStyle(
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.work_outline_rounded,
                             color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _worklists.isEmpty
-                              ? 'No pending tasks currently'
-                              : 'Tap each worklist to expand',
-                          style: const TextStyle(
-                            color: Color(0xFFE0F7F3),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Worklists',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Tap each worklist to expand',
+                                style: TextStyle(
+                                  color: Color(0xFFE0F7F3),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh worklists',
+                          onPressed: _refreshWorklists,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Refresh worklists',
-                    onPressed: _refreshWorklists,
-                    icon: const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
+                    const SizedBox(height: 4),
+                    TabBar(
+                      labelColor: Colors.white,
+                      unselectedLabelColor: const Color(0xFFD7F0EC),
+                      indicatorColor: Colors.white,
+                      indicatorWeight: 2.6,
+                      tabs: [
+                        Tab(text: 'Pending (${pending.length})'),
+                        Tab(text: 'Completed (${completed.length})'),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: Container(
-                color: const Color(0xFFF8FBFB),
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: _worklists.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 54,
-                              height: 54,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEAF7F5),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                Icons.playlist_remove_rounded,
-                                color: _brandColor,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'No pending worklists found',
-                              style: TextStyle(
-                                color: Color(0xFF2A4A47),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'You are all caught up for now.',
-                              style: TextStyle(color: Color(0xFF667B78)),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: _refreshWorklists,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: _brandColor,
-                                side: const BorderSide(color: _brandColor),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Refresh'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _metaPill(
-                                  icon: Icons.format_list_bulleted_rounded,
-                                  text: '${_worklists.length} total items',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: ListView.separated(
-                              itemCount: _worklists.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (_, index) =>
-                                  _buildWorklistCard(_worklists[index]),
-                            ),
-                          ),
-                        ],
+              Expanded(
+                child: Container(
+                  color: const Color(0xFFF8FBFB),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: TabBarView(
+                    children: [
+                      _buildWorklistTabBody(
+                        rows: pending,
+                        emptyMessage: 'No pending worklists found',
                       ),
+                      _buildWorklistTabBody(
+                        rows: completed,
+                        emptyMessage: 'No completed worklists found',
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
+import '../services/notice_models.dart';
 import '../services/receipt_downloader.dart';
 import '../services/razorpay_checkout.dart';
 import '../widgets/brand_artwork.dart';
@@ -41,6 +42,9 @@ class _HomePageState extends State<HomePage> {
 
   Map<String, dynamic>? dashboardData;
   Map<String, dynamic>? dueAmountData;
+  List<NoticeSummary> _dashboardNotices = [];
+  String? _dashboardNoticeError;
+  int _noticeBoardPage = 0;
   bool loading = true;
   bool isRefreshing = false;
 
@@ -79,19 +83,71 @@ class _HomePageState extends State<HomePage> {
 
     _fetchWorklists();
 
+    final genericHeader = ApiService.userHeader;
+    final noticeFuture = (genericHeader == null || genericHeader.isEmpty)
+        ? Future.value(null)
+        : ApiService.getNoticeRequest(
+            NoticeQueryRequest(
+              genericHeader: Map<String, dynamic>.from(genericHeader),
+            ),
+          );
+
     final results = await Future.wait<Map<String, dynamic>?>([
       ApiService.getDashboardData(),
       ApiService.getDueAmountForFlat(),
+      noticeFuture,
     ]);
+
+    final notices = _extractDashboardNotices(results[2]);
+    final noticeError = _extractDashboardNoticeError(results[2]);
 
     if (!mounted) return;
     setState(() {
       dashboardData = results[0];
       dueAmountData = results[1];
+      _dashboardNotices = notices;
+      _dashboardNoticeError = noticeError;
+      _noticeBoardPage = 0;
       loading = false;
       isRefreshing = false;
     });
     _configureDueSliderAutoPlay();
+  }
+
+  bool _isNoticeSuccessResponse(Map<String, dynamic>? response) {
+    final code =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    return code.startsWith('SUCC') || code.contains('FETCHED');
+  }
+
+  List<NoticeSummary> _extractDashboardNotices(Map<String, dynamic>? response) {
+    if (!_isNoticeSuccessResponse(response)) {
+      return const <NoticeSummary>[];
+    }
+
+    final raw = response?['noticeList'];
+    if (raw is! List) {
+      return const <NoticeSummary>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((entry) => NoticeSummary.fromMap(Map<String, dynamic>.from(entry)))
+        .toList();
+  }
+
+  String? _extractDashboardNoticeError(Map<String, dynamic>? response) {
+    if (response == null) {
+      return null;
+    }
+    if (_isNoticeSuccessResponse(response)) {
+      return null;
+    }
+    final message = response['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty) {
+      return message;
+    }
+    return 'Unable to fetch notices right now.';
   }
 
   Future<void> _fetchWorklists() async {
@@ -580,30 +636,297 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  List<_FeedItem> _noticeItems() {
-    return const [
-      _FeedItem(
-        title: 'Water tank cleaning scheduled for Saturday',
-        category: 'Notice',
-        timestamp: 'Today, 11:00 AM',
-        description:
-            'Supply will be paused from 11 AM to 2 PM across Towers A and B.',
-      ),
-      _FeedItem(
-        title: 'Security drill and emergency response check',
-        category: 'Post',
-        timestamp: 'Today, 08:45 AM',
-        description:
-            'Residents are requested to keep basement lanes clear during the drill window.',
-      ),
-      _FeedItem(
-        title: 'Poll open: clubhouse equipment upgrade',
-        category: 'Poll',
-        timestamp: 'Yesterday, 06:20 PM',
-        description:
-            'Cast your vote on the proposed gym and indoor games refresh before Friday.',
-      ),
+  DateTime _parseNoticeDateForSort(String rawDate) {
+    final trimmed = rawDate.trim();
+    if (trimmed.isEmpty || trimmed == '-') {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    return DateTime.tryParse(trimmed) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _formatNoticeDate(String rawDate) {
+    final parsed = _parseNoticeDateForSort(rawDate);
+    if (parsed.millisecondsSinceEpoch == 0) {
+      return '--';
+    }
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
+    return '${parsed.day.toString().padLeft(2, '0')} ${months[parsed.month - 1]}';
+  }
+
+  List<NoticeSummary> get _sortedDashboardNotices {
+    final notices = List<NoticeSummary>.from(_dashboardNotices);
+    notices.sort(
+      (a, b) => _parseNoticeDateForSort(
+        b.publishingDate,
+      ).compareTo(_parseNoticeDateForSort(a.publishingDate)),
+    );
+    return notices;
+  }
+
+  int _noticeBoardPageSize(bool mobile) => mobile ? 4 : 8;
+
+  IconData _noticeBoardIcon(String status) {
+    final normalized = status.trim().toUpperCase();
+    if (normalized == 'PUBLISH' || normalized == 'PUBLISHED') {
+      return Icons.campaign_rounded;
+    }
+    if (normalized == 'ACTIVE') {
+      return Icons.push_pin_rounded;
+    }
+    return Icons.note_alt_rounded;
+  }
+
+  void _openNoticeSection() {
+    _handleQuickAction(
+      const _QuickPick(
+        title: 'Notice Board',
+        subtitle: 'Read latest notices',
+        icon: Icons.campaign_outlined,
+        section: AppSection.meetingAndNotice,
+        message: 'Opening notices.',
+      ),
+    );
+  }
+
+  void _nextNoticeBoardPage(int totalPages) {
+    if (totalPages <= 1) {
+      return;
+    }
+    setState(() {
+      _noticeBoardPage = (_noticeBoardPage + 1) % totalPages;
+    });
+  }
+
+  Widget _buildNoticePinCard(NoticeSummary notice, int index) {
+    const noteColors = [
+      Color(0xFFE7F6F2),
+      Color(0xFFD9EFEA),
+      Color(0xFFF4EFC5),
+      Color(0xFFE3F3EE),
+    ];
+    final color = noteColors[index % noteColors.length];
+    final angle = ((index % 3) - 1) * 0.03;
+
+    return Transform.rotate(
+      angle: angle,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.12),
+              blurRadius: 6,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF124B45),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  _noticeBoardIcon(notice.status),
+                  size: 14,
+                  color: const Color(0xFF2A4542),
+                ),
+                const Spacer(),
+                Text(
+                  _formatNoticeDate(notice.publishingDate),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2A4542),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              notice.noticeHeader,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1D3431),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              notice.shortDescription,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                height: 1.2,
+                color: Color(0xFF2A4542),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoticeBoardPanel(bool mobile) {
+    final notices = _sortedDashboardNotices;
+    final pageSize = _noticeBoardPageSize(mobile);
+    final totalPages = notices.isEmpty
+        ? 1
+        : ((notices.length + pageSize - 1) ~/ pageSize);
+    final currentPage = totalPages == 0 ? 0 : (_noticeBoardPage % totalPages);
+    final start = currentPage * pageSize;
+    final end = start + pageSize > notices.length
+        ? notices.length
+        : start + pageSize;
+    final visibleNotices = notices.isEmpty
+        ? const <NoticeSummary>[]
+        : notices.sublist(start, end);
+
+    return _DashboardPanel(
+      title: 'Notice Board',
+      subtitle:
+          'Pinned updates from Meeting & Notice. Latest notices appear first.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F8F82),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(15, 143, 130, 0.24),
+                  blurRadius: 12,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7F4F1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFC9E3DD), width: 1.2),
+              ),
+              child:
+                  _dashboardNoticeError != null &&
+                      _dashboardNoticeError!.isNotEmpty
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF1EE),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFF4C9BE)),
+                      ),
+                      child: Text(
+                        _dashboardNoticeError!,
+                        style: const TextStyle(
+                          color: Color(0xFF8A2F1B),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                  : visibleNotices.isEmpty
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F8F6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'No notices to pin right now.',
+                        style: TextStyle(
+                          color: Color(0xFF2F5B55),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                  : GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: visibleNotices.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: mobile ? 2 : 4,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: mobile ? 0.98 : 1.05,
+                      ),
+                      itemBuilder: (context, index) =>
+                          _buildNoticePinCard(visibleNotices[index], index),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                'Showing ${visibleNotices.length} of ${notices.length}',
+                style: const TextStyle(
+                  color: Color(0xFF3B5F5B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (totalPages > 1)
+                Text(
+                  'Page ${currentPage + 1}/$totalPages',
+                  style: const TextStyle(
+                    color: Color(0xFF4F6F6B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: totalPages > 1
+                    ? () => _nextNoticeBoardPage(totalPages)
+                    : _openNoticeSection,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F8F82),
+                  foregroundColor: Colors.white,
+                ),
+                icon: Icon(
+                  totalPages > 1
+                      ? Icons.navigate_next_rounded
+                      : Icons.open_in_new_rounded,
+                ),
+                label: Text(totalPages > 1 ? 'Next' : 'More'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHeroCard(bool mobile) {
@@ -951,16 +1274,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildFeedPanel() {
-    return _DashboardPanel(
-      title: 'Notice & Posts',
-      subtitle: 'Latest communication from the society office.',
-      child: Column(
-        children: _noticeItems().map((item) => _FeedTile(item: item)).toList(),
-      ),
-    );
-  }
-
   Widget _buildVisitorsPanel() {
     return _DashboardPanel(
       title: 'Recent Entry Visitors',
@@ -1079,11 +1392,11 @@ class _HomePageState extends State<HomePage> {
                   if (mobile) ...[
                     _buildQuickPickPanel(mobile),
                     const SizedBox(height: 18),
+                    _buildNoticeBoardPanel(mobile),
+                    const SizedBox(height: 18),
                     _buildTrendPanel(),
                     const SizedBox(height: 18),
                     _buildVisitorsPanel(),
-                    const SizedBox(height: 18),
-                    _buildFeedPanel(),
                     const SizedBox(height: 18),
                     _buildPollPanel(),
                     const SizedBox(height: 18),
@@ -1098,9 +1411,9 @@ class _HomePageState extends State<HomePage> {
                             children: [
                               _buildQuickPickPanel(mobile),
                               const SizedBox(height: 18),
-                              _buildTrendPanel(),
+                              _buildNoticeBoardPanel(mobile),
                               const SizedBox(height: 18),
-                              _buildFeedPanel(),
+                              _buildTrendPanel(),
                             ],
                           ),
                         ),
@@ -1845,6 +2158,39 @@ class _LegendChip extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(label),
+        ],
+      ),
+    );
+  }
+}
+
+class _BadgeLabel extends StatelessWidget {
+  const _BadgeLabel({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F8F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF4C6764)),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFF4C6764),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );

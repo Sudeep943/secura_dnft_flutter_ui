@@ -1740,7 +1740,12 @@ class _ReconcileQrPaymentsDialogState
       await showDialog<void>(
         context: hostContext,
         barrierDismissible: false,
-        builder: (_) => _ReconcileQrResultDialog(response: response),
+        builder: (_) => _ReconcileQrResultDialog(
+          response: response,
+          fromDate: fromDate,
+          toDate: toDate,
+          base64EncodedStatementFile: _selectedFileBase64!,
+        ),
       );
     } catch (error) {
       _showSnackBar('Unable to reconcile QR payments: $error', isError: true);
@@ -1952,9 +1957,17 @@ class _ReconcileQrPaymentsDialogState
 enum _ReconcileQrTab { found, notFound }
 
 class _ReconcileQrResultDialog extends StatefulWidget {
-  const _ReconcileQrResultDialog({required this.response});
+  const _ReconcileQrResultDialog({
+    required this.response,
+    required this.fromDate,
+    required this.toDate,
+    required this.base64EncodedStatementFile,
+  });
 
   final Map<String, dynamic> response;
+  final String fromDate;
+  final String toDate;
+  final String base64EncodedStatementFile;
 
   @override
   State<_ReconcileQrResultDialog> createState() =>
@@ -1964,6 +1977,7 @@ class _ReconcileQrResultDialog extends StatefulWidget {
 class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  late Map<String, dynamic> _latestResponse;
   final Set<String> _selectedFoundIds = <String>{};
   final Set<String> _selectedNotFoundIds = <String>{};
   bool _downloadingFile = false;
@@ -1972,6 +1986,7 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
   @override
   void initState() {
     super.initState();
+    _latestResponse = Map<String, dynamic>.from(widget.response);
     _tabController = TabController(length: 2, vsync: this);
   }
 
@@ -1982,7 +1997,7 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
   }
 
   List<Map<String, dynamic>> _readRows(String key) {
-    final raw = widget.response[key];
+    final raw = _latestResponse[key];
     if (raw is! List) {
       return const <Map<String, dynamic>>[];
     }
@@ -2059,7 +2074,7 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
   }
 
   int _countValue(String key, int fallback) {
-    final value = widget.response[key];
+    final value = _latestResponse[key];
     if (value is int) {
       return value;
     }
@@ -2071,14 +2086,81 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
 
   String? get _highlightedFile {
     final direct =
-        widget.response['highlithedBase64EncodedFile']?.toString().trim() ?? '';
+        _latestResponse['highlithedBase64EncodedFile']?.toString().trim() ?? '';
     if (direct.isNotEmpty) {
       return direct;
     }
     final alternate =
-        widget.response['highlightedBase64EncodedFile']?.toString().trim() ??
+        _latestResponse['highlightedBase64EncodedFile']?.toString().trim() ??
         '';
     return alternate.isEmpty ? null : alternate;
+  }
+
+  Future<void> _refreshReconcileResultAfterAction() async {
+    final refreshed = await ApiService.reconcileQrPayment(
+      fromDate: widget.fromDate,
+      toDate: widget.toDate,
+      base64EncodedStatementFile: widget.base64EncodedStatementFile,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (refreshed == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to refresh QR reconciliation results.'),
+          backgroundColor: Color(0xFFB3261E),
+        ),
+      );
+      return;
+    }
+
+    final refreshedMap = Map<String, dynamic>.from(refreshed);
+    final foundCount = _parseCount(
+      refreshedMap['foundCount'],
+      refreshedMap['foundTransactionsList'],
+    );
+    final notFoundCount = _parseCount(
+      refreshedMap['notFoundCount'],
+      refreshedMap['notFoundTransactionsList'],
+    );
+
+    setState(() {
+      _latestResponse = refreshedMap;
+      _selectedFoundIds.clear();
+      _selectedNotFoundIds.clear();
+      _tabController.animateTo(0);
+    });
+
+    if (foundCount == 0 && notFoundCount == 0) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _AllPendingQrAcknowledgedDialog(),
+      );
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  int _parseCount(dynamic rawCount, dynamic rawList) {
+    if (rawCount is int) {
+      return rawCount;
+    }
+    if (rawCount is num) {
+      return rawCount.toInt();
+    }
+    final parsed = int.tryParse(rawCount?.toString() ?? '');
+    if (parsed != null) {
+      return parsed;
+    }
+    if (rawList is List) {
+      return rawList.length;
+    }
+    return 0;
   }
 
   bool get _hasActiveSelection {
@@ -2202,11 +2284,17 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
         return;
       }
 
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _QrPaymentActionResultDialog(response: response),
-      );
+      final acknowledged =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => _QrPaymentActionResultDialog(response: response),
+          ) ??
+          false;
+
+      if (acknowledged) {
+        await _refreshReconcileResultAfterAction();
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -2398,7 +2486,7 @@ class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
   @override
   Widget build(BuildContext context) {
     final message =
-        widget.response['message']?.toString().trim() ??
+        _latestResponse['message']?.toString().trim() ??
         'QR Payment Reconciliation Completed';
     final foundCount = _countValue('foundCount', _foundRows.length);
     final notFoundCount = _countValue('notFoundCount', _notFoundRows.length);
@@ -2750,7 +2838,7 @@ class _QrPaymentActionResultDialogState
                       ),
                     ),
                     IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => Navigator.of(context).pop(false),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -2807,7 +2895,7 @@ class _QrPaymentActionResultDialogState
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () => Navigator.of(context).pop(true),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF0F8F82),
                       foregroundColor: Colors.white,
@@ -2817,6 +2905,89 @@ class _QrPaymentActionResultDialogState
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AllPendingQrAcknowledgedDialog extends StatelessWidget {
+  const _AllPendingQrAcknowledgedDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFDCEAE7)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(18, 75, 69, 0.14),
+                blurRadius: 22,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE6F4F1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.verified_rounded,
+                      color: Color(0xFF0F8F82),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'QR Payment Reconciliation',
+                      style: TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'All Pending QR Payment Are Acknowledged',
+                style: TextStyle(
+                  color: Color(0xFF344A47),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F8F82),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('OK'),
+                ),
+              ),
+            ],
           ),
         ),
       ),

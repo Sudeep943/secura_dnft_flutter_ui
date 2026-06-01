@@ -1462,7 +1462,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       _loadingAction = action;
     });
 
-    await ApiService.actionTransactionReviewWorkList(
+    final response = await ApiService.actionTransactionReviewWorkList(
       worklistId: widget.worklistId,
       action: action,
     );
@@ -1474,6 +1474,24 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     setState(() {
       _loadingAction = null;
     });
+
+    final messageCode =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    final isSuccess = messageCode.contains('SUCC');
+    if (!isSuccess) {
+      final message =
+          response?['message']?.toString().trim() ??
+          'Unable to update transaction review.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message.isEmpty ? 'Unable to update transaction review.' : message,
+          ),
+          backgroundColor: const Color(0xFFB3261E),
+        ),
+      );
+      return;
+    }
 
     Navigator.of(context).pop();
     await widget.onActionCompleted();

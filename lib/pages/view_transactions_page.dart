@@ -45,6 +45,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   Set<String> _selectedCauses = <String>{};
   Set<String> _selectedTenders = <String>{};
   Set<String> _selectedDoneBy = <String>{};
+  final Map<String, Map<String, String>> _paymentHoverDetailsCache =
+      <String, Map<String, String>>{};
 
   @override
   void initState() {
@@ -449,6 +451,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       'Transaction ID',
       'Transaction Date',
       'Done By',
+      'Flat',
       'Tenders',
       'Type',
       'Bank Account',
@@ -467,6 +470,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
             txn['trnscId']?.toString() ?? '--',
             _fmtDate(txn),
             txn['trnsBy']?.toString() ?? '--',
+            txn['flatId']?.toString() ?? '--',
             _flattenTenderText(txn),
             txn['trnsType']?.toString() ?? '--',
             txn['trnsBnkAccnt']?.toString() ?? '--',
@@ -1354,23 +1358,91 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         : <Map<String, dynamic>>[];
 
     if (list.isEmpty) {
-      return const SelectableText('--');
+      return const SelectableText('--', textAlign: TextAlign.center);
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: list
           .map(
             (t) => SelectableText(
               '${t['tenderName'] ?? '--'}: ${t['amountPaid'] ?? '0'}',
-              textAlign: TextAlign.left,
+              textAlign: TextAlign.center,
               maxLines: 1,
               style: const TextStyle(fontSize: 12.5, height: 1.3),
             ),
           )
           .toList(),
     );
+  }
+
+  Future<Map<String, String>> _fetchPaymentHoverDetails(
+    String paymentId,
+  ) async {
+    final normalizedPaymentId = paymentId.trim();
+    if (normalizedPaymentId.isEmpty || normalizedPaymentId == '--') {
+      return const <String, String>{};
+    }
+
+    if (_paymentHoverDetailsCache.containsKey(normalizedPaymentId)) {
+      return _paymentHoverDetailsCache[normalizedPaymentId]!;
+    }
+
+    final header = ApiService.userHeader;
+    if (header == null || header.isEmpty) {
+      return const <String, String>{};
+    }
+
+    final response = await ApiService.getPayment({
+      'genericHeader': Map<String, dynamic>.from(header),
+      'paymentId': normalizedPaymentId,
+    });
+
+    final code =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    if (!(code.startsWith('SUCC') || code.contains('SUCCESS'))) {
+      return const <String, String>{};
+    }
+
+    final rawList = response?['paymentList'];
+    final list = rawList is List
+        ? rawList
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : <Map<String, dynamic>>[];
+    if (list.isEmpty) {
+      return const <String, String>{};
+    }
+
+    Map<String, dynamic> selected = list.first;
+    for (final item in list) {
+      final id = item['paymentId']?.toString().trim() ?? '';
+      if (id == normalizedPaymentId) {
+        selected = item;
+        break;
+      }
+    }
+
+    String readField(String key) {
+      final value = selected[key]?.toString().trim() ?? '';
+      if (value.isEmpty || value.toLowerCase() == 'null') {
+        return '--';
+      }
+      return value;
+    }
+
+    final details = <String, String>{
+      'Payment Name': readField('paymentName'),
+      'Payment Type': readField('paymentType'),
+      'Payment Amount': readField('paymentAmount'),
+      'Payment Capita': readField('paymentCapita'),
+      'Discount Code': readField('discountCode'),
+    };
+
+    _paymentHoverDetailsCache[normalizedPaymentId] = details;
+    return details;
   }
 
   Widget _buildTotalsBar() {
@@ -1533,6 +1605,15 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       ),
                       DataColumn(
                         label: SizedBox(
+                          width: 120,
+                          child: const Text(
+                            'Flat',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      DataColumn(
+                        label: SizedBox(
                           width: 210,
                           child: const Text(
                             'Tenders',
@@ -1630,10 +1711,10 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                               width: 140,
                               height: double.infinity,
                               child: Container(
-                                alignment: Alignment.centerLeft,
+                                alignment: Alignment.center,
                                 child: SelectableText(
                                   txn['trnscId']?.toString() ?? '--',
-                                  textAlign: TextAlign.left,
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
@@ -1666,11 +1747,24 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                           ),
                           DataCell(
                             SizedBox(
+                              width: 120,
+                              height: double.infinity,
+                              child: Container(
+                                alignment: Alignment.center,
+                                child: SelectableText(
+                                  txn['flatId']?.toString() ?? '--',
+                                  maxLines: 2,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            SizedBox(
                               width: 210,
                               height: double.infinity,
                               child: Container(
-                                alignment: Alignment.centerLeft,
-                                padding: const EdgeInsets.only(left: 12),
+                                alignment: Alignment.center,
                                 child: _buildTenderCell(txn),
                               ),
                             ),
@@ -1719,10 +1813,9 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                               height: double.infinity,
                               child: Container(
                                 alignment: Alignment.center,
-                                child: SelectableText(
-                                  txn['pymntId']?.toString() ?? '--',
-                                  maxLines: 2,
-                                  textAlign: TextAlign.center,
+                                child: _PaymentIdHoverCell(
+                                  paymentId: txn['pymntId']?.toString() ?? '--',
+                                  fetchDetails: _fetchPaymentHoverDetails,
                                 ),
                               ),
                             ),
@@ -1984,6 +2077,251 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         title: const Text('View Transactions'),
       ),
       body: content,
+    );
+  }
+}
+
+class _PaymentIdHoverCell extends StatefulWidget {
+  const _PaymentIdHoverCell({
+    required this.paymentId,
+    required this.fetchDetails,
+  });
+
+  final String paymentId;
+  final Future<Map<String, String>> Function(String paymentId) fetchDetails;
+
+  @override
+  State<_PaymentIdHoverCell> createState() => _PaymentIdHoverCellState();
+}
+
+class _PaymentIdHoverCellState extends State<_PaymentIdHoverCell> {
+  static const Color _brandColor = Color(0xFF0F8F82);
+
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  bool _hoveringTarget = false;
+  bool _hoveringOverlay = false;
+  bool _loading = false;
+  Map<String, String> _details = const <String, String>{};
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _showOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.markNeedsBuild();
+      return;
+    }
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Positioned.fill(
+          child: IgnorePointer(
+            ignoring: false,
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: const Offset(0, 30),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: MouseRegion(
+                  onEnter: (_) {
+                    _hoveringOverlay = true;
+                  },
+                  onExit: (_) {
+                    _hoveringOverlay = false;
+                    _scheduleHideOverlay();
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 300,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFD9ECE8),
+                          width: 1,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color.fromRGBO(15, 70, 64, 0.16),
+                            blurRadius: 20,
+                            offset: Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: _loading
+                          ? const Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Payment Details',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: _brandColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                _buildDetailRow(
+                                  'Payment Name',
+                                  _details['Payment Name'] ?? '--',
+                                ),
+                                _buildDetailRow(
+                                  'Payment Type',
+                                  _details['Payment Type'] ?? '--',
+                                ),
+                                _buildDetailRow(
+                                  'Payment Amount',
+                                  _details['Payment Amount'] ?? '--',
+                                ),
+                                _buildDetailRow(
+                                  'Payment Capita',
+                                  _details['Payment Capita'] ?? '--',
+                                ),
+                                _buildDetailRow(
+                                  'Discount Code',
+                                  _details['Discount Code'] ?? '--',
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_overlayEntry!);
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 112,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF4D6360),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 12.5, color: Color(0xFF1E2A28)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _scheduleHideOverlay() {
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) {
+        return;
+      }
+      if (_hoveringTarget || _hoveringOverlay) {
+        return;
+      }
+      _removeOverlay();
+    });
+  }
+
+  Future<void> _onEnter() async {
+    _hoveringTarget = true;
+    _showOverlay();
+
+    if (_loading) {
+      return;
+    }
+
+    final id = widget.paymentId.trim();
+    if (id.isEmpty || id == '--') {
+      setState(() {
+        _details = const <String, String>{};
+      });
+      _overlayEntry?.markNeedsBuild();
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
+    _overlayEntry?.markNeedsBuild();
+
+    try {
+      final details = await widget.fetchDetails(id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _details = details;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+        _overlayEntry?.markNeedsBuild();
+      }
+    }
+  }
+
+  void _onExit() {
+    _hoveringTarget = false;
+    _scheduleHideOverlay();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => _onEnter(),
+        onExit: (_) => _onExit(),
+        child: SelectableText(
+          widget.paymentId.trim().isEmpty ? '--' : widget.paymentId,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            decoration: TextDecoration.underline,
+            color: Color(0xFF0B6A60),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }

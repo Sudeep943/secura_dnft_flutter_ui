@@ -2697,6 +2697,30 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     return '--';
   }
 
+  String _extractPayDuesQrIdentifier(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['qrIdentifier'],
+      response?['qridentifier'],
+      response?['qrId'],
+      response?['data'] is Map
+          ? (response?['data'] as Map)['qrIdentifier']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['qridentifier']
+          : null,
+      response?['data'] is Map ? (response?['data'] as Map)['qrId'] : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '--';
+  }
+
   String? _extractPayDuesReceiptBase64(Map<String, dynamic>? response) {
     final candidates = [
       response?['receipt'],
@@ -2860,13 +2884,14 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   Future<bool> _createDeepLinkOrder({
     required Map<String, dynamic> payment,
     required double netPayable,
-    required String transactionId,
+    required String qrIdentifier,
     required String bankId,
+    required BuildContext hostContext,
   }) async {
-    final tid = transactionId.trim();
+    final tid = qrIdentifier.trim();
     if (tid.isEmpty || tid == '--') {
       _showStatusSnack(
-        'Payment recorded, but transaction ID was missing for Society QR order creation.',
+        'Payment recorded, but qrIdentifier was missing for Society QR order creation.',
         isError: true,
       );
       return false;
@@ -2908,6 +2933,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
     }
 
     await _showDeepLinkPaymentModal(
+      hostContext: hostContext,
       upiPaymentURL: upiPaymentURL,
       amount: _formatAmountForRequest(netPayable),
       bankName: responseMap['bankName']?.toString().trim() ?? '',
@@ -2919,15 +2945,14 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   }
 
   Future<void> _showDeepLinkPaymentModal({
+    required BuildContext hostContext,
     required String upiPaymentURL,
     required String amount,
     required String bankName,
     required String accountHolderName,
   }) async {
-    if (!mounted) return;
-
     await showDialog<void>(
-      context: context,
+      context: hostContext,
       barrierDismissible: false,
       builder: (dialogContext) => _DeepLinkPaymentDialog(
         upiPaymentURL: upiPaymentURL,
@@ -2970,6 +2995,29 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
       if (paymentId.isEmpty || dueId.isEmpty) {
         _showStatusSnack(
           'Unable to proceed: paymentId or DueId was not provided.',
+          isError: true,
+        );
+        return;
+      }
+
+      final validateResponse = await ApiService.validatePriorDuePayment(
+        dueId: dueId,
+        paymentId: paymentId,
+        dueDate: payment['dueDate']?.toString().trim() ?? '',
+        paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
+      );
+      final validateCode =
+          validateResponse?['messageCode']?.toString().trim().toUpperCase() ??
+          '';
+      final isValidateSuccess = validateCode.contains('SUCC');
+      if (!isValidateSuccess) {
+        final validateMessage =
+            validateResponse?['message']?.toString().trim() ??
+            'Prior due validation failed.';
+        _showStatusSnack(
+          validateMessage.isEmpty
+              ? 'Prior due validation failed.'
+              : validateMessage,
           isError: true,
         );
         return;
@@ -3081,6 +3129,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         final hostContext = Navigator.of(context, rootNavigator: true).context;
         final successMessage = _extractPayDuesMessage(response);
         final transactionId = _extractPayDuesTransactionId(response);
+        final qrIdentifier = _extractPayDuesQrIdentifier(response);
         final receiptBase64 = _extractPayDuesReceiptBase64(response);
         if (widget.onPaymentCompleted != null) {
           await widget.onPaymentCompleted!.call();
@@ -3099,8 +3148,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           await _createDeepLinkOrder(
             payment: payment,
             netPayable: selection.netPayable,
-            transactionId: transactionId,
+            qrIdentifier: qrIdentifier,
             bankId: bankId,
+            hostContext: hostContext,
           );
           await _showPayDuesSuccessDialog(
             hostContext: hostContext,

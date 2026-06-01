@@ -1277,6 +1277,43 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> validatePriorDuePayment({
+    required String dueId,
+    required String paymentId,
+    required String dueDate,
+    required String paymentCycle,
+  }) async {
+    if (token == null || userHeader == null) return null;
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': Map<String, dynamic>.from(userHeader!),
+      'dueId': dueId,
+      'paymentId': paymentId,
+      'dueDate': dueDate,
+      'paymentCycle': paymentCycle,
+    };
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/payment/validatePriorDuePaymnent'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> verifyPayment({
     required String razorpayOrderId,
     required String razorpayPaymentId,
@@ -1860,6 +1897,96 @@ class ApiService {
     final response = await _postWithOptionalAuthorization(
       path: '/payment/uploadPastDue',
       requestBody: {'genericHeader': genericHeader, 'file': fileBase64.trim()},
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> reconcileQrPayment({
+    String? fromDate,
+    String? toDate,
+    required String base64EncodedStatementFile,
+  }) async {
+    final genericHeader = _buildLoginResponseHeader() ?? _buildGenericHeader();
+    if (genericHeader == null || base64EncodedStatementFile.trim().isEmpty) {
+      return null;
+    }
+
+    final normalizedFromDate = fromDate?.trim() ?? '';
+    final normalizedToDate = toDate?.trim() ?? '';
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/payment/reconcileQRPayment',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'fromDate': normalizedFromDate.isEmpty ? null : normalizedFromDate,
+        'toDate': normalizedToDate.isEmpty ? null : normalizedToDate,
+        'base64EncodedStatementFile': base64EncodedStatementFile.trim(),
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> actionQrPayment({
+    required List<Map<String, dynamic>> transactionsList,
+    required String action,
+  }) async {
+    if (transactionsList.isEmpty) {
+      return null;
+    }
+
+    final loginHeader = _buildLoginResponseHeader();
+    final fallbackHeader = _buildFlatUploadHeader();
+    final genericHeader = (loginHeader != null
+        ? Map<String, dynamic>.from(loginHeader)
+        : (fallbackHeader != null
+              ? Map<String, dynamic>.from(fallbackHeader)
+              : <String, dynamic>{}));
+
+    final userId =
+        (genericHeader['userId']?.toString().trim().isNotEmpty ?? false)
+        ? genericHeader['userId']
+        : currentUserId;
+    genericHeader['requestId'] =
+        genericHeader['requestId'] ??
+        'REQ${DateTime.now().millisecondsSinceEpoch}';
+    genericHeader['channelId'] = genericHeader['channelId'] ?? 'WEB';
+    genericHeader['timestamp'] = DateTime.now().toIso8601String();
+    if (userId != null && userId.toString().trim().isNotEmpty) {
+      genericHeader['userId'] = userId;
+    }
+
+    final normalizedTransactions = transactionsList
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final normalizedAction = action.trim().toUpperCase();
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/payment/actionQRPayment',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'transactionsList': normalizedTransactions,
+        'action': normalizedAction,
+      },
     );
 
     if (response.body.isEmpty) {

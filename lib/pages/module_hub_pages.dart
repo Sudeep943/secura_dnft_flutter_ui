@@ -686,6 +686,17 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             );
           },
         ),
+        _ModuleHubItem(
+          'Reconcile QR Payments',
+          Icons.qr_code_scanner_rounded,
+          onTap: () {
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const _ReconcileQrPaymentsDialog(),
+            );
+          },
+        ),
         const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
       ],
     );
@@ -1561,6 +1572,1250 @@ class _UploadOtherDuesDialogState extends State<_UploadOtherDuesDialog> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReconcileQrPaymentsDialog extends StatefulWidget {
+  const _ReconcileQrPaymentsDialog();
+
+  @override
+  State<_ReconcileQrPaymentsDialog> createState() =>
+      _ReconcileQrPaymentsDialogState();
+}
+
+class _ReconcileQrPaymentsDialogState
+    extends State<_ReconcileQrPaymentsDialog> {
+  final TextEditingController _fileController = TextEditingController();
+  final TextEditingController _fromDateController = TextEditingController();
+  final TextEditingController _toDateController = TextEditingController();
+
+  bool _uploading = false;
+  String? _selectedFileName;
+  String? _selectedFileBase64;
+
+  @override
+  void dispose() {
+    _fileController.dispose();
+    _fromDateController.dispose();
+    _toDateController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? const Color(0xFFB3261E) : null,
+      ),
+    );
+  }
+
+  String _formatPickerDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  Future<void> _pickDate(TextEditingController controller) async {
+    final now = DateTime.now();
+    final initial = DateTime.tryParse(controller.text.trim()) ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: const Color(0xFF0F8F82),
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    controller.text = _formatPickerDate(picked);
+  }
+
+  Future<void> _pickExcelFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+      allowMultiple: false,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      _showSnackBar('Unable to read the selected Excel file.', isError: true);
+      return;
+    }
+
+    setState(() {
+      _selectedFileName = file.name;
+      _selectedFileBase64 = base64Encode(bytes);
+      _fileController.text = file.name;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_uploading) {
+      return;
+    }
+
+    if ((_selectedFileBase64 ?? '').trim().isEmpty) {
+      _showSnackBar('Please upload an Excel file first.', isError: true);
+      return;
+    }
+
+    setState(() {
+      _uploading = true;
+    });
+
+    final hostContext = Navigator.of(context, rootNavigator: true).context;
+
+    try {
+      final fromDate = _fromDateController.text.trim();
+      final toDate = _toDateController.text.trim();
+      final response = await ApiService.reconcileQrPayment(
+        fromDate: fromDate,
+        toDate: toDate,
+        base64EncodedStatementFile: _selectedFileBase64!,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        _showSnackBar('Unable to reconcile QR payments.', isError: true);
+        return;
+      }
+
+      final messageCode = response['messageCode']?.toString().trim() ?? '';
+      final isSuccess =
+          messageCode.toUpperCase().contains('SUCC') ||
+          messageCode.toUpperCase().contains('SUCCESS');
+      final foundRaw = response['foundCount'];
+      final foundCount = foundRaw is int
+          ? foundRaw
+          : (foundRaw is num
+                ? foundRaw.toInt()
+                : int.tryParse(foundRaw?.toString() ?? '') ?? 0);
+      final foundRowsRaw = response['foundTransactionsList'];
+      final foundRowsCount = foundRowsRaw is List ? foundRowsRaw.length : 0;
+      final shouldShowResultModal =
+          isSuccess || foundCount > 0 || foundRowsCount > 0;
+      if (!shouldShowResultModal) {
+        _showSnackBar(
+          response['message']?.toString().trim().isNotEmpty == true
+              ? response['message'].toString()
+              : 'Unable to reconcile QR payments.',
+          isError: true,
+        );
+        return;
+      }
+
+      Navigator.of(context).pop();
+      await showDialog<void>(
+        context: hostContext,
+        barrierDismissible: false,
+        builder: (_) => _ReconcileQrResultDialog(response: response),
+      );
+    } catch (error) {
+      _showSnackBar('Unable to reconcile QR payments: $error', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+        });
+      }
+    }
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFFF8FBFB),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFFD6E7E3)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF0F8F82), width: 1.3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: _ModuleHubPage._brandColor, width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(18, 75, 69, 0.14),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F8F82), Color(0xFF15766A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.qr_code_scanner_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Reconcile QR Payments',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Please Upload Bank Statement In .xlsx Format',
+                              style: TextStyle(
+                                color: Color(0xFFE9FAF6),
+                                height: 1.35,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _uploading
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _fileController,
+                  readOnly: true,
+                  decoration: _decoration('Upload File').copyWith(
+                    suffixIcon: IconButton(
+                      onPressed: _uploading ? null : _pickExcelFile,
+                      icon: const Icon(Icons.upload_file_rounded),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _fromDateController,
+                        readOnly: true,
+                        onTap: _uploading
+                            ? null
+                            : () => _pickDate(_fromDateController),
+                        decoration: _decoration('From Date').copyWith(
+                          suffixIcon: const Icon(Icons.calendar_month_rounded),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _toDateController,
+                        readOnly: true,
+                        onTap: _uploading
+                            ? null
+                            : () => _pickDate(_toDateController),
+                        decoration: _decoration('To Date').copyWith(
+                          suffixIcon: const Icon(Icons.calendar_month_rounded),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if ((_selectedFileName ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Selected file: $_selectedFileName',
+                    style: const TextStyle(
+                      color: Color(0xFF506461),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: _uploading
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed: _uploading ? null : _submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F8F82),
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: _uploading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.playlist_add_check_rounded),
+                      label: Text(_uploading ? 'Processing...' : 'Upload'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ReconcileQrTab { found, notFound }
+
+class _ReconcileQrResultDialog extends StatefulWidget {
+  const _ReconcileQrResultDialog({required this.response});
+
+  final Map<String, dynamic> response;
+
+  @override
+  State<_ReconcileQrResultDialog> createState() =>
+      _ReconcileQrResultDialogState();
+}
+
+class _ReconcileQrResultDialogState extends State<_ReconcileQrResultDialog>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final Set<String> _selectedFoundIds = <String>{};
+  final Set<String> _selectedNotFoundIds = <String>{};
+  bool _downloadingFile = false;
+  bool _actionInProgress = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _readRows(String key) {
+    final raw = widget.response[key];
+    if (raw is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _foundRows =>
+      _readRows('foundTransactionsList');
+  List<Map<String, dynamic>> get _notFoundRows =>
+      _readRows('notFoundTransactionsList');
+
+  Set<String> _selectionSet(_ReconcileQrTab tab) {
+    return tab == _ReconcileQrTab.found
+        ? _selectedFoundIds
+        : _selectedNotFoundIds;
+  }
+
+  List<Map<String, dynamic>> _rowsForTab(_ReconcileQrTab tab) {
+    return tab == _ReconcileQrTab.found ? _foundRows : _notFoundRows;
+  }
+
+  String _rowId(Map<String, dynamic> row) {
+    final trnscId = row['trnscId']?.toString().trim() ?? '';
+    if (trnscId.isNotEmpty) {
+      return trnscId;
+    }
+    return row.hashCode.toString();
+  }
+
+  String _formatTxnDate(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return '--';
+    }
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed == null) {
+      return trimmed;
+    }
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year} ${parsed.hour}:$minute';
+  }
+
+  String _displayValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return '--';
+    }
+    return text;
+  }
+
+  String _formatAmount(dynamic value) {
+    final amount = _displayValue(value);
+    if (amount == '--') {
+      return amount;
+    }
+    return amount.startsWith('₹') ? amount : '₹$amount';
+  }
+
+  int _countValue(String key, int fallback) {
+    final value = widget.response[key];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  String? get _highlightedFile {
+    final direct =
+        widget.response['highlithedBase64EncodedFile']?.toString().trim() ?? '';
+    if (direct.isNotEmpty) {
+      return direct;
+    }
+    final alternate =
+        widget.response['highlightedBase64EncodedFile']?.toString().trim() ??
+        '';
+    return alternate.isEmpty ? null : alternate;
+  }
+
+  bool get _hasActiveSelection {
+    final currentTab = _tabController.index == 0
+        ? _ReconcileQrTab.found
+        : _ReconcileQrTab.notFound;
+    return _selectionSet(currentTab).isNotEmpty;
+  }
+
+  void _toggleSelectAll(_ReconcileQrTab tab, bool? checked) {
+    final rows = _rowsForTab(tab);
+    final target = _selectionSet(tab);
+    setState(() {
+      if (checked == true) {
+        target
+          ..clear()
+          ..addAll(rows.map(_rowId));
+      } else {
+        target.clear();
+      }
+    });
+  }
+
+  void _toggleRow(_ReconcileQrTab tab, String rowId, bool? checked) {
+    final target = _selectionSet(tab);
+    setState(() {
+      if (checked == true) {
+        target.add(rowId);
+      } else {
+        target.remove(rowId);
+      }
+    });
+  }
+
+  Future<void> _downloadFile() async {
+    final file = _highlightedFile;
+    if (_downloadingFile || file == null || file.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _downloadingFile = true;
+    });
+
+    try {
+      final downloaded = await downloadBase64Receipt(
+        base64Data: file,
+        fileName: 'reconciled_qr_sheet.xlsx',
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            downloaded
+                ? 'Reconciled sheet downloaded successfully.'
+                : 'Unable to download reconciled sheet.',
+          ),
+          backgroundColor: downloaded ? null : const Color(0xFFB3261E),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingFile = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleSelectionAction(String actionLabel) async {
+    if (_actionInProgress) {
+      return;
+    }
+
+    final currentTab = _tabController.index == 0
+        ? _ReconcileQrTab.found
+        : _ReconcileQrTab.notFound;
+    final selectedIds = _selectionSet(currentTab);
+    final selectedRows = _rowsForTab(currentTab)
+        .where((row) => selectedIds.contains(_rowId(row)))
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+
+    if (selectedRows.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one transaction.'),
+          backgroundColor: Color(0xFFB3261E),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _actionInProgress = true;
+    });
+
+    try {
+      final action = actionLabel.trim().toUpperCase();
+      final response = await ApiService.actionQrPayment(
+        transactionsList: selectedRows,
+        action: action,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to process selected QR transactions.'),
+            backgroundColor: Color(0xFFB3261E),
+          ),
+        );
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _QrPaymentActionResultDialog(response: response),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to process selected QR transactions.'),
+          backgroundColor: Color(0xFFB3261E),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionInProgress = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildTabTable(_ReconcileQrTab tab) {
+    final rows = _rowsForTab(tab);
+    final selected = _selectionSet(tab);
+    final allSelected = rows.isNotEmpty && selected.length == rows.length;
+
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(
+          tab == _ReconcileQrTab.found
+              ? 'No found transactions.'
+              : 'No not found transactions.',
+          style: const TextStyle(color: Color(0xFF647775)),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(
+            children: [
+              Container(
+                width: 1180,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF6F3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD5E7E3)),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 44,
+                      child: Checkbox(
+                        value: allSelected,
+                        tristate: false,
+                        onChanged: (value) => _toggleSelectAll(tab, value),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Flat ID',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Transaction ID',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Payment Id',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Transaction Type',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Bank Id',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Amount',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 3,
+                      child: Text(
+                        'Transaction Date',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.separated(
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              final id = _rowId(row);
+              final isChecked = selected.contains(id);
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Container(
+                  width: 1180,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFDCEAE7)),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 44,
+                        child: Checkbox(
+                          value: isChecked,
+                          onChanged: (value) => _toggleRow(tab, id, value),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_displayValue(row['flatId'])),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_displayValue(row['trnscId'])),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_displayValue(row['pymntId'])),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_displayValue(row['trnsType'])),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_displayValue(row['trnsBnkAccnt'])),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(_formatAmount(row['trnsAmt'])),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          _formatTxnDate(
+                            row['creatTs']?.toString().trim() ?? '',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message =
+        widget.response['message']?.toString().trim() ??
+        'QR Payment Reconciliation Completed';
+    final foundCount = _countValue('foundCount', _foundRows.length);
+    final notFoundCount = _countValue('notFoundCount', _notFoundRows.length);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980, maxHeight: 720),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFDCEAE7)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(18, 75, 69, 0.14),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F4F1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.fact_check_rounded,
+                        color: Color(0xFF0F8F82),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'QR Payment Reconciliation',
+                            style: TextStyle(
+                              color: Color(0xFF124B45),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            message,
+                            style: const TextStyle(
+                              color: Color(0xFF506461),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _ReconcileMetricChip(
+                      label: 'Found',
+                      value: '$foundCount',
+                      color: const Color(0xFF0F8F82),
+                    ),
+                    _ReconcileMetricChip(
+                      label: 'Not Found',
+                      value: '$notFoundCount',
+                      color: const Color(0xFFB3261E),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    if ((_highlightedFile ?? '').isNotEmpty)
+                      FilledButton.icon(
+                        onPressed: _downloadingFile ? null : _downloadFile,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F8F82),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: _downloadingFile
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.download_rounded),
+                        label: const Text('Download Reconsiled Sheet'),
+                      ),
+                    const Spacer(),
+                    ListenableBuilder(
+                      listenable: _tabController,
+                      builder: (context, _) {
+                        return Row(
+                          children: [
+                            OutlinedButton(
+                              onPressed:
+                                  _hasActiveSelection && !_actionInProgress
+                                  ? () => _handleSelectionAction('Reject')
+                                  : null,
+                              child: const Text('Reject'),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed:
+                                  _hasActiveSelection && !_actionInProgress
+                                  ? () => _handleSelectionAction('Approve')
+                                  : null,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F8F82),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: _actionInProgress
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text('Approve'),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TabBar(
+                  controller: _tabController,
+                  labelColor: const Color(0xFF0F8F82),
+                  unselectedLabelColor: const Color(0xFF5E6F6D),
+                  indicatorColor: const Color(0xFF0F8F82),
+                  tabs: [
+                    Tab(text: 'Found Transactions ($foundCount)'),
+                    Tab(text: 'Not Found Transactions ($notFoundCount)'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildTabTable(_ReconcileQrTab.found),
+                      _buildTabTable(_ReconcileQrTab.notFound),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReconcileMetricChip extends StatelessWidget {
+  const _ReconcileMetricChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QrPaymentActionResultDialog extends StatefulWidget {
+  const _QrPaymentActionResultDialog({required this.response});
+
+  final Map<String, dynamic> response;
+
+  @override
+  State<_QrPaymentActionResultDialog> createState() =>
+      _QrPaymentActionResultDialogState();
+}
+
+class _QrPaymentActionResultDialogState
+    extends State<_QrPaymentActionResultDialog> {
+  bool _downloading = false;
+
+  List<Map<String, dynamic>> get _failedTransactions {
+    final raw = widget.response['notCompltedTransactionList'];
+    if (raw is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  String get _message {
+    final value = widget.response['message']?.toString().trim() ?? '';
+    if (value.isNotEmpty && value.toLowerCase() != 'null') {
+      return value;
+    }
+    return 'QR payment transactions processed.';
+  }
+
+  String? get _failedFileBase64 {
+    final value =
+        widget.response['filedWorklistActionFileBase64Encoded']
+            ?.toString()
+            .trim() ??
+        '';
+    return value.isEmpty ? null : value;
+  }
+
+  Future<void> _downloadFailedFile() async {
+    final base64Data = _failedFileBase64;
+    if (_downloading || base64Data == null || base64Data.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _downloading = true;
+    });
+
+    try {
+      final downloaded = await downloadBase64Receipt(
+        base64Data: base64Data,
+        fileName: 'qr_payment_action_failed_rows.xlsx',
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            downloaded
+                ? 'Failed worklist file downloaded successfully.'
+                : 'Unable to download failed worklist file.',
+          ),
+          backgroundColor: downloaded ? null : const Color(0xFFB3261E),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final failedCount = _failedTransactions.length;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFDCEAE7)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(18, 75, 69, 0.14),
+                blurRadius: 24,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F4F1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.task_alt_rounded,
+                        color: Color(0xFF0F8F82),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'QR Payment Action Result',
+                        style: TextStyle(
+                          color: Color(0xFF124B45),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _message,
+                  style: const TextStyle(
+                    color: Color(0xFF344A47),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFF2D1CA)),
+                  ),
+                  child: Text(
+                    'Upadtation Failed: $failedCount',
+                    style: const TextStyle(
+                      color: Color(0xFFB3261E),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if ((_failedFileBase64 ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: _downloading ? null : _downloadFailedFile,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F8F82),
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: _downloading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.download_rounded),
+                    label: const Text('Download Failed Worklist File'),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F8F82),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('OK'),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -3551,6 +4806,7 @@ class _ExecutiveMemberInput {
 
 class _BankAccountInput {
   _BankAccountInput({
+    required this.bankDetailsId,
     required this.bankName,
     required this.accountNumber,
     required this.ifscCode,
@@ -3564,6 +4820,7 @@ class _BankAccountInput {
 
   factory _BankAccountInput.empty() {
     return _BankAccountInput(
+      bankDetailsId: '',
       bankName: TextEditingController(),
       accountNumber: TextEditingController(),
       ifscCode: TextEditingController(),
@@ -3578,6 +4835,11 @@ class _BankAccountInput {
 
   factory _BankAccountInput.fromMap(Map<String, dynamic> map) {
     return _BankAccountInput(
+      bankDetailsId:
+          map['bankDetailsID']?.toString().trim() ??
+          map['bankDetailsId']?.toString().trim() ??
+          map['BankDetailsID']?.toString().trim() ??
+          '',
       bankName: TextEditingController(text: map['bankName']?.toString() ?? ''),
       accountNumber: TextEditingController(
         text: map['accountNumber']?.toString() ?? '',
@@ -3603,6 +4865,7 @@ class _BankAccountInput {
     );
   }
 
+  final String bankDetailsId;
   final TextEditingController bankName;
   final TextEditingController accountNumber;
   final TextEditingController ifscCode;
@@ -3626,7 +4889,7 @@ class _BankAccountInput {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'bankName': bankName.text.trim(),
       'accountNumber': accountNumber.text.trim(),
       'ifscCode': ifscCode.text.trim(),
@@ -3637,6 +4900,13 @@ class _BankAccountInput {
       'pgName': paymentGateway.text.trim(),
       'upiId': upiId.text.trim(),
     };
+
+    if (bankDetailsId.trim().isNotEmpty) {
+      map['bankDetailsID'] = bankDetailsId.trim();
+      map['BankDetailsID'] = bankDetailsId.trim();
+    }
+
+    return map;
   }
 
   void dispose() {

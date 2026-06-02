@@ -6,6 +6,9 @@ import 'package:http/http.dart' as http;
 
 import 'face_image_preprocessor.dart';
 import 'notice_models.dart';
+import 'session_storage_stub.dart'
+    if (dart.library.html) 'session_storage_web.dart'
+    as session_storage;
 
 class ApiService {
   static const String _baseUrl = 'http://localhost:8080';
@@ -26,11 +29,14 @@ class ApiService {
   static Map<String, dynamic>? profileData;
   static String? _publicPayFlatNo;
 
+  static const String _sessionVersion = 'v1';
+
   static String get baseUrl => _baseUrl;
 
   static void setPublicPayFlatNo(String? flatNo) {
     final value = flatNo?.trim() ?? '';
     _publicPayFlatNo = value.isEmpty ? null : value;
+    _persistSessionToStorage();
   }
 
   static void clearSession() {
@@ -40,6 +46,75 @@ class ApiService {
     rawLoginHeader = null;
     dashboardProfilePic = null;
     profileData = null;
+    _publicPayFlatNo = null;
+    session_storage.clearSessionPayload();
+  }
+
+  static bool get hasActiveSession {
+    final sessionToken = token?.trim() ?? '';
+    return sessionToken.isNotEmpty && userHeader != null;
+  }
+
+  static void restorePersistedSession() {
+    final payload = session_storage.readSessionPayload();
+    if (payload == null || payload.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map) {
+        return;
+      }
+      final map = Map<String, dynamic>.from(decoded);
+      if (map['version']?.toString() != _sessionVersion) {
+        return;
+      }
+
+      token = map['token']?.toString();
+      loginPassword = map['loginPassword']?.toString();
+
+      final restoredUserHeader = map['userHeader'];
+      userHeader = restoredUserHeader is Map
+          ? Map<String, dynamic>.from(restoredUserHeader)
+          : null;
+
+      final restoredRawHeader = map['rawLoginHeader'];
+      rawLoginHeader = restoredRawHeader is Map
+          ? Map<String, dynamic>.from(restoredRawHeader)
+          : null;
+
+      dashboardProfilePic = map['dashboardProfilePic']?.toString();
+
+      final restoredProfile = map['profileData'];
+      profileData = restoredProfile is Map
+          ? Map<String, dynamic>.from(restoredProfile)
+          : null;
+
+      final persistedFlatNo = map['publicPayFlatNo']?.toString().trim() ?? '';
+      _publicPayFlatNo = persistedFlatNo.isEmpty ? null : persistedFlatNo;
+    } catch (_) {
+      session_storage.clearSessionPayload();
+    }
+  }
+
+  static void _persistSessionToStorage() {
+    final payload = {
+      'version': _sessionVersion,
+      'token': token,
+      'loginPassword': loginPassword,
+      'userHeader': userHeader,
+      'rawLoginHeader': rawLoginHeader,
+      'dashboardProfilePic': dashboardProfilePic,
+      'profileData': profileData,
+      'publicPayFlatNo': _publicPayFlatNo,
+    };
+
+    try {
+      session_storage.saveSessionPayload(jsonEncode(payload));
+    } catch (_) {
+      // Ignore storage errors so session flow does not break on unsupported platforms.
+    }
   }
 
   static String? get currentUserId {
@@ -214,6 +289,7 @@ class ApiService {
                   loginHeader: Map<String, dynamic>.from(header),
                 )
               : userHeader);
+    _persistSessionToStorage();
   }
 
   static void _storeProfile(Map<String, dynamic> profile) {
@@ -223,6 +299,7 @@ class ApiService {
       loginHeader: userHeader,
       profile: profile,
     );
+    _persistSessionToStorage();
   }
 
   static String? getLoggedInFlatNo() {

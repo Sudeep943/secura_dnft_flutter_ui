@@ -3,8 +3,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import 'DN_fairytale_pages/dn_fairytale_landing_page.dart';
+import 'navigation/app_section.dart';
+import 'pages/app_shell.dart';
+import 'services/api_service.dart';
 
 void main() {
+  ApiService.restorePersistedSession();
   runApp(MyApp());
 }
 
@@ -27,7 +31,9 @@ class MyApp extends StatelessWidget {
         primaryColor: Color(0xFF0F8F82),
         scaffoldBackgroundColor: Colors.white,
       ),
-      home: const DnFairytaleLandingPage(),
+      home: ApiService.hasActiveSession
+          ? const AppShell(initialSection: AppSection.dashboard)
+          : const DnFairytaleLandingPage(),
     );
   }
 }

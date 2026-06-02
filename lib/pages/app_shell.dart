@@ -8,6 +8,7 @@ import '../widgets/brand_artwork.dart';
 import '../widgets/sidebar.dart';
 import 'booking_page.dart';
 import 'home_page.dart';
+import 'login_page.dart';
 import 'module_hub_pages.dart';
 import 'profile_management_page.dart';
 
@@ -303,6 +304,38 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<void> _handleSignOut() async {
+    ApiService.clearSession();
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  Widget _buildSignOutButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      child: TextButton.icon(
+        onPressed: _handleSignOut,
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.white.withValues(alpha: 0.10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+        ),
+        icon: const Icon(Icons.logout_rounded),
+        label: const Text('Sign Out'),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -371,6 +404,7 @@ class _AppShellState extends State<AppShell> {
           _buildApartmentLogoButton(),
           _buildNotificationButton(),
           _buildWorklistButton(),
+          _buildSignOutButton(),
         ],
       ),
       drawer: mobile

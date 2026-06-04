@@ -213,21 +213,20 @@ class _AppShellState extends State<AppShell> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Notifications',
             onPressed: () => _showShellMessage(
               'You have $_notificationCount pending community notifications.',
             ),
-            style: TextButton.styleFrom(
+            style: IconButton.styleFrom(
               foregroundColor: Colors.white,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
               ),
             ),
             icon: const Icon(Icons.notifications_none_rounded),
-            label: const Text('Notifications'),
           ),
           Positioned(
             right: -2,
@@ -259,12 +258,12 @@ class _AppShellState extends State<AppShell> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Worklist',
             onPressed: _openWorklistModal,
-            style: TextButton.styleFrom(
+            style: IconButton.styleFrom(
               foregroundColor: Colors.white,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
@@ -277,7 +276,6 @@ class _AppShellState extends State<AppShell> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.work_outline_rounded),
-            label: const Text('Worklist'),
           ),
           if (!_worklistCountLoading)
             Positioned(

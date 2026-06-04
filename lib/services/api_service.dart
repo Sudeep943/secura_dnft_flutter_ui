@@ -39,6 +39,15 @@ class ApiService {
     _persistSessionToStorage();
   }
 
+  static Map<String, dynamic> _buildPublicGenericHeader(String flatNo) {
+    return {
+      'userId': 'ext',
+      'access': null,
+      'apartmentId': 'APRT001',
+      'flatNo': flatNo,
+    };
+  }
+
   static void clearSession() {
     token = null;
     loginPassword = null;
@@ -1288,6 +1297,50 @@ class ApiService {
     String currency = 'INR',
     Map<String, dynamic>? data,
   }) async {
+    if (_publicPayFlatNo != null) {
+      final publicFlatNo = _publicPayFlatNo!.trim();
+      if (publicFlatNo.isEmpty) {
+        return null;
+      }
+
+      final requestBody = <String, dynamic>{
+        'genericHeader': _buildPublicGenericHeader(publicFlatNo),
+        'amountInPaisa': amountInPaisa,
+        'currency': currency,
+        'paymentGateway': paymentGateway,
+        'eventDate': eventDate,
+        'transactionType': transactionType,
+      };
+      if (data != null && data.isNotEmpty) {
+        requestBody['data'] = data;
+      }
+
+      const paths = [
+        '/publicapis/payGatewayCreateOrder',
+        '/publicapis/paygatewayCreateOrderPublic',
+        '/publicapis/paygatewayCreateOrder',
+      ];
+
+      for (final path in paths) {
+        final response = await http.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode(requestBody),
+        );
+
+        if (response.statusCode == 404 || response.body.isEmpty) {
+          continue;
+        }
+
+        final data = jsonDecode(response.body);
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
+      }
+
+      return null;
+    }
+
     if (token == null || userHeader == null) return null;
 
     final requestBody = <String, dynamic>{
@@ -1323,11 +1376,9 @@ class ApiService {
   ) async {
     if (_publicPayFlatNo != null) {
       final publicRequest = Map<String, dynamic>.from(requestBody);
-      publicRequest['genericHeader'] = {
-        'access': null,
-        'apartmentId': 'APRT001',
-        'flatNo': _publicPayFlatNo,
-      };
+      publicRequest['genericHeader'] = _buildPublicGenericHeader(
+        _publicPayFlatNo!,
+      );
       return payDuesPublic(publicRequest);
     }
 
@@ -1360,6 +1411,38 @@ class ApiService {
     required String dueDate,
     required String paymentCycle,
   }) async {
+    if (_publicPayFlatNo != null) {
+      final publicFlatNo = _publicPayFlatNo!.trim();
+      if (publicFlatNo.isEmpty) {
+        return null;
+      }
+
+      final requestBody = <String, dynamic>{
+        'genericHeader': _buildPublicGenericHeader(publicFlatNo),
+        'dueId': dueId,
+        'paymentId': paymentId,
+        'dueDate': dueDate,
+        'paymentCycle': paymentCycle,
+      };
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/publicapis/validatePriorDuePaymnentPublic'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.body.isEmpty) {
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is! Map) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(data);
+    }
+
     if (token == null || userHeader == null) return null;
 
     final requestBody = <String, dynamic>{
@@ -1398,11 +1481,7 @@ class ApiService {
   }) async {
     Map<String, dynamic> verifyRequestBody() {
       final genericHeader = _publicPayFlatNo != null
-          ? <String, dynamic>{
-              'access': null,
-              'apartmentId': 'APRT001',
-              'flatNo': _publicPayFlatNo,
-            }
+          ? _buildPublicGenericHeader(_publicPayFlatNo!)
           : Map<String, dynamic>.from(userHeader ?? <String, dynamic>{});
 
       return {
@@ -1481,6 +1560,7 @@ class ApiService {
     }
 
     const paths = [
+      '/publicapis/payGatewayCreateOrder',
       '/publicapis/paygatewayCreateOrderPublic',
       '/publicapis/paygatewayCreateOrder',
       '/payment/paygatewayCreateOrder',
@@ -1491,13 +1571,10 @@ class ApiService {
         Uri.parse('$_baseUrl$path'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'genericHeader': {
-            'access': null,
-            'apartmentId': 'APRT001',
-            'flatNo': trimmedFlatId,
-          },
+          'genericHeader': _buildPublicGenericHeader(trimmedFlatId),
           'amountInPaisa': amountInPaisa,
           'currency': 'INR',
+          'paymentGateway': 'RAZORPAY',
           'eventDate': eventDate,
           'transactionType': transactionType,
         }),
@@ -1865,29 +1942,32 @@ class ApiService {
       return null;
     }
 
-    final response = await http.post(
-      Uri.parse('$_baseUrl/publicapis/detDueDetailsForFlatPublic'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'genericHeader': {
-          'access': null,
-          'apartmentId': 'APRT001',
-          'flatNo': trimmedFlatId,
-        },
-        'flatId': trimmedFlatId,
-      }),
-    );
+    const paths = [
+      '/publicapis/getDueDetailsForFlatPublic',
+      '/publicapis/detDueDetailsForFlatPublic',
+    ];
 
-    if (response.statusCode == 404 || response.body.isEmpty) {
-      return null;
+    for (final path in paths) {
+      final response = await http.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'genericHeader': _buildPublicGenericHeader(trimmedFlatId),
+          'flatId': trimmedFlatId,
+        }),
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
     }
 
-    final data = jsonDecode(response.body);
-    if (data is! Map) {
-      return null;
-    }
-
-    return Map<String, dynamic>.from(data);
+    return null;
   }
 
   static Future<Map<String, dynamic>?> bookHall(

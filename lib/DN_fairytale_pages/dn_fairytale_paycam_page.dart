@@ -18,6 +18,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
 
   String? _selectedFlatId;
   List<_FlatSelectionNode> _flatNodes = const [];
+  Map<String, String> _flatLabelById = const {};
   bool _loadingFlats = false;
   String? _flatLoadError;
   bool _loadingDueDetails = false;
@@ -51,8 +52,10 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
 
       final nodes = _buildFlatNodes(response);
       final allFlatIds = _collectFlatIds(nodes);
+      final labelMap = _buildFlatLabelMap(nodes);
       setState(() {
         _flatNodes = nodes;
+        _flatLabelById = labelMap;
         _selectedFlatId = allFlatIds.contains(_selectedFlatId)
             ? _selectedFlatId
             : (allFlatIds.isEmpty ? null : allFlatIds.first);
@@ -66,6 +69,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
       }
       setState(() {
         _flatNodes = const [];
+        _flatLabelById = const {};
         _selectedFlatId = null;
         _flatLoadError = 'Unable to load flat list right now.';
       });
@@ -84,7 +88,10 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
       return true;
     }
 
-    return response['blockList'] is List || response['towerList'] is List;
+    final payload = _extractFlatPayload(response);
+    return payload['blockList'] is List ||
+        payload['towerList'] is List ||
+        payload['flatList'] is List;
   }
 
   String _responseMessage(Map<String, dynamic>? response) {
@@ -96,18 +103,55 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   }
 
   List<_FlatSelectionNode> _buildFlatNodes(Map<String, dynamic> response) {
+    final payload = _extractFlatPayload(response);
     final nodes = <_FlatSelectionNode>[];
-    final blockList = _asMapList(response['blockList']);
+    final blockList = _asMapList(payload['blockList']);
     for (var index = 0; index < blockList.length; index++) {
       nodes.addAll(_nodesFromBlock(blockList[index], 'block_$index'));
     }
 
-    final topLevelTowers = _asMapList(response['towerList']);
+    final topLevelTowers = _asMapList(payload['towerList']);
     for (var index = 0; index < topLevelTowers.length; index++) {
       nodes.addAll(_nodesFromTower(topLevelTowers[index], 'top_tower_$index'));
     }
 
+    final rootFlatNodes = _flatLeafNodes(
+      _asStringList(payload['flatList']),
+      'root-flat',
+    );
+    if (rootFlatNodes.isNotEmpty) {
+      nodes.addAll(rootFlatNodes);
+    }
+
     return nodes;
+  }
+
+  Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
+    final data = response['data'];
+    final root = data is Map
+        ? Map<String, dynamic>.from(data)
+        : Map<String, dynamic>.from(response);
+
+    dynamic readAny(List<String> keys) {
+      for (final key in keys) {
+        if (root.containsKey(key)) {
+          return root[key];
+        }
+      }
+      return null;
+    }
+
+    return {
+      'blockList': readAny(['blockList', 'blocklist', 'blocks', 'block']),
+      'towerList': readAny(['towerList', 'towerlist', 'towers', 'tower']),
+      'flatList': readAny([
+        'flatList',
+        'flatlist',
+        'flats',
+        'flatIdList',
+        'flatIds',
+      ]),
+    };
   }
 
   List<_FlatSelectionNode> _nodesFromBlock(
@@ -221,20 +265,27 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     if (_selectedFlatId == null || _selectedFlatId!.isEmpty) {
       return 'Select flat';
     }
-    return _labelForFlatId(_flatNodes, _selectedFlatId!) ?? _selectedFlatId!;
+    return _flatLabelById[_selectedFlatId!] ?? _selectedFlatId!;
   }
 
-  String? _labelForFlatId(List<_FlatSelectionNode> nodes, String flatId) {
-    for (final node in nodes) {
-      if (node.flatId == flatId) {
-        return node.label;
+  Map<String, String> _buildFlatLabelMap(List<_FlatSelectionNode> nodes) {
+    final result = <String, String>{};
+
+    void visit(_FlatSelectionNode node) {
+      final flatId = node.flatId;
+      if (flatId != null && flatId.trim().isNotEmpty) {
+        result[flatId] = node.label;
       }
-      final fromChildren = _labelForFlatId(node.children, flatId);
-      if (fromChildren != null) {
-        return fromChildren;
+      for (final child in node.children) {
+        visit(child);
       }
     }
-    return null;
+
+    for (final node in nodes) {
+      visit(node);
+    }
+
+    return result;
   }
 
   List<Map<String, dynamic>> _asMapList(dynamic value) {
@@ -251,8 +302,33 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     if (value is! List) {
       return const [];
     }
+
+    String? mapEntryToFlatId(Map entry) {
+      final map = Map<String, dynamic>.from(entry);
+      const candidateKeys = [
+        'flatId',
+        'flatID',
+        'flatNo',
+        'flatNumber',
+        'id',
+        'value',
+      ];
+      for (final key in candidateKeys) {
+        final text = map[key]?.toString().trim() ?? '';
+        if (text.isNotEmpty && text.toLowerCase() != 'null') {
+          return text;
+        }
+      }
+      return null;
+    }
+
     return value
-        .map((entry) => entry?.toString().trim() ?? '')
+        .map((entry) {
+          if (entry is Map) {
+            return mapEntryToFlatId(entry) ?? '';
+          }
+          return entry?.toString().trim() ?? '';
+        })
         .where((entry) => entry.isNotEmpty)
         .toList();
   }
@@ -337,7 +413,16 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
 
   Future<void> _openDueDetailsDialog() async {
     final flatId = _selectedFlatId?.trim() ?? '';
-    if (flatId.isEmpty || _loadingDueDetails) {
+    if (_loadingDueDetails) {
+      return;
+    }
+
+    if (flatId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a flat ID first.')),
+        );
+      }
       return;
     }
 
@@ -651,7 +736,12 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _loadingDueDetails ? null : _openDueDetailsDialog,
+              onPressed:
+                  (_loadingDueDetails ||
+                      _loadingFlats ||
+                      (_selectedFlatId?.trim().isEmpty ?? true))
+                  ? null
+                  : _openDueDetailsDialog,
               icon: const Icon(Icons.payments_outlined),
               label: Text(
                 _loadingDueDetails ? 'Loading...' : 'View Due Details',
@@ -769,12 +859,6 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
   void initState() {
     super.initState();
     _selectedFlatId = widget.initialFlatId;
-
-    for (final node in widget.nodes) {
-      if (!node.isFlat) {
-        _expandedKeys.add(node.key);
-      }
-    }
   }
 
   void _toggleExpansion(String key) {

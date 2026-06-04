@@ -1803,7 +1803,28 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
       nodes.addAll(_nodesFromTower(towerList[index], 'top_tower_$index'));
     }
 
-    return nodes;
+    return _sortFlatSelectionNodesRecursively(nodes);
+  }
+
+  List<_FlatSelectionNode> _sortFlatSelectionNodesRecursively(
+    List<_FlatSelectionNode> nodes,
+  ) {
+    final sorted = nodes
+        .map(
+          (node) => _FlatSelectionNode(
+            key: node.key,
+            label: node.label,
+            flatId: node.flatId,
+            children: _sortFlatSelectionNodesRecursively(node.children),
+          ),
+        )
+        .toList();
+
+    sorted.sort(
+      (left, right) =>
+          left.label.toLowerCase().compareTo(right.label.toLowerCase()),
+    );
+    return sorted;
   }
 
   List<_FlatSelectionNode> _nodesFromBlock(
@@ -1901,7 +1922,10 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return value
         .map((entry) => entry?.toString().trim() ?? '')
         .where((entry) => entry.isNotEmpty)
-        .toList();
+        .toList()
+      ..sort(
+        (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
+      );
   }
 
   String _safeText(dynamic value) {

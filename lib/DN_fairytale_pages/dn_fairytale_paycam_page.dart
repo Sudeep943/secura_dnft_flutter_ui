@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../pages/home_page.dart';
@@ -44,6 +46,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
       if (response == null || !_isSuccessResponse(response)) {
         setState(() {
           _flatNodes = const [];
+          _flatLabelById = const {};
           _selectedFlatId = null;
           _flatLoadError = _responseMessage(response);
         });
@@ -123,7 +126,28 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
       nodes.addAll(rootFlatNodes);
     }
 
-    return nodes;
+    return _sortNodesRecursively(nodes);
+  }
+
+  List<_FlatSelectionNode> _sortNodesRecursively(
+    List<_FlatSelectionNode> nodes,
+  ) {
+    final sorted = nodes
+        .map(
+          (node) => _FlatSelectionNode(
+            key: node.key,
+            label: node.label,
+            flatId: node.flatId,
+            children: _sortNodesRecursively(node.children),
+          ),
+        )
+        .toList();
+
+    sorted.sort(
+      (left, right) =>
+          left.label.toLowerCase().compareTo(right.label.toLowerCase()),
+    );
+    return sorted;
   }
 
   Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
@@ -330,7 +354,10 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           return entry?.toString().trim() ?? '';
         })
         .where((entry) => entry.isNotEmpty)
-        .toList();
+        .toList()
+      ..sort(
+        (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
+      );
   }
 
   String _safeText(dynamic value) {
@@ -431,6 +458,11 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     });
 
     try {
+      final confirmed = await _openFlatDetailsConfirmation(flatId);
+      if (!mounted || !confirmed) {
+        return;
+      }
+
       final response = await ApiService.getDueDetailsForFlatPublic(
         flatId: flatId,
       );
@@ -483,6 +515,53 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     }
   }
 
+  Future<bool> _openFlatDetailsConfirmation(String flatId) async {
+    final response = await ApiService.getOwnerPublic(flatId: flatId);
+    if (!mounted) {
+      return false;
+    }
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    if (!messageCode.toUpperCase().startsWith('SUCC')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            response?['message']?.toString().trim().isNotEmpty == true
+                ? response!['message'].toString().trim()
+                : 'Unable to fetch flat owner details.',
+          ),
+        ),
+      );
+      return false;
+    }
+
+    final profileList = response?['profile'];
+    final ownerProfiles = <_OwnerContactProfile>[];
+    if (profileList is List) {
+      for (final entry in profileList.whereType<Map>()) {
+        ownerProfiles.add(_OwnerContactProfile.fromMap(entry));
+      }
+    }
+
+    if (ownerProfiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No owner details found for this flat.')),
+      );
+      return false;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _FlatDetailsConfirmationDialog(
+        flatId: flatId,
+        profiles: ownerProfiles,
+      ),
+    );
+
+    return confirmed ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -505,19 +584,6 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                       fit: BoxFit.contain,
                     ),
                   ),
-                  const Spacer(),
-                  if (!compact)
-                    Wrap(
-                      spacing: 20,
-                      children: const [
-                        _TopLink(label: 'Home', active: true),
-                        _TopLink(label: 'About Us'),
-                        _TopLink(label: 'Facilities'),
-                        _TopLink(label: 'Gallery'),
-                        _TopLink(label: 'Notices'),
-                        _TopLink(label: 'Contact Us'),
-                      ],
-                    ),
                 ],
               ),
             ),
@@ -1021,6 +1087,296 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
           ),
           onPressed: () => Navigator.of(context).pop(_selectedFlatId),
           child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OwnerContactProfile {
+  const _OwnerContactProfile({
+    required this.ownerName,
+    required this.mobileNumber,
+    required this.emailAddress,
+  });
+
+  final String ownerName;
+  final String mobileNumber;
+  final String emailAddress;
+
+  static _OwnerContactProfile fromMap(Map source) {
+    final map = Map<String, dynamic>.from(source);
+
+    String displayValue(dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty || text.toLowerCase() == 'null') {
+        return '--';
+      }
+      return text;
+    }
+
+    String ownerNameValue() {
+      final raw = map['prflName'];
+      final text = raw?.toString().trim() ?? '';
+      if (text.isEmpty || text.toLowerCase() == 'null') {
+        return '--';
+      }
+
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map) {
+          final firstName = decoded['firstName']?.toString().trim() ?? '';
+          final middleName = decoded['middleName']?.toString().trim() ?? '';
+          final lastName = decoded['lastName']?.toString().trim() ?? '';
+          final fullName = [
+            firstName,
+            middleName,
+            lastName,
+          ].where((part) => part.isNotEmpty).join(' ');
+          if (fullName.isNotEmpty) {
+            return fullName;
+          }
+        }
+      } catch (_) {
+        // Keep fallback value when profile name is not JSON.
+      }
+
+      return text;
+    }
+
+    return _OwnerContactProfile(
+      ownerName: ownerNameValue(),
+      mobileNumber: displayValue(map['prflPhoneNo']),
+      emailAddress: displayValue(map['prflEmailAdrss']),
+    );
+  }
+}
+
+class _FlatDetailsConfirmationDialog extends StatelessWidget {
+  const _FlatDetailsConfirmationDialog({
+    required this.flatId,
+    required this.profiles,
+  });
+
+  final String flatId;
+  final List<_OwnerContactProfile> profiles;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF8FBFB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      title: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F6F3),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFD5E6E2)),
+            ),
+            child: const Icon(
+              Icons.verified_user_outlined,
+              color: _DnFairytalePayCamPageState._brand,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Confirm the Flat Details',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF153D36),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Verify owner contact details before continuing.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF687D76)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 740,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD8E8E3)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9FCFB),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD5E6E2)),
+                  ),
+                  child: SelectableText(
+                    'Flat ID: $flatId',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E4841),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (var index = 0; index < profiles.length; index++)
+                      _OwnerProfileCard(index: index, profile: profiles[index]),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE7D29E)),
+                  ),
+                  child: const SelectableText(
+                    'If you notice any issue with these details, please contact society administration.',
+                    style: TextStyle(
+                      color: Color(0xFF6A5A32),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _DnFairytalePayCamPageState._brandDark,
+            side: const BorderSide(color: Color(0xFF0F8F82)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: _DnFairytalePayCamPageState._brand,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Confirm'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OwnerProfileCard extends StatelessWidget {
+  const _OwnerProfileCard({required this.index, required this.profile});
+
+  final int index;
+  final _OwnerContactProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FCFB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD8E8E3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Owner ${index + 1}',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF153D36),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _SelectableInfoRow(label: 'Owner Name', value: profile.ownerName),
+          const SizedBox(height: 8),
+          _SelectableInfoRow(
+            label: 'Mobile Number',
+            value: profile.mobileNumber,
+          ),
+          const SizedBox(height: 8),
+          _SelectableInfoRow(
+            label: 'Email Address',
+            value: profile.emailAddress,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectableInfoRow extends StatelessWidget {
+  const _SelectableInfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF56706A),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        SelectableText(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Color(0xFF1F2E2A),
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );

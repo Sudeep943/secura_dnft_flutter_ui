@@ -1934,6 +1934,41 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> getOwnerPublic({
+    required String flatId,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/getOwnerPublic'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'genericHeader': {
+          'userId': 'admin',
+          'apartmentId': 'APRT001',
+          'role': 'OWNER',
+          'access': null,
+          'flatNo': trimmedFlatId,
+        },
+        'flatId': trimmedFlatId,
+      }),
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> getDueDetailsForFlatPublic({
     required String flatId,
   }) async {

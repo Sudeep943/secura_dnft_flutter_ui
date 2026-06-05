@@ -804,9 +804,14 @@ class ApiService {
   }) async {
     if (token == null) return null;
 
+    final apartmentId = userHeader?['apartmentId']?.toString().trim() ?? '';
+    if (apartmentId.isEmpty) {
+      return null;
+    }
+
     final response = await http.get(
       Uri.parse(
-        '$_baseUrl/profile/validateCurrentOwner/${Uri.encodeComponent(flatId)}/${Uri.encodeComponent(profileType)}',
+        '$_baseUrl/profile/validateCurrentOwner/${Uri.encodeComponent(apartmentId)}/${Uri.encodeComponent(flatId)}/${Uri.encodeComponent(profileType)}',
       ),
       headers: {
         'Content-Type': 'application/json',

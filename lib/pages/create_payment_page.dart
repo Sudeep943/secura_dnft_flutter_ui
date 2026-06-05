@@ -57,7 +57,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     ),
     _PaymentChoice(label: 'ONLINE', value: 'ONLINE'),
     _PaymentChoice(label: 'Credit Note', value: 'CREDIT_NOTE'),
-    _PaymentChoice(label: 'QR Payment', value: 'SOCIETY_QR'),
+    _PaymentChoice(label: 'QR Payment', value: 'QR_PAYMENT'),
   ];
 
   static const List<_PaymentChoice> _chargeTypeOptions = [

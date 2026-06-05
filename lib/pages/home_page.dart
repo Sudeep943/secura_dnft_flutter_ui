@@ -2581,7 +2581,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
   }
 
   bool _isSocietyQrTender(String tender) {
-    return tender.trim().toUpperCase() == 'SOCIETY_QR';
+    return tender.trim().toUpperCase() == 'QR_PAYMENT';
   }
 
   String _rowPaymentKey(Map<String, dynamic> payment) {
@@ -3000,12 +3000,21 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         return;
       }
 
-      final validateResponse = await ApiService.validatePriorDuePayment(
-        dueId: dueId,
-        paymentId: paymentId,
-        dueDate: payment['dueDate']?.toString().trim() ?? '',
-        paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
-      );
+      final publicFlatNo = ApiService.publicPayFlatNo;
+      final validateResponse = publicFlatNo != null
+          ? await ApiService.validatePriorDuePaymentPublic(
+              flatId: publicFlatNo,
+              dueId: dueId,
+              paymentId: paymentId,
+              dueDate: payment['dueDate']?.toString().trim() ?? '',
+              paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
+            )
+          : await ApiService.validatePriorDuePayment(
+              dueId: dueId,
+              paymentId: paymentId,
+              dueDate: payment['dueDate']?.toString().trim() ?? '',
+              paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
+            );
       final validateCode =
           validateResponse?['messageCode']?.toString().trim().toUpperCase() ??
           '';
@@ -3056,9 +3065,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         'amount': _formatAmountForRequest(selection.netPayable),
         'paymentTenderDataList': [
           {
-            'tenderName': _isSocietyQrTender(selection.tender)
-                ? 'QR_PAYMENT'
-                : selection.tender,
+            'tenderName': selection.tender,
             'amountPaid': _formatAmountForRequest(selection.netPayable),
           },
         ],
@@ -4024,7 +4031,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   String _displayMode(String mode) {
-    if (mode.trim().toUpperCase() == 'SOCIETY_QR') return 'QR Payment';
+    if (mode.trim().toUpperCase() == 'QR_PAYMENT') return 'QR Payment';
     final normalized = mode.replaceAll('_', ' ');
     final words = normalized
         .split(' ')

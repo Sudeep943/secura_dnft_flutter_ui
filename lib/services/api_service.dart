@@ -39,6 +39,8 @@ class ApiService {
     _persistSessionToStorage();
   }
 
+  static String? get publicPayFlatNo => _publicPayFlatNo;
+
   static Map<String, dynamic> _buildPublicGenericHeader(String flatNo) {
     return {
       'userId': 'ext',
@@ -1464,6 +1466,44 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> validatePriorDuePaymentPublic({
+    required String flatId,
+    required String dueId,
+    required String paymentId,
+    required String dueDate,
+    required String paymentCycle,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': _buildPublicGenericHeader(trimmedFlatId),
+      'dueId': dueId,
+      'paymentId': paymentId,
+      'dueDate': dueDate,
+      'paymentCycle': paymentCycle,
+    };
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/validatePriorDuePaymnentPublic'),
+      headers: const {'Content-Type': 'application/json'},
       body: jsonEncode(requestBody),
     );
 

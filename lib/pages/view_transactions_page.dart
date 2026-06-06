@@ -13,6 +13,8 @@ import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 import '../services/api_service.dart';
 import '../services/receipt_downloader.dart';
 
+enum _TxnSortField { transactionDate, flat }
+
 class ViewTransactionsPage extends StatefulWidget {
   const ViewTransactionsPage({super.key, this.embedded = false, this.onBack});
 
@@ -45,6 +47,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   Set<String> _selectedCauses = <String>{};
   Set<String> _selectedTenders = <String>{};
   Set<String> _selectedDoneBy = <String>{};
+  _TxnSortField _sortField = _TxnSortField.transactionDate;
+  bool _sortDescending = true;
   final Map<String, Map<String, String>> _paymentHoverDetailsCache =
       <String, Map<String, String>>{};
 
@@ -214,8 +218,114 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     return double.tryParse(value?.toString().trim() ?? '') ?? 0;
   }
 
+  int _naturalCompare(String left, String right) {
+    final a = left.toLowerCase();
+    final b = right.toLowerCase();
+    final partRegex = RegExp(r'(\d+|\D+)');
+    final aParts = partRegex.allMatches(a).map((m) => m.group(0)!).toList();
+    final bParts = partRegex.allMatches(b).map((m) => m.group(0)!).toList();
+    final len = aParts.length < bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      if (aNum != null && bNum != null) {
+        final cmp = aNum.compareTo(bNum);
+        if (cmp != 0) {
+          return cmp;
+        }
+      } else {
+        final cmp = aPart.compareTo(bPart);
+        if (cmp != 0) {
+          return cmp;
+        }
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  int _compareTransactions(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    if (_sortField == _TxnSortField.transactionDate) {
+      final leftDate = _parseTxnDate(left);
+      final rightDate = _parseTxnDate(right);
+
+      int cmp;
+      if (leftDate == null && rightDate == null) {
+        cmp = 0;
+      } else if (leftDate == null) {
+        cmp = 1;
+      } else if (rightDate == null) {
+        cmp = -1;
+      } else {
+        cmp = leftDate.compareTo(rightDate);
+      }
+
+      if (cmp == 0) {
+        final leftTxnId = left['trnscId']?.toString().trim() ?? '';
+        final rightTxnId = right['trnscId']?.toString().trim() ?? '';
+        cmp = _naturalCompare(leftTxnId, rightTxnId);
+      }
+
+      return _sortDescending ? -cmp : cmp;
+    }
+
+    final leftFlat = left['flatId']?.toString().trim() ?? '';
+    final rightFlat = right['flatId']?.toString().trim() ?? '';
+    final cmp = _naturalCompare(leftFlat, rightFlat);
+    return _sortDescending ? -cmp : cmp;
+  }
+
+  void _toggleSort(_TxnSortField field) {
+    setState(() {
+      if (_sortField == field) {
+        _sortDescending = !_sortDescending;
+      } else {
+        _sortField = field;
+        _sortDescending = true;
+      }
+    });
+  }
+
+  Widget _buildSortableHeader(String title, _TxnSortField field, double width) {
+    final isActive = _sortField == field;
+    return SizedBox(
+      width: width,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: isActive
+                ? (_sortDescending ? 'Sorted descending' : 'Sorted ascending')
+                : 'Sort',
+            onPressed: () => _toggleSort(field),
+            iconSize: 18,
+            icon: Icon(
+              isActive
+                  ? (_sortDescending
+                        ? Icons.arrow_downward_rounded
+                        : Icons.arrow_upward_rounded)
+                  : Icons.unfold_more_rounded,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> get _filteredTransactions {
-    return _transactions.where((txn) {
+    final filtered = _transactions.where((txn) {
       final dt = _parseTxnDate(txn);
       if (_fromDate != null && dt != null) {
         final from = DateTime(
@@ -267,6 +377,9 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
       return true;
     }).toList();
+
+    filtered.sort(_compareTransactions);
+    return filtered;
   }
 
   double get _totalCredit {
@@ -1586,12 +1699,10 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                         ),
                       ),
                       DataColumn(
-                        label: SizedBox(
-                          width: 190,
-                          child: const Text(
-                            'Transaction Date',
-                            textAlign: TextAlign.center,
-                          ),
+                        label: _buildSortableHeader(
+                          'Transaction Date',
+                          _TxnSortField.transactionDate,
+                          190,
                         ),
                       ),
                       DataColumn(
@@ -1604,12 +1715,10 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                         ),
                       ),
                       DataColumn(
-                        label: SizedBox(
-                          width: 120,
-                          child: const Text(
-                            'Flat',
-                            textAlign: TextAlign.center,
-                          ),
+                        label: _buildSortableHeader(
+                          'Flat',
+                          _TxnSortField.flat,
+                          120,
                         ),
                       ),
                       DataColumn(
@@ -1739,7 +1848,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                               height: double.infinity,
                               alignment: Alignment.center,
                               child: SelectableText(
-                                txn['trnsBy']?.toString() ?? '--',
+                                (txn['trnsBy']?.toString() ?? '--')
+                                    .toUpperCase(),
                                 maxLines: 3,
                                 textAlign: TextAlign.center,
                               ),

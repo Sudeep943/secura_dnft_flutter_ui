@@ -1820,8 +1820,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         .toList();
 
     sorted.sort(
-      (left, right) =>
-          left.label.toLowerCase().compareTo(right.label.toLowerCase()),
+      (left, right) => _compareNaturalValues(left.label, right.label),
     );
     return sorted;
   }
@@ -1922,9 +1921,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
         .map((entry) => entry?.toString().trim() ?? '')
         .where((entry) => entry.isNotEmpty)
         .toList()
-      ..sort(
-        (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
-      );
+      ..sort(_compareNaturalValues);
   }
 
   String _safeText(dynamic value) {

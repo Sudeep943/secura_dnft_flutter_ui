@@ -292,7 +292,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   }
 
   String _money(double value) {
-    return value.toStringAsFixed(2);
+    return '₹${value.toStringAsFixed(2)}';
   }
 
   String _flattenTenderText(Map<String, dynamic> txn) {

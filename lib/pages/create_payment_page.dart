@@ -32,7 +32,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _PaymentChoice(label: 'Per Flat', value: 'PER_FLAT'),
     _PaymentChoice(label: 'Per Head', value: 'PER_HEAD'),
     _PaymentChoice(label: 'Build Up Area', value: 'PER_SQFT'),
-    _PaymentChoice(label: 'Per BHK', value: 'PER_BHK'),
   ];
 
   static const List<_PaymentChoice> _cycleOptions = [
@@ -2684,21 +2683,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     );
   }
 
-  Widget _buildPartialPaymentToggle() {
-    return CheckboxListTile(
-      value: _isPartialPaymentAllowed,
-      contentPadding: EdgeInsets.zero,
-      activeColor: _brandColor,
-      controlAffinity: ListTileControlAffinity.leading,
-      title: const Text('Partial Payment Applicable'),
-      onChanged: (value) {
-        setState(() {
-          _isPartialPaymentAllowed = value ?? false;
-        });
-      },
-    );
-  }
-
   Widget _buildThreeFieldRow({
     required Widget first,
     required Widget second,
@@ -3484,10 +3468,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                           value == null ? 'Bank account is required' : null,
                     ),
                   ),
-                  SizedBox(
-                    width: mobile ? double.infinity : 320,
-                    child: _buildPartialPaymentToggle(),
-                  ),
                 ],
               ),
             ),
@@ -4104,10 +4084,6 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                           )
                           ?.label ??
                       '--',
-                ),
-                _SummaryRow(
-                  label: 'Partial Payment',
-                  value: _isPartialPaymentAllowed ? 'Allowed' : 'Not Allowed',
                 ),
               ],
             ),
@@ -5320,36 +5296,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                           ),
                         ),
                       ],
-                      if (_isDiscount) ...[
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          controller: _minimumPaymentAmountController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.]'),
-                            ),
-                          ],
-                          decoration: _inputDecoration(
-                            label: 'Minimum Payment Amount To Apply Discount',
-                          ),
-                          validator: (value) {
-                            final normalized = _normalizeNumericValue(
-                              value ?? '',
-                            );
-                            if (normalized.isEmpty) {
-                              return null;
-                            }
-                            final number = double.tryParse(normalized);
-                            if (number == null || number < 0) {
-                              return 'Enter a valid amount';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
+                      if (_isDiscount) ...[],
                       const SizedBox(height: 14),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5646,35 +5593,6 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                                   ),
                                 ],
                               ],
-                              TextFormField(
-                                controller: _minimumPaymentAmountController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                    RegExp(r'[0-9.]'),
-                                  ),
-                                ],
-                                decoration: _inputDecoration(
-                                  label:
-                                      'Minimum Payment Amount To Apply Discount',
-                                ),
-                                validator: (value) {
-                                  final normalized = _normalizeNumericValue(
-                                    value ?? '',
-                                  );
-                                  if (normalized.isEmpty) {
-                                    return null;
-                                  }
-                                  final number = double.tryParse(normalized);
-                                  if (number == null || number < 0) {
-                                    return 'Enter a valid amount';
-                                  }
-                                  return null;
-                                },
-                              ),
                             ],
                           ),
                         ),

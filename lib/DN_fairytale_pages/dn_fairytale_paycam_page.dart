@@ -143,11 +143,31 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         )
         .toList();
 
-    sorted.sort(
-      (left, right) =>
-          left.label.toLowerCase().compareTo(right.label.toLowerCase()),
-    );
+    sorted.sort((left, right) => _naturalCompare(left.label, right.label));
     return sorted;
+  }
+
+  int _naturalCompare(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+    final regex = RegExp(r'(\d+|\D+)');
+    final aParts = regex.allMatches(aLower).map((m) => m.group(0)!).toList();
+    final bParts = regex.allMatches(bLower).map((m) => m.group(0)!).toList();
+    final len = aParts.length < bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      if (aNum != null && bNum != null) {
+        final cmp = aNum.compareTo(bNum);
+        if (cmp != 0) return cmp;
+      } else {
+        final cmp = aPart.compareTo(bPart);
+        if (cmp != 0) return cmp;
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
   }
 
   Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
@@ -920,11 +940,48 @@ class _FlatSelectionDialog extends StatefulWidget {
 class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
   late String? _selectedFlatId;
   final Set<String> _expandedKeys = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _selectedFlatId = widget.initialFlatId;
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<_FlatSelectionNode> _filterNodes(List<_FlatSelectionNode> nodes) {
+    if (_searchQuery.isEmpty) return nodes;
+    final result = <_FlatSelectionNode>[];
+    for (final node in nodes) {
+      if (node.isFlat) {
+        if (node.label.toLowerCase().contains(_searchQuery)) {
+          result.add(node);
+        }
+      } else {
+        final filteredChildren = _filterNodes(node.children);
+        if (filteredChildren.isNotEmpty) {
+          result.add(
+            _FlatSelectionNode(
+              key: node.key,
+              label: node.label,
+              children: filteredChildren,
+            ),
+          );
+        }
+      }
+    }
+    return result;
   }
 
   void _toggleExpansion(String key) {
@@ -937,7 +994,11 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
     });
   }
 
-  Widget _buildNode(_FlatSelectionNode node, {double indent = 0}) {
+  Widget _buildNode(
+    _FlatSelectionNode node, {
+    double indent = 0,
+    bool forceExpand = false,
+  }) {
     if (node.isFlat) {
       final selected = _selectedFlatId == node.flatId;
       return Padding(
@@ -975,7 +1036,7 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
       );
     }
 
-    final expanded = _expandedKeys.contains(node.key);
+    final expanded = forceExpand || _expandedKeys.contains(node.key);
     return Padding(
       padding: EdgeInsets.only(left: indent, bottom: 8),
       child: Column(
@@ -1019,7 +1080,7 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final child in node.children)
-                    _buildNode(child, indent: 12),
+                    _buildNode(child, indent: 12, forceExpand: forceExpand),
                 ],
               ),
             ),
@@ -1030,6 +1091,7 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleNodes = _filterNodes(widget.nodes);
     return AlertDialog(
       backgroundColor: const Color(0xFFF8FBFB),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -1063,11 +1125,62 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFFD5E6E2)),
           ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [for (final node in widget.nodes) _buildNode(node)],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search flat id',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () => _searchController.clear(),
+                          icon: const Icon(Icons.close_rounded),
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 420,
+                child: visibleNodes.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No flats found for the entered text.',
+                          style: TextStyle(
+                            color: Color(0xFF687D76),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final node in visibleNodes)
+                              _buildNode(
+                                node,
+                                forceExpand: _searchQuery.isNotEmpty,
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
+            ],
           ),
         ),
       ),

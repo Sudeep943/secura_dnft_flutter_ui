@@ -1701,6 +1701,27 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>?> tagDiscFinFromPayment(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/tagDiscFinFromPayment"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>?> deleteDiscfin(
     Map<String, dynamic> requestBody,
   ) async {
@@ -1771,6 +1792,27 @@ class ApiService {
 
     final response = await http.post(
       Uri.parse("$_baseUrl/discfin/updateDiscfin"),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>?> deTagDiscFinFromPayment(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/discfin/deTagDiscFinFromPayment"),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',

@@ -447,6 +447,8 @@ class _WorklistDialog extends StatefulWidget {
   State<_WorklistDialog> createState() => _WorklistDialogState();
 }
 
+enum _WorklistTabKind { pending, completed }
+
 class _WorklistDialogState extends State<_WorklistDialog>
     with SingleTickerProviderStateMixin {
   static const String _transactionReviewType = 'TRANSACTION REVIEW';
@@ -455,6 +457,10 @@ class _WorklistDialogState extends State<_WorklistDialog>
   late List<Map<String, dynamic>> _worklists = widget.initialWorklists;
   final Map<String, bool> _loadingTransaction = {};
   final Set<String> _expandedWorklistIds = <String>{};
+  final Set<String> _pendingSelectedTypes = <String>{};
+  final Set<String> _pendingSelectedFlatNos = <String>{};
+  final Set<String> _completedSelectedTypes = <String>{};
+  final Set<String> _completedSelectedFlatNos = <String>{};
   late final AnimationController _statusGlowController;
 
   @override
@@ -777,7 +783,342 @@ class _WorklistDialogState extends State<_WorklistDialog>
         .toList();
   }
 
+  String _flatNoValue(Map<String, dynamic> item) {
+    final value = item['flatNo']?.toString().trim() ?? '';
+    return value.isEmpty ? '--' : value;
+  }
+
+  String _typeValue(Map<String, dynamic> item) {
+    final value = item['worklistType']?.toString().trim() ?? '';
+    return value.isEmpty ? '--' : value;
+  }
+
+  List<String> _distinctFlatNoOptions(List<Map<String, dynamic>> rows) {
+    final values = rows.map(_flatNoValue).toSet().toList()..sort();
+    return values;
+  }
+
+  List<String> _distinctTypeOptions(List<Map<String, dynamic>> rows) {
+    final values = rows.map(_typeValue).toSet().toList()..sort();
+    return values;
+  }
+
+  Set<String> _selectedTypesForTab(_WorklistTabKind tab) {
+    return tab == _WorklistTabKind.pending
+        ? _pendingSelectedTypes
+        : _completedSelectedTypes;
+  }
+
+  Set<String> _selectedFlatNosForTab(_WorklistTabKind tab) {
+    return tab == _WorklistTabKind.pending
+        ? _pendingSelectedFlatNos
+        : _completedSelectedFlatNos;
+  }
+
+  int _activeFilterCount(_WorklistTabKind tab) {
+    return _selectedTypesForTab(tab).length +
+        _selectedFlatNosForTab(tab).length;
+  }
+
+  List<Map<String, dynamic>> _applyFilters(
+    List<Map<String, dynamic>> rows,
+    _WorklistTabKind tab,
+  ) {
+    final selectedTypes = _selectedTypesForTab(tab);
+    final selectedFlatNos = _selectedFlatNosForTab(tab);
+    return rows.where((item) {
+      final typeMatches =
+          selectedTypes.isEmpty || selectedTypes.contains(_typeValue(item));
+      final flatMatches =
+          selectedFlatNos.isEmpty ||
+          selectedFlatNos.contains(_flatNoValue(item));
+      return typeMatches && flatMatches;
+    }).toList();
+  }
+
+  Future<void> _openFilterDialog(
+    _WorklistTabKind tab,
+    List<Map<String, dynamic>> sourceRows,
+  ) async {
+    final typeOptions = _distinctTypeOptions(sourceRows);
+    final flatNoOptions = _distinctFlatNoOptions(sourceRows);
+    final tempTypes = Set<String>.from(_selectedTypesForTab(tab));
+    final tempFlats = Set<String>.from(_selectedFlatNosForTab(tab));
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setInnerState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Header ────────────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF0F8F82), Color(0xFF11A193)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.filter_alt_rounded,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Filter Worklists',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // ── Filter sections ───────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                      child: SizedBox(
+                        width: 420,
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7FAFA),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFFDCEAE7),
+                                  ),
+                                ),
+                                child: ExpansionTile(
+                                  initiallyExpanded: false,
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  title: const Text(
+                                    'Type',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  children: typeOptions.isEmpty
+                                      ? const [
+                                          Padding(
+                                            padding: EdgeInsets.fromLTRB(
+                                              12,
+                                              0,
+                                              12,
+                                              12,
+                                            ),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Text(
+                                                'No type values found',
+                                              ),
+                                            ),
+                                          ),
+                                        ]
+                                      : typeOptions
+                                            .map(
+                                              (value) => CheckboxListTile(
+                                                dense: true,
+                                                value: tempTypes.contains(
+                                                  value,
+                                                ),
+                                                title: Text(value),
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                    ),
+                                                controlAffinity:
+                                                    ListTileControlAffinity
+                                                        .leading,
+                                                onChanged: (selected) {
+                                                  setInnerState(() {
+                                                    if (selected == true) {
+                                                      tempTypes.add(value);
+                                                    } else {
+                                                      tempTypes.remove(value);
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            )
+                                            .toList(),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7FAFA),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFFDCEAE7),
+                                  ),
+                                ),
+                                child: ExpansionTile(
+                                  initiallyExpanded: false,
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  title: const Text(
+                                    'Flat No',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  children: flatNoOptions.isEmpty
+                                      ? const [
+                                          Padding(
+                                            padding: EdgeInsets.fromLTRB(
+                                              12,
+                                              0,
+                                              12,
+                                              12,
+                                            ),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Text(
+                                                'No flat values found',
+                                              ),
+                                            ),
+                                          ),
+                                        ]
+                                      : flatNoOptions
+                                            .map(
+                                              (value) => CheckboxListTile(
+                                                dense: true,
+                                                value: tempFlats.contains(
+                                                  value,
+                                                ),
+                                                title: Text(value),
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                    ),
+                                                controlAffinity:
+                                                    ListTileControlAffinity
+                                                        .leading,
+                                                onChanged: (selected) {
+                                                  setInnerState(() {
+                                                    if (selected == true) {
+                                                      tempFlats.add(value);
+                                                    } else {
+                                                      tempFlats.remove(value);
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            )
+                                            .toList(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // ── Action buttons ────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedTypesForTab(tab).clear();
+                                _selectedFlatNosForTab(tab).clear();
+                              });
+                              Navigator.of(dialogContext).pop();
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF0F8F82),
+                            ),
+                            child: const Text('Clear'),
+                          ),
+                          const SizedBox(width: 4),
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.black54,
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 4),
+                          FilledButton(
+                            onPressed: () {
+                              setState(() {
+                                final selectedTypes = _selectedTypesForTab(tab);
+                                final selectedFlats = _selectedFlatNosForTab(
+                                  tab,
+                                );
+                                selectedTypes
+                                  ..clear()
+                                  ..addAll(tempTypes);
+                                selectedFlats
+                                  ..clear()
+                                  ..addAll(tempFlats);
+                              });
+                              Navigator.of(dialogContext).pop();
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF0F8F82),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Apply'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildWorklistTabBody({
+    required _WorklistTabKind tab,
+    required List<Map<String, dynamic>> sourceRows,
     required List<Map<String, dynamic>> rows,
     required String emptyMessage,
   }) {
@@ -840,6 +1181,19 @@ class _WorklistDialogState extends State<_WorklistDialog>
               _metaPill(
                 icon: Icons.format_list_bulleted_rounded,
                 text: '${rows.length} total items',
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _openFilterDialog(tab, sourceRows),
+                icon: const Icon(Icons.filter_alt_rounded, size: 18),
+                label: Text(
+                  _activeFilterCount(tab) == 0
+                      ? 'Filter'
+                      : 'Filter (${_activeFilterCount(tab)})',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _brandColor,
+                  side: const BorderSide(color: Color(0xFF9FD2CB)),
+                ),
               ),
             ],
           ),
@@ -927,8 +1281,13 @@ class _WorklistDialogState extends State<_WorklistDialog>
 
   @override
   Widget build(BuildContext context) {
-    final pending = _pendingWorklists;
-    final completed = _completedWorklists;
+    final pendingSource = _pendingWorklists;
+    final completedSource = _completedWorklists;
+    final pending = _applyFilters(pendingSource, _WorklistTabKind.pending);
+    final completed = _applyFilters(
+      completedSource,
+      _WorklistTabKind.completed,
+    );
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1031,10 +1390,14 @@ class _WorklistDialogState extends State<_WorklistDialog>
                   child: TabBarView(
                     children: [
                       _buildWorklistTabBody(
+                        tab: _WorklistTabKind.pending,
+                        sourceRows: pendingSource,
                         rows: pending,
                         emptyMessage: 'No pending worklists found',
                       ),
                       _buildWorklistTabBody(
+                        tab: _WorklistTabKind.completed,
+                        sourceRows: completedSource,
                         rows: completed,
                         emptyMessage: 'No completed worklists found',
                       ),

@@ -452,8 +452,27 @@ class _BookingActionCard extends StatefulWidget {
 class __BookingActionCardState extends State<_BookingActionCard> {
   bool hovered = false;
 
+  IconData _backgroundIconForTitle(String title, IconData fallback) {
+    final key = title.trim().toLowerCase();
+    if (key.contains('create')) {
+      return Icons.add_home_work_rounded;
+    }
+    if (key.contains('view')) {
+      return Icons.calendar_month_rounded;
+    }
+    if (key.contains('availability')) {
+      return Icons.event_available_rounded;
+    }
+    return fallback;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final backgroundIcon = _backgroundIconForTitle(
+      widget.action.title,
+      widget.action.icon,
+    );
+
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
@@ -462,7 +481,7 @@ class __BookingActionCardState extends State<_BookingActionCard> {
         onTap: widget.action.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(22),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: hovered ? const Color(0xFFF8F4C6) : Colors.white,
             borderRadius: BorderRadius.circular(24),
@@ -479,61 +498,79 @@ class __BookingActionCardState extends State<_BookingActionCard> {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: widget.action.accentColor,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Icon(
-                      widget.action.icon,
-                      size: 32,
-                      color: const Color(0xFF0F8F82),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                widget.action.title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 22,
-                  color: _BookingPageState._brandTextColor,
+              Positioned(
+                right: -2,
+                top: -4,
+                child: Icon(
+                  backgroundIcon,
+                  size: 132,
+                  color: const Color(
+                    0xFF0F8F82,
+                  ).withValues(alpha: hovered ? 0.18 : 0.12),
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                widget.action.subtitle,
-                style: const TextStyle(
-                  color: Colors.black54,
-                  height: 1.45,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: const [
-                  Text(
-                    'Open',
-                    style: TextStyle(
-                      color: Color(0xFF0F8F82),
-                      fontWeight: FontWeight.w700,
+              Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: widget.action.accentColor,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Icon(
+                            widget.action.icon,
+                            size: 32,
+                            color: const Color(0xFF0F8F82),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(width: 8),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    color: Color(0xFF0F8F82),
-                    size: 18,
-                  ),
-                ],
+                    const Spacer(),
+                    Text(
+                      widget.action.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 22,
+                        color: _BookingPageState._brandTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.action.subtitle,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        height: 1.45,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: const [
+                        Text(
+                          'Open',
+                          style: TextStyle(
+                            color: Color(0xFF0F8F82),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Color(0xFF0F8F82),
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

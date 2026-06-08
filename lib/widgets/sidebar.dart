@@ -225,28 +225,40 @@ class _SidebarItemState extends State<_SidebarItem> {
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
-      child: ListTile(
-        selected: isActive,
-        selectedTileColor: Colors.transparent,
-        tileColor: tileColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        leading: Icon(widget.icon, color: Colors.white),
-        title: AnimatedDefaultTextStyle(
-          duration: Duration(milliseconds: 180),
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: (hovered || isActive)
-                ? FontWeight.bold
-                : FontWeight.w500,
-            shadows: (hovered || isActive)
-                ? [Shadow(color: glowColor, blurRadius: 12)]
-                : null,
-          ),
-          child: Text(widget.title),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: tileColor,
+          borderRadius: BorderRadius.circular(10),
         ),
-        onTap: widget.onTap,
-        enabled: widget.onTap != null,
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        child: ListTile(
+          selected: isActive,
+          selectedTileColor: Colors.transparent,
+          tileColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          leading: Icon(widget.icon, color: Colors.white),
+          title: AnimatedDefaultTextStyle(
+            duration: Duration(milliseconds: 180),
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: (hovered || isActive)
+                  ? FontWeight.bold
+                  : FontWeight.w500,
+              shadows: (hovered || isActive)
+                  ? [Shadow(color: glowColor, blurRadius: 12)]
+                  : null,
+            ),
+            child: Text(widget.title),
+          ),
+          onTap: widget.onTap,
+          enabled: widget.onTap != null,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 2,
+          ),
+        ),
       ),
     );
   }

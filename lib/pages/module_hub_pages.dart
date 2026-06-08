@@ -3209,8 +3209,97 @@ class _ModuleActionCard extends StatefulWidget {
 class _ModuleActionCardState extends State<_ModuleActionCard> {
   bool hovered = false;
 
+  IconData _backgroundIconForTitle(String title, IconData fallback) {
+    final key = title.trim().toLowerCase();
+    if (key.contains('ledger')) return Icons.request_quote_rounded;
+    if (key.contains('create new payment')) {
+      return Icons.payments_rounded;
+    }
+    if (key.contains('view/update payments')) {
+      return Icons.account_balance_rounded;
+    }
+    if (key.contains('pay dues')) return Icons.currency_rupee_rounded;
+    if (key.contains('create receipt')) return Icons.receipt_long_rounded;
+    if (key.contains('view transactions')) {
+      return Icons.swap_horiz_rounded;
+    }
+    if (key.contains('upload other due payments')) {
+      return Icons.upload_file_rounded;
+    }
+    if (key.contains('reconcile qr payments')) {
+      return Icons.qr_code_scanner_rounded;
+    }
+    if (key.contains('budget management')) return Icons.pie_chart_rounded;
+
+    if (key.contains('schedule new meeting')) {
+      return Icons.event_note_rounded;
+    }
+    if (key.contains('view meeting details')) {
+      return Icons.visibility_rounded;
+    }
+    if (key.contains('update mom')) return Icons.fact_check_rounded;
+    if (key == 'create notice') return Icons.campaign_rounded;
+    if (key.contains('view all notice')) {
+      return Icons.notifications_active_rounded;
+    }
+    if (key.contains('create event')) return Icons.event_rounded;
+    if (key.contains('view events')) return Icons.calendar_month_rounded;
+    if (key.contains('create poll')) return Icons.how_to_vote_rounded;
+    if (key.contains('view poll')) return Icons.poll_rounded;
+
+    if (key.contains('raise a new ticket')) {
+      return Icons.add_comment_rounded;
+    }
+    if (key == 'view ticket') return Icons.confirmation_number_rounded;
+    if (key.contains('assign ticket')) return Icons.assignment_ind_rounded;
+
+    if (key.contains('visitor entry')) return Icons.badge_rounded;
+    if (key.contains('daily worker')) return Icons.engineering_rounded;
+    if (key.contains('vehicle pass')) return Icons.directions_car_rounded;
+    if (key.contains('message guard')) return Icons.forum_rounded;
+
+    if (key.contains('create group/community')) return Icons.groups_rounded;
+    if (key.contains('update group')) return Icons.group_add_rounded;
+
+    if (key == 'add flat') return Icons.add_home_work_rounded;
+    if (key == 'update flat') return Icons.edit_note_rounded;
+    if (key.contains('upload flat details')) {
+      return Icons.domain_verification_rounded;
+    }
+
+    if (key.contains('role management')) return Icons.manage_accounts_rounded;
+    if (key.contains('staff management')) return Icons.badge_rounded;
+    if (key == 'flat management') return Icons.apartment_rounded;
+    if (key.contains('update society details')) {
+      return Icons.location_city_rounded;
+    }
+
+    if (key.contains('onboard employee')) return Icons.person_add_alt_1_rounded;
+    if (key.contains('today attendance')) return Icons.today_rounded;
+    if (key.contains('employee attendance')) {
+      return Icons.checklist_rtl_rounded;
+    }
+
+    if (key == 'add vendor') return Icons.storefront_rounded;
+    if (key == 'update vendor') return Icons.edit_note_rounded;
+    if (key.contains('view vendors')) return Icons.view_list_rounded;
+
+    if (key == 'create role') return Icons.admin_panel_settings_rounded;
+    if (key == 'assign role') return Icons.assignment_turned_in_rounded;
+    if (key.contains('manage access')) return Icons.key_rounded;
+
+    if (key.contains('lost and found')) return Icons.search_rounded;
+    if (key == 'store') return Icons.shopping_bag_rounded;
+    if (key.contains('paid service'))
+      return Icons.miscellaneous_services_rounded;
+
+    return fallback;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final backgroundIcon = _backgroundIconForTitle(widget.title, widget.icon);
+
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
       onExit: (_) => setState(() => hovered = false),
@@ -3231,7 +3320,7 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(22),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: hovered ? const Color(0xFFF8F4C6) : Colors.white,
             borderRadius: BorderRadius.circular(24),
@@ -3248,56 +3337,74 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5FBF9),
-                  borderRadius: BorderRadius.circular(18),
-                ),
+              Positioned(
+                right: -2,
+                top: -4,
                 child: Icon(
-                  widget.icon,
-                  size: 32,
-                  color: _ModuleHubPage._brandColor,
+                  backgroundIcon,
+                  size: 132,
+                  color: _ModuleHubPage._brandColor.withValues(
+                    alpha: hovered ? 0.18 : 0.12,
+                  ),
                 ),
               ),
-              const SizedBox(height: 18),
-              Expanded(
+              Padding(
+                padding: const EdgeInsets.all(22),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      widget.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
-                        color: _ModuleHubPage._brandTextColor,
-                        height: 1.15,
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5FBF9),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        widget.icon,
+                        size: 32,
+                        color: _ModuleHubPage._brandColor,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const Row(
-                      children: [
-                        Text(
-                          'Open',
-                          style: TextStyle(
-                            color: _ModuleHubPage._brandColor,
-                            fontWeight: FontWeight.w700,
+                    const SizedBox(height: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            widget.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 20,
+                              color: _ModuleHubPage._brandTextColor,
+                              height: 1.15,
+                            ),
                           ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          color: _ModuleHubPage._brandColor,
-                          size: 18,
-                        ),
-                      ],
+                          const SizedBox(height: 14),
+                          const Row(
+                            children: [
+                              Text(
+                                'Open',
+                                style: TextStyle(
+                                  color: _ModuleHubPage._brandColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                color: _ModuleHubPage._brandColor,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

@@ -4783,9 +4783,21 @@ class _ProfileActionCard extends StatefulWidget {
 class _ProfileActionCardState extends State<_ProfileActionCard> {
   bool hovered = false;
 
+  IconData _backgroundIconForTitle(String title, IconData fallback) {
+    final key = title.trim().toLowerCase();
+    if (key.contains('create profile')) return Icons.person_add_rounded;
+    if (key.contains('update profile')) return Icons.edit_note_rounded;
+    if (key.contains('update password')) return Icons.lock_reset_rounded;
+    if (key.contains('view profile')) return Icons.contact_page_rounded;
+    if (key.contains('tenant management')) return Icons.groups_2_rounded;
+    if (key.contains('owner management')) return Icons.home_work_rounded;
+    return fallback;
+  }
+
   @override
   Widget build(BuildContext context) {
     final active = hovered || widget.selected;
+    final backgroundIcon = _backgroundIconForTitle(widget.title, widget.icon);
 
     return MouseRegion(
       onEnter: (_) => setState(() => hovered = true),
@@ -4795,7 +4807,7 @@ class _ProfileActionCardState extends State<_ProfileActionCard> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(22),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: active ? const Color(0xFFF8F4C6) : Colors.white,
             borderRadius: BorderRadius.circular(24),
@@ -4815,56 +4827,76 @@ class _ProfileActionCardState extends State<_ProfileActionCard> {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5FBF9),
-                  borderRadius: BorderRadius.circular(18),
-                ),
+              Positioned(
+                right: -2,
+                top: -4,
                 child: Icon(
-                  widget.icon,
-                  size: 32,
-                  color: _ProfileManagementPageState._brandColor,
+                  backgroundIcon,
+                  size: 132,
+                  color: _ProfileManagementPageState._brandColor.withValues(
+                    alpha: active ? 0.18 : 0.12,
+                  ),
                 ),
               ),
-              const SizedBox(height: 18),
-              Expanded(
+              Padding(
+                padding: const EdgeInsets.all(22),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      widget.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
-                        color: _ProfileManagementPageState._brandTextColor,
-                        height: 1.15,
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5FBF9),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        widget.icon,
+                        size: 32,
+                        color: _ProfileManagementPageState._brandColor,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const Row(
-                      children: [
-                        Text(
-                          'Open',
-                          style: TextStyle(
-                            color: _ProfileManagementPageState._brandColor,
-                            fontWeight: FontWeight.w700,
+                    const SizedBox(height: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            widget.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 20,
+                              color:
+                                  _ProfileManagementPageState._brandTextColor,
+                              height: 1.15,
+                            ),
                           ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          color: _ProfileManagementPageState._brandColor,
-                          size: 18,
-                        ),
-                      ],
+                          const SizedBox(height: 14),
+                          const Row(
+                            children: [
+                              Text(
+                                'Open',
+                                style: TextStyle(
+                                  color:
+                                      _ProfileManagementPageState._brandColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                color: _ProfileManagementPageState._brandColor,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

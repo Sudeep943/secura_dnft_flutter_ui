@@ -252,7 +252,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     return [
       _FlatSelectionNode(
         key: keyBase,
-        label: 'Tower $towerName',
+        label: towerName,
         children: flatChildren,
       ),
     ];
@@ -942,14 +942,29 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
   final Set<String> _expandedKeys = <String>{};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  late List<_FlatSelectionNode> _allFlatLeafNodes;
+  late List<_FlatSelectionNode> _visibleFlatLeafNodes;
 
   @override
   void initState() {
     super.initState();
     _selectedFlatId = widget.initialFlatId;
+    _allFlatLeafNodes = _collectFlatLeafNodes(widget.nodes);
+    _visibleFlatLeafNodes = _allFlatLeafNodes;
     _searchController.addListener(() {
+      final nextQuery = _searchController.text.toLowerCase();
+      if (nextQuery == _searchQuery) {
+        return;
+      }
       setState(() {
-        _searchQuery = _searchController.text.toLowerCase();
+        _searchQuery = nextQuery;
+        if (_searchQuery.isEmpty) {
+          _visibleFlatLeafNodes = _allFlatLeafNodes;
+        } else {
+          _visibleFlatLeafNodes = _allFlatLeafNodes
+              .where((node) => node.label.toLowerCase().contains(_searchQuery))
+              .toList();
+        }
       });
     });
   }
@@ -960,25 +975,15 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
     super.dispose();
   }
 
-  List<_FlatSelectionNode> _filterNodes(List<_FlatSelectionNode> nodes) {
-    if (_searchQuery.isEmpty) return nodes;
+  List<_FlatSelectionNode> _collectFlatLeafNodes(
+    List<_FlatSelectionNode> nodes,
+  ) {
     final result = <_FlatSelectionNode>[];
     for (final node in nodes) {
       if (node.isFlat) {
-        if (node.label.toLowerCase().contains(_searchQuery)) {
-          result.add(node);
-        }
+        result.add(node);
       } else {
-        final filteredChildren = _filterNodes(node.children);
-        if (filteredChildren.isNotEmpty) {
-          result.add(
-            _FlatSelectionNode(
-              key: node.key,
-              label: node.label,
-              children: filteredChildren,
-            ),
-          );
-        }
+        result.addAll(_collectFlatLeafNodes(node.children));
       }
     }
     return result;
@@ -1091,7 +1096,6 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleNodes = _filterNodes(widget.nodes);
     return AlertDialog(
       backgroundColor: const Color(0xFFF8FBFB),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -1157,7 +1161,66 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
               const SizedBox(height: 10),
               SizedBox(
                 height: 420,
-                child: visibleNodes.isEmpty
+                child: _searchQuery.isNotEmpty
+                    ? (_visibleFlatLeafNodes.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No flats found for the entered text.',
+                                style: TextStyle(
+                                  color: Color(0xFF687D76),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _visibleFlatLeafNodes.length,
+                              itemBuilder: (context, index) {
+                                final node = _visibleFlatLeafNodes[index];
+                                final selected = _selectedFlatId == node.flatId;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? const Color(0xFFEFF8F6)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: selected
+                                            ? _DnFairytalePayCamPageState._brand
+                                            : const Color(0xFFD5E6E2),
+                                      ),
+                                    ),
+                                    child: RadioListTile<String>(
+                                      value: node.flatId!,
+                                      groupValue: _selectedFlatId,
+                                      activeColor:
+                                          _DnFairytalePayCamPageState._brand,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _selectedFlatId = value;
+                                        });
+                                      },
+                                      dense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                      title: Text(
+                                        node.label,
+                                        style: TextStyle(
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: const Color(0xFF214B43),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ))
+                    : widget.nodes.isEmpty
                     ? const Center(
                         child: Text(
                           'No flats found for the entered text.',
@@ -1171,11 +1234,8 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (final node in visibleNodes)
-                              _buildNode(
-                                node,
-                                forceExpand: _searchQuery.isNotEmpty,
-                              ),
+                            for (final node in widget.nodes)
+                              _buildNode(node, forceExpand: false),
                           ],
                         ),
                       ),

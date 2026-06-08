@@ -1881,7 +1881,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     return [
       _FlatSelectionNode(
         key: keyBase,
-        label: 'Tower $towerName',
+        label: towerName,
         children: flatChildren,
       ),
     ];

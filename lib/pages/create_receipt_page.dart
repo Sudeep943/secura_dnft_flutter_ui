@@ -62,10 +62,11 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
   String? _selectedReceiptType;
 
   List<String> _flatIdOptions = const [];
+  List<_ReceiptFlatSelectionNode> _flatNodes = const [];
+  Map<String, String> _flatLabelById = const {};
   String? _selectedFlatId;
   bool _loadingFlatIds = false;
   String? _flatIdError;
-  bool _flatIdsAscending = true;
 
   final List<_ReceiptItemInput> _items = [];
   final List<_AddedChargeInput> _addedCharges = [];
@@ -220,6 +221,289 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
     return sorted;
   }
 
+  Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
+    final data = response['data'];
+    final root = data is Map
+        ? Map<String, dynamic>.from(data)
+        : Map<String, dynamic>.from(response);
+
+    dynamic readAny(List<String> keys) {
+      for (final key in keys) {
+        if (root.containsKey(key)) {
+          return root[key];
+        }
+      }
+      return null;
+    }
+
+    return {
+      'blockList': readAny(['blockList', 'blocklist', 'blocks', 'block']),
+      'towerList': readAny(['towerList', 'towerlist', 'towers', 'tower']),
+      'flatList': readAny([
+        'flatList',
+        'flatlist',
+        'flats',
+        'flatIdList',
+        'flatIds',
+      ]),
+    };
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    return value
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
+  List<String> _asStringList(dynamic value) {
+    if (value is! List) return const <String>[];
+
+    String? mapEntryToFlatId(Map entry) {
+      final map = Map<String, dynamic>.from(entry);
+      for (final key in [
+        'flatId',
+        'flatID',
+        'flatNo',
+        'flatNumber',
+        'flatName',
+      ]) {
+        final candidate = map[key]?.toString().trim() ?? '';
+        if (candidate.isNotEmpty) return candidate;
+      }
+      return null;
+    }
+
+    final items = value
+        .map((entry) {
+          if (entry is String) return entry.trim();
+          if (entry is num) return entry.toString();
+          if (entry is Map) {
+            return mapEntryToFlatId(entry) ?? '';
+          }
+          return '';
+        })
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+
+    items.sort((left, right) => _naturalCompare(left, right));
+    return items;
+  }
+
+  int _naturalCompare(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+    final regex = RegExp(r'(\d+|\D+)');
+    final aParts = regex.allMatches(aLower).map((m) => m.group(0)!).toList();
+    final bParts = regex.allMatches(bLower).map((m) => m.group(0)!).toList();
+    final len = aParts.length < bParts.length ? aParts.length : bParts.length;
+
+    for (var i = 0; i < len; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      if (aNum != null && bNum != null) {
+        final cmp = aNum.compareTo(bNum);
+        if (cmp != 0) return cmp;
+      } else {
+        final cmp = aPart.compareTo(bPart);
+        if (cmp != 0) return cmp;
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  List<_ReceiptFlatSelectionNode> _flatLeafNodes(
+    List<String> flatIds,
+    String keyBase,
+  ) {
+    return [
+      for (var index = 0; index < flatIds.length; index++)
+        _ReceiptFlatSelectionNode(
+          key: '$keyBase-$index',
+          label: flatIds[index],
+          flatId: flatIds[index],
+        ),
+    ];
+  }
+
+  List<_ReceiptFlatSelectionNode> _nodesFromTower(
+    Map<String, dynamic> tower,
+    String keyBase,
+  ) {
+    final towerName =
+        tower['towerName']?.toString().trim() ??
+        tower['tower']?.toString().trim() ??
+        '';
+
+    final flatChildren = _flatLeafNodes(
+      _asStringList(tower['flatList']),
+      '$keyBase-flat',
+    );
+
+    if (towerName.isEmpty) {
+      return flatChildren;
+    }
+    if (flatChildren.isEmpty) {
+      return const <_ReceiptFlatSelectionNode>[];
+    }
+
+    return [
+      _ReceiptFlatSelectionNode(
+        key: '$keyBase-group',
+        label: towerName,
+        children: flatChildren,
+      ),
+    ];
+  }
+
+  List<_ReceiptFlatSelectionNode> _nodesFromBlock(
+    Map<String, dynamic> block,
+    String keyBase,
+  ) {
+    final blockName =
+        block['blockName']?.toString().trim() ??
+        block['block']?.toString().trim() ??
+        '';
+
+    final flatChildren = _flatLeafNodes(
+      _asStringList(block['flatList']),
+      '$keyBase-flat',
+    );
+
+    final towerChildren = <_ReceiptFlatSelectionNode>[];
+    final towerList = _asMapList(block['towerList']);
+    for (var index = 0; index < towerList.length; index++) {
+      towerChildren.addAll(
+        _nodesFromTower(towerList[index], '$keyBase-t$index'),
+      );
+    }
+
+    final children = [...flatChildren, ...towerChildren];
+    if (children.isEmpty) {
+      return const <_ReceiptFlatSelectionNode>[];
+    }
+
+    if (blockName.isEmpty) {
+      return children;
+    }
+
+    return [
+      _ReceiptFlatSelectionNode(
+        key: '$keyBase-group',
+        label: 'Block $blockName',
+        children: children,
+      ),
+    ];
+  }
+
+  List<_ReceiptFlatSelectionNode> _sortNodesRecursively(
+    List<_ReceiptFlatSelectionNode> nodes,
+  ) {
+    final sorted = nodes
+        .map(
+          (node) => _ReceiptFlatSelectionNode(
+            key: node.key,
+            label: node.label,
+            flatId: node.flatId,
+            children: _sortNodesRecursively(node.children),
+          ),
+        )
+        .toList();
+    sorted.sort((a, b) => _naturalCompare(a.label, b.label));
+    return sorted;
+  }
+
+  List<_ReceiptFlatSelectionNode> _buildFlatNodes(
+    Map<String, dynamic> response,
+  ) {
+    final payload = _extractFlatPayload(response);
+    final nodes = <_ReceiptFlatSelectionNode>[];
+
+    final blockList = _asMapList(payload['blockList']);
+    for (var index = 0; index < blockList.length; index++) {
+      nodes.addAll(_nodesFromBlock(blockList[index], 'b$index'));
+    }
+
+    final topLevelTowers = _asMapList(payload['towerList']);
+    for (var index = 0; index < topLevelTowers.length; index++) {
+      nodes.addAll(_nodesFromTower(topLevelTowers[index], 'top_tower_$index'));
+    }
+
+    final rootFlatNodes = _flatLeafNodes(
+      _asStringList(payload['flatList']),
+      'root-flat',
+    );
+    if (rootFlatNodes.isNotEmpty) {
+      nodes.addAll(rootFlatNodes);
+    }
+
+    return _sortNodesRecursively(nodes);
+  }
+
+  List<String> _collectFlatIdsFromNodes(List<_ReceiptFlatSelectionNode> nodes) {
+    final flatIds = <String>[];
+    for (final node in nodes) {
+      flatIds.addAll(node.flatIds);
+    }
+    return flatIds.toSet().toList()..sort();
+  }
+
+  Map<String, String> _buildFlatLabelMap(
+    List<_ReceiptFlatSelectionNode> nodes,
+  ) {
+    final result = <String, String>{};
+
+    void visit(_ReceiptFlatSelectionNode node) {
+      final flatId = node.flatId;
+      if (flatId != null && flatId.trim().isNotEmpty) {
+        result[flatId] = node.label;
+      }
+      for (final child in node.children) {
+        visit(child);
+      }
+    }
+
+    for (final node in nodes) {
+      visit(node);
+    }
+    return result;
+  }
+
+  Future<void> _openFlatSelectionDialog() async {
+    if (_loadingFlatIds || _flatIdOptions.isEmpty) return;
+
+    final nodes = _flatNodes.isNotEmpty
+        ? _flatNodes
+        : _flatLeafNodes(_flatIdOptions, 'fallback-flat');
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _ReceiptFlatSelectionDialog(
+        nodes: nodes,
+        initialFlatId: _selectedFlatId,
+      ),
+    );
+
+    if (!mounted || selected == null) return;
+    setState(() {
+      _selectedFlatId = selected;
+    });
+  }
+
+  String _buildSelectedFlatDisplayText() {
+    if (_loadingFlatIds) return 'Loading flats...';
+    if (_selectedFlatId == null || _selectedFlatId!.isEmpty) {
+      return 'Select Flat Id';
+    }
+    return _flatLabelById[_selectedFlatId!] ?? _selectedFlatId!;
+  }
+
   Future<void> _loadFlatIds() async {
     setState(() {
       _loadingFlatIds = true;
@@ -241,15 +525,27 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
         return;
       }
 
-      final flats = _collectFlatIds(response);
+      final nodes = _buildFlatNodes(response);
+      final flats = nodes.isEmpty
+          ? _collectFlatIds(response)
+          : _collectFlatIdsFromNodes(nodes);
+      final labels = nodes.isEmpty
+          ? {for (final flat in flats) flat: flat}
+          : _buildFlatLabelMap(nodes);
       setState(() {
+        _flatNodes = nodes;
+        _flatLabelById = labels;
         _flatIdOptions = flats;
-        _selectedFlatId = flats.isEmpty ? null : flats.first;
+        _selectedFlatId = flats.contains(_selectedFlatId)
+            ? _selectedFlatId
+            : (flats.isEmpty ? null : flats.first);
         _flatIdError = flats.isEmpty ? 'No flats available.' : null;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _flatNodes = const [];
+        _flatLabelById = const {};
         _flatIdOptions = const [];
         _selectedFlatId = null;
         _flatIdError = 'Unable to load the flat list right now.';
@@ -261,24 +557,6 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
         });
       }
     }
-  }
-
-  void _toggleFlatIdSort() {
-    if (_flatIdOptions.isEmpty) return;
-
-    final selected = _selectedFlatId;
-    final sorted = List<String>.from(_flatIdOptions)
-      ..sort((a, b) => _flatIdsAscending ? a.compareTo(b) : b.compareTo(a));
-
-    setState(() {
-      _flatIdsAscending = !_flatIdsAscending;
-      _flatIdOptions = sorted;
-      if (selected != null && sorted.contains(selected)) {
-        _selectedFlatId = selected;
-      } else if (sorted.isNotEmpty) {
-        _selectedFlatId = sorted.first;
-      }
-    });
   }
 
   double _parseAmount(String value) {
@@ -1487,61 +1765,65 @@ class _CreateReceiptPageState extends State<CreateReceiptPage> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedFlatId,
-                  decoration: _dec(
-                    label: _loadingFlatIds ? 'Flat Id (Loading...)' : 'Flat Id',
-                    suffix: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 88),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: _loadingFlatIds ? null : _loadFlatIds,
-                            icon: const Icon(Icons.refresh),
-                            tooltip: 'Reload flats',
-                          ),
-                          IconButton(
-                            onPressed: _loadingFlatIds
-                                ? null
-                                : _toggleFlatIdSort,
-                            icon: Icon(
-                              _flatIdsAscending
-                                  ? Icons.sort_by_alpha
-                                  : Icons.sort_by_alpha_outlined,
-                            ),
-                            tooltip: _flatIdsAscending
-                                ? 'Sort Z to A'
-                                : 'Sort A to Z',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  items: _flatIdOptions
-                      .map(
-                        (flatId) => DropdownMenuItem<String>(
-                          value: flatId,
-                          child: Text(flatId),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _loadingFlatIds
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _selectedFlatId = value;
-                          });
-                        },
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
+                child: FormField<String>(
+                  validator: (_) {
+                    if ((_selectedFlatId ?? '').trim().isEmpty) {
                       return 'Select Flat Id';
                     }
                     return null;
+                  },
+                  builder: (field) {
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _loadingFlatIds || _flatIdOptions.isEmpty
+                          ? null
+                          : () async {
+                              await _openFlatSelectionDialog();
+                              field.didChange(_selectedFlatId);
+                            },
+                      child: InputDecorator(
+                        decoration: _dec(
+                          label: _loadingFlatIds
+                              ? 'Flat Id (Loading...)'
+                              : 'Flat Id',
+                          suffix: ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 44),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  onPressed: _loadingFlatIds
+                                      ? null
+                                      : _loadFlatIds,
+                                  icon: const Icon(Icons.refresh),
+                                  tooltip: 'Reload flats',
+                                ),
+                                Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: _loadingFlatIds
+                                      ? Colors.grey
+                                      : _brandColor,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ).copyWith(errorText: field.errorText),
+                        isEmpty: (_selectedFlatId ?? '').trim().isEmpty,
+                        child: Text(
+                          _buildSelectedFlatDisplayText(),
+                          style: TextStyle(
+                            color: (_selectedFlatId ?? '').trim().isEmpty
+                                ? const Color(0xFF697B78)
+                                : const Color(0xFF244A46),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    );
                   },
                 ),
               ),
@@ -2367,4 +2649,321 @@ class _TenderInput {
   final String? ddPayableAt;
   final String? ddNumber;
   final String? ddIssueDate;
+}
+
+class _ReceiptFlatSelectionNode {
+  const _ReceiptFlatSelectionNode({
+    required this.key,
+    required this.label,
+    this.children = const [],
+    this.flatId,
+  });
+
+  final String key;
+  final String label;
+  final List<_ReceiptFlatSelectionNode> children;
+  final String? flatId;
+
+  bool get isFlat => flatId != null;
+
+  List<String> get flatIds {
+    if (flatId != null) return [flatId!];
+
+    final result = <String>[];
+    for (final child in children) {
+      result.addAll(child.flatIds);
+    }
+    return result;
+  }
+}
+
+class _ReceiptFlatSelectionDialog extends StatefulWidget {
+  const _ReceiptFlatSelectionDialog({
+    required this.nodes,
+    required this.initialFlatId,
+  });
+
+  final List<_ReceiptFlatSelectionNode> nodes;
+  final String? initialFlatId;
+
+  @override
+  State<_ReceiptFlatSelectionDialog> createState() =>
+      _ReceiptFlatSelectionDialogState();
+}
+
+class _ReceiptFlatSelectionDialogState
+    extends State<_ReceiptFlatSelectionDialog> {
+  late String? _selectedFlatId;
+  final Set<String> _expandedKeys = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  late List<_ReceiptFlatSelectionNode> _visibleNodes;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFlatId = widget.initialFlatId;
+    _visibleNodes = widget.nodes;
+    _searchController.addListener(() {
+      final nextQuery = _searchController.text.toLowerCase();
+      if (nextQuery == _searchQuery) return;
+      setState(() {
+        _searchQuery = nextQuery;
+        _visibleNodes = _filterNodes(widget.nodes);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<_ReceiptFlatSelectionNode> _filterNodes(
+    List<_ReceiptFlatSelectionNode> nodes,
+  ) {
+    if (_searchQuery.isEmpty) return nodes;
+
+    final result = <_ReceiptFlatSelectionNode>[];
+    for (final node in nodes) {
+      if (node.isFlat) {
+        if (node.label.toLowerCase().contains(_searchQuery)) {
+          result.add(node);
+        }
+      } else {
+        final filteredChildren = _filterNodes(node.children);
+        if (filteredChildren.isNotEmpty) {
+          result.add(
+            _ReceiptFlatSelectionNode(
+              key: node.key,
+              label: node.label,
+              children: filteredChildren,
+            ),
+          );
+        }
+      }
+    }
+    return result;
+  }
+
+  void _toggleExpansion(String key) {
+    setState(() {
+      if (_expandedKeys.contains(key)) {
+        _expandedKeys.remove(key);
+      } else {
+        _expandedKeys.add(key);
+      }
+    });
+  }
+
+  Widget _buildNode(
+    _ReceiptFlatSelectionNode node, {
+    double indent = 0,
+    bool forceExpand = false,
+  }) {
+    if (node.isFlat) {
+      final selected = _selectedFlatId == node.flatId;
+      return Padding(
+        padding: EdgeInsets.only(left: indent, bottom: 6),
+        child: Container(
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEFF8F6) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFF0F8F82)
+                  : const Color(0xFFD5E6E2),
+            ),
+          ),
+          child: RadioListTile<String>(
+            value: node.flatId!,
+            groupValue: _selectedFlatId,
+            activeColor: const Color(0xFF0F8F82),
+            onChanged: (value) {
+              setState(() {
+                _selectedFlatId = value;
+              });
+            },
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            title: Text(
+              node.label,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: const Color(0xFF214B43),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final expanded = forceExpand || _expandedKeys.contains(node.key);
+    return Padding(
+      padding: EdgeInsets.only(left: indent, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4FAF8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD5E6E2)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    node.label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E4841),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _toggleExpansion(node.key),
+                  icon: Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: const Color(0xFF1E4841),
+                  ),
+                  tooltip: expanded ? 'Collapse' : 'Expand',
+                ),
+              ],
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final child in node.children)
+                    _buildNode(child, indent: 12, forceExpand: forceExpand),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF8FBFB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Flat Id',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF153D36),
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Choose a flat to create receipt.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF687D76)),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 460,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD5E6E2)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search flat id',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () => _searchController.clear(),
+                          icon: const Icon(Icons.close_rounded),
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 420,
+                child: _visibleNodes.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No flats found for the entered text.',
+                          style: TextStyle(
+                            color: Color(0xFF687D76),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final node in _visibleNodes)
+                              _buildNode(
+                                node,
+                                forceExpand: _searchQuery.isNotEmpty,
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF5C6D7E)),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF0F8F82),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onPressed: () => Navigator.of(context).pop(_selectedFlatId),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
 }

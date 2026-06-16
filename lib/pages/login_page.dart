@@ -968,6 +968,268 @@ class _LoginPageState extends State<LoginPage> {
     return result;
   }
 
+  Map<String, List<String>> _parseAccountDetails(dynamic accountDetails) {
+    if (accountDetails is! Map) {
+      return const {};
+    }
+
+    final parsed = <String, List<String>>{};
+    accountDetails.forEach((key, value) {
+      final apartmentId = key.toString().trim();
+      if (apartmentId.isEmpty) {
+        return;
+      }
+
+      if (value is! List) {
+        return;
+      }
+
+      final flats = value
+          .map((item) => item?.toString().trim() ?? '')
+          .where((item) => item.isNotEmpty)
+          .toList();
+      if (flats.isNotEmpty) {
+        parsed[apartmentId] = flats;
+      }
+    });
+
+    return parsed;
+  }
+
+  Future<Map<String, String>?> _showProfileSelectionDialog({
+    required String message,
+    required Map<String, List<String>> accountDetails,
+  }) async {
+    final apartmentIds = accountDetails.keys.toList();
+    final hasSingleApartment = apartmentIds.length == 1;
+    String? selectedApartmentId = hasSingleApartment
+        ? apartmentIds.first
+        : null;
+    String? selectedFlatId = selectedApartmentId == null
+        ? null
+        : (() {
+            final flatOptions =
+                accountDetails[selectedApartmentId] ?? const <String>[];
+            return flatOptions.length == 1 ? flatOptions.first : null;
+          })();
+    String? validationMessage;
+
+    return showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final flatOptions = selectedApartmentId == null
+                ? const <String>[]
+                : (accountDetails[selectedApartmentId] ?? const <String>[]);
+            final hasSingleFlat = flatOptions.length == 1;
+
+            return AlertDialog(
+              titlePadding: EdgeInsets.zero,
+              title: _buildDialogHeader('Select Profile'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(message),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedApartmentId,
+                    decoration: _buildDialogInputDecoration(
+                      labelText: 'Choose Apartment',
+                    ),
+                    items: apartmentIds
+                        .map(
+                          (apartmentId) => DropdownMenuItem<String>(
+                            value: apartmentId,
+                            child: Text(apartmentId),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: hasSingleApartment
+                        ? null
+                        : (value) {
+                            setDialogState(() {
+                              selectedApartmentId = value;
+                              final nextFlats = value == null
+                                  ? const <String>[]
+                                  : (accountDetails[value] ?? const <String>[]);
+                              selectedFlatId = nextFlats.length == 1
+                                  ? nextFlats.first
+                                  : null;
+                              validationMessage = null;
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    value: selectedFlatId,
+                    decoration: _buildDialogInputDecoration(
+                      labelText: 'Choose Flat',
+                    ),
+                    items: flatOptions
+                        .map(
+                          (flatId) => DropdownMenuItem<String>(
+                            value: flatId,
+                            child: Text(flatId),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: selectedApartmentId == null || hasSingleFlat
+                        ? null
+                        : (value) {
+                            setDialogState(() {
+                              selectedFlatId = value;
+                              validationMessage = null;
+                            });
+                          },
+                  ),
+                  if (validationMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      validationMessage!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  style: _textDialogButtonStyle(),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: _filledDialogButtonStyle(),
+                  onPressed: () {
+                    if (selectedApartmentId == null ||
+                        selectedFlatId == null ||
+                        selectedFlatId!.isEmpty) {
+                      setDialogState(() {
+                        validationMessage =
+                            'Please choose apartment and flat to continue.';
+                      });
+                      return;
+                    }
+
+                    Navigator.of(dialogContext).pop({
+                      'apartmentId': selectedApartmentId!,
+                      'flatID': selectedFlatId!,
+                    });
+                  },
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handleMultipleProfileChallenge({
+    required String loginMessage,
+    required String userName,
+    required String currentPassword,
+    required Map<String, dynamic> responsePayload,
+    String? otp,
+  }) async {
+    final accountDetails = _parseAccountDetails(
+      responsePayload['accountDetails'],
+    );
+    if (accountDetails.isEmpty) {
+      await _showMessageDialog(
+        title: 'Error',
+        message: 'Unable to load apartments/flats for profile selection.',
+      );
+      return;
+    }
+
+    final selection = await _showProfileSelectionDialog(
+      message: loginMessage,
+      accountDetails: accountDetails,
+    );
+    if (selection == null) {
+      return;
+    }
+
+    setState(() => loading = true);
+
+    Map<String, dynamic>? response;
+    try {
+      response = await ApiService.login(
+        username: userName,
+        password: currentPassword,
+        otp: otp,
+        apartmentId: selection['apartmentId'],
+        flatId: selection['flatID'],
+      );
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+
+    await _handleLoginResponse(
+      response: response,
+      userName: userName,
+      currentPassword: currentPassword,
+      fallbackErrorMessage: 'Unable to complete login.',
+      otp: otp,
+    );
+  }
+
+  Future<void> _handleLoginResponse({
+    required Map<String, dynamic>? response,
+    required String userName,
+    required String currentPassword,
+    required String fallbackErrorMessage,
+    String? otp,
+  }) async {
+    final message = response == null
+        ? fallbackErrorMessage
+        : response['message']?.toString() ?? fallbackErrorMessage;
+    final messageCode = response == null
+        ? ''
+        : response['messageCode']?.toString() ?? '';
+
+    if (response == null) {
+      await _showMessageDialog(title: 'Error', message: message);
+      return;
+    }
+
+    if (messageCode.startsWith('SUCC')) {
+      await _completeLogin(userName);
+      return;
+    }
+
+    if (messageCode == 'ERR_MESSAGE_29') {
+      await _handleOtpChallenge(
+        loginMessage: message,
+        userName: userName,
+        currentPassword: currentPassword,
+      );
+      return;
+    }
+
+    if (messageCode == 'ERR_MESSAGE_54') {
+      await _handleMultipleProfileChallenge(
+        loginMessage: message,
+        userName: userName,
+        currentPassword: currentPassword,
+        responsePayload: response,
+        otp: otp,
+      );
+      return;
+    }
+
+    await _showMessageDialog(title: 'Error', message: message);
+  }
+
   Future<void> _completeLogin(String fallbackProfileId) async {
     await ApiService.fetchAndStoreProfile(
       profileId: ApiService.currentUserId ?? fallbackProfileId,
@@ -1053,6 +1315,17 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    if (messageCode == 'ERR_MESSAGE_54') {
+      await _handleMultipleProfileChallenge(
+        loginMessage: message,
+        userName: userName,
+        currentPassword: currentPassword,
+        responsePayload: response,
+        otp: otp,
+      );
+      return;
+    }
+
     await _showMessageDialog(title: 'Error', message: message);
   }
 
@@ -1082,33 +1355,12 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
 
-    final message = response == null
-        ? 'Unable to complete login.'
-        : response['message']?.toString() ?? 'Unable to complete login.';
-    final messageCode = response == null
-        ? ''
-        : response['messageCode']?.toString() ?? '';
-
-    if (response == null) {
-      await _showMessageDialog(title: 'Error', message: message);
-      return;
-    }
-
-    if (messageCode.startsWith('SUCC')) {
-      await _completeLogin(trimmedUsername);
-      return;
-    }
-
-    if (messageCode == 'ERR_MESSAGE_29') {
-      await _handleOtpChallenge(
-        loginMessage: message,
-        userName: trimmedUsername,
-        currentPassword: trimmedPassword,
-      );
-      return;
-    }
-
-    await _showMessageDialog(title: 'Error', message: message);
+    await _handleLoginResponse(
+      response: response,
+      userName: trimmedUsername,
+      currentPassword: trimmedPassword,
+      fallbackErrorMessage: 'Unable to complete login.',
+    );
   }
 
   Widget _buildAttendanceActionButton() {

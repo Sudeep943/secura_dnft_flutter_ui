@@ -353,6 +353,8 @@ class ApiService {
     required String username,
     required String password,
     String? otp,
+    String? apartmentId,
+    String? flatId,
   }) async {
     final encryptedPassword = _encryptAuthValue(password);
     final requestBody = <String, dynamic>{
@@ -361,6 +363,12 @@ class ApiService {
     };
     if (otp != null && otp.trim().isNotEmpty) {
       requestBody['otp'] = otp.trim();
+    }
+    if (apartmentId != null && apartmentId.trim().isNotEmpty) {
+      requestBody['apartmentId'] = apartmentId.trim();
+    }
+    if (flatId != null && flatId.trim().isNotEmpty) {
+      requestBody['flatID'] = flatId.trim();
     }
 
     final response = await http.post(

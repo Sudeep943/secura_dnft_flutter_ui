@@ -1684,6 +1684,26 @@ class ReportsManagementPage extends StatelessWidget {
   }
 }
 
+class SkillClassManagementPage extends StatelessWidget {
+  const SkillClassManagementPage({super.key, this.embedded = false});
+
+  final bool embedded;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ModuleHubPage(
+      embedded: embedded,
+      section: AppSection.skillClass,
+      title: 'Skill Classes',
+      subtitle: 'Choose one of the skill class actions below.',
+      items: const [
+        _ModuleHubItem('Create Skill Class', Icons.school_outlined),
+        _ModuleHubItem('View Skill Classes', Icons.list_alt_outlined),
+      ],
+    );
+  }
+}
+
 class OthersManagementPage extends StatelessWidget {
   const OthersManagementPage({super.key, this.embedded = false});
 

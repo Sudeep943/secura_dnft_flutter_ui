@@ -44,6 +44,7 @@ class _AppShellState extends State<AppShell> {
     AppSection.reports,
     AppSection.others,
     AppSection.finance,
+    AppSection.skillClass,
   ];
 
   late final List<Widget> _pages = [
@@ -62,6 +63,7 @@ class _AppShellState extends State<AppShell> {
     const ReportsManagementPage(embedded: true),
     const OthersManagementPage(embedded: true),
     const FinanceManagementPage(embedded: true),
+    const SkillClassManagementPage(embedded: true),
   ];
 
   @override
@@ -240,6 +242,12 @@ class _AppShellState extends State<AppShell> {
     }
     if (_hasParentAccess('reportAccess')) {
       sections.add(AppSection.reports);
+    }
+    if (_hasParentAccess('groupManagmentAccess')) {
+      sections.add(AppSection.groupManagement);
+    }
+    if (_hasParentAccess('skillClassAccess')) {
+      sections.add(AppSection.skillClass);
     }
 
     return sections;

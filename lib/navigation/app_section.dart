@@ -14,6 +14,7 @@ enum AppSection {
   reports,
   others,
   finance,
+  skillClass,
 }
 
 extension AppSectionX on AppSection {
@@ -49,6 +50,8 @@ extension AppSectionX on AppSection {
         return 'Others';
       case AppSection.finance:
         return 'Finance';
+      case AppSection.skillClass:
+        return 'Skill Classes';
     }
   }
 }

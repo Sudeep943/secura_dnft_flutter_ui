@@ -197,6 +197,11 @@ class _SideBarState extends State<SideBar> {
             section: AppSection.vendorManagement,
           ),
           item("Reports", Icons.assessment, section: AppSection.reports),
+          item(
+            "Skill Classes",
+            Icons.school_outlined,
+            section: AppSection.skillClass,
+          ),
           item("Others", Icons.more_horiz, section: AppSection.others),
         ],
       ),

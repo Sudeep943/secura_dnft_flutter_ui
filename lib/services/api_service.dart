@@ -2100,6 +2100,147 @@ class ApiService {
     return null;
   }
 
+  static Map<String, dynamic>? _buildRoleAndAccessHeader() {
+    final header =
+        _buildLoginResponseHeader() ??
+        _buildGenericHeader() ??
+        (userHeader == null ? null : Map<String, dynamic>.from(userHeader!));
+    if (header == null) {
+      return null;
+    }
+
+    final requestId = header['requestId']?.toString().trim() ?? '';
+    final source =
+        header['source']?.toString().trim() ??
+        header['sourceSystem']?.toString().trim() ??
+        '';
+
+    if (requestId.isEmpty) {
+      header['requestId'] = 'REQ${DateTime.now().millisecondsSinceEpoch}';
+    }
+    if (source.isEmpty) {
+      header['source'] = 'WEB';
+    }
+
+    return header;
+  }
+
+  static Future<Map<String, dynamic>?> createRole({
+    required String roleName,
+  }) async {
+    final normalizedRoleName = roleName.trim().toUpperCase();
+    if (normalizedRoleName.isEmpty) {
+      return null;
+    }
+
+    final genericHeader = _buildRoleAndAccessHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/roleAndAccess/createRole',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'roleName': normalizedRoleName,
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getAllRoles() async {
+    final genericHeader = _buildRoleAndAccessHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/roleAndAccess/getAllRoles',
+      requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> updateRoleAccess({
+    required String roleId,
+    required Map<String, dynamic> access,
+  }) async {
+    final genericHeader = _buildRoleAndAccessHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/roleAndAccess/updateRoleAccess',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'roleId': roleId.trim(),
+        'access': access,
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> updateRoleStatus({
+    required String roleId,
+    required String status,
+  }) async {
+    final genericHeader = _buildRoleAndAccessHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/roleAndAccess/updateRoleStatus',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'roleId': roleId.trim(),
+        'status': status.trim().toUpperCase(),
+      },
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> bookHall(
     Map<String, dynamic> requestBody,
   ) async {

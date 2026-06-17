@@ -158,9 +158,10 @@ class GroupManagementPage extends StatelessWidget {
 }
 
 class FlatManagementPage extends StatelessWidget {
-  const FlatManagementPage({super.key, this.embedded = false});
+  const FlatManagementPage({super.key, this.embedded = false, this.onBack});
 
   final bool embedded;
+  final VoidCallback? onBack;
 
   void _showPlaceholderMessage(BuildContext context, String title) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -172,6 +173,11 @@ class FlatManagementPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ModuleHubPage(
       embedded: embedded,
+      onBack:
+          onBack ??
+          (embedded
+              ? () => openAppShellSection(context, AppSection.adminSection)
+              : null),
       section: AppSection.flatManagement,
       title: 'Flat Management',
       subtitle:
@@ -265,9 +271,10 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
 }
 
 class StaffManagementPage extends StatefulWidget {
-  const StaffManagementPage({super.key, this.embedded = false});
+  const StaffManagementPage({super.key, this.embedded = false, this.onBack});
 
   final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<StaffManagementPage> createState() => _StaffManagementPageState();
@@ -293,6 +300,11 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
 
     return _ModuleHubPage(
       embedded: widget.embedded,
+      onBack:
+          widget.onBack ??
+          (widget.embedded
+              ? () => openAppShellSection(context, AppSection.adminSection)
+              : null),
       section: AppSection.staffManagement,
       title: 'Staff Management',
       subtitle: 'Choose one of the staff management actions below.',
@@ -353,23 +365,1055 @@ class VendorManagementPage extends StatelessWidget {
   }
 }
 
-class RoleAndAccessPage extends StatelessWidget {
-  const RoleAndAccessPage({super.key, this.embedded = false});
+class RoleAndAccessPage extends StatefulWidget {
+  const RoleAndAccessPage({super.key, this.embedded = false, this.onBack});
 
   final bool embedded;
+  final VoidCallback? onBack;
+
+  @override
+  State<RoleAndAccessPage> createState() => _RoleAndAccessPageState();
+}
+
+class _RoleAndAccessPageState extends State<RoleAndAccessPage> {
+  bool _showManageAccess = false;
+
+  static const Color _brandColor = Color(0xFF0F8F82);
+  static const Color _brandTextColor = Color(0xFF124B45);
+
+  Widget _dialogHeader(String title) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      decoration: const BoxDecoration(
+        color: _brandColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
+        ),
+      ),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _dialogInputDecoration({
+    required String labelText,
+    String? errorText,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      labelStyle: const TextStyle(color: _brandTextColor),
+      errorText: errorText,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _brandColor.withValues(alpha: 0.45)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: _brandColor, width: 2),
+      ),
+      errorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: Colors.redAccent),
+      ),
+      focusedErrorBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderSide: BorderSide(color: Colors.redAccent, width: 2),
+      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  ButtonStyle _filledButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: _brandColor,
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+
+  ButtonStyle _textButtonStyle() {
+    return TextButton.styleFrom(
+      foregroundColor: _brandColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    );
+  }
+
+  Future<void> _showCreateRoleDialog() async {
+    final roleController = TextEditingController();
+    String? validationMessage;
+    bool submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              titlePadding: EdgeInsets.zero,
+              title: _dialogHeader('Create Role'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: roleController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.done,
+                    cursorColor: _brandColor,
+                    onChanged: (_) {
+                      if (validationMessage != null) {
+                        setDialogState(() => validationMessage = null);
+                      }
+                    },
+                    onSubmitted: (_) {},
+                    decoration: _dialogInputDecoration(
+                      labelText: 'Role Name',
+                      errorText: validationMessage,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  style: _textButtonStyle(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: _filledButtonStyle(),
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final roleName = roleController.text
+                              .trim()
+                              .toUpperCase();
+                          if (roleName.isEmpty) {
+                            setDialogState(() {
+                              validationMessage = 'Please provide role name.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            submitting = true;
+                            validationMessage = null;
+                          });
+
+                          final response = await ApiService.createRole(
+                            roleName: roleName,
+                          );
+                          if (!mounted) return;
+
+                          final message =
+                              response?['message']
+                                      ?.toString()
+                                      .trim()
+                                      .isNotEmpty ==
+                                  true
+                              ? response!['message'].toString()
+                              : 'Unable to create role.';
+                          final code =
+                              response?['messageCode']?.toString().trim() ?? '';
+                          final isSuccess = code.toUpperCase().contains('SUCC');
+
+                          if (isSuccess) {
+                            if (Navigator.of(dialogContext).canPop()) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          } else {
+                            setDialogState(() {
+                              submitting = false;
+                              validationMessage = message;
+                            });
+                            return;
+                          }
+
+                          await showDialog<void>(
+                            context: context,
+                            builder: (statusContext) => AlertDialog(
+                              titlePadding: EdgeInsets.zero,
+                              title: _dialogHeader('Create Role'),
+                              content: Text(message),
+                              actions: [
+                                TextButton(
+                                  style: _textButtonStyle(),
+                                  onPressed: () =>
+                                      Navigator.of(statusContext).pop(),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                  child: submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Create Role'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    roleController.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_showManageAccess) {
+      return ManageAccessPage(
+        embedded: widget.embedded,
+        onBack: () {
+          setState(() {
+            _showManageAccess = false;
+          });
+        },
+      );
+    }
+
     return _ModuleHubPage(
-      embedded: embedded,
+      embedded: widget.embedded,
+      onBack:
+          widget.onBack ??
+          (widget.embedded
+              ? () => openAppShellSection(context, AppSection.adminSection)
+              : null),
       section: AppSection.roleAndAccess,
       title: 'Role And Access',
       subtitle: 'Choose one of the role and access control actions below.',
-      items: const [
-        _ModuleHubItem('Create Role', Icons.admin_panel_settings),
-        _ModuleHubItem('Assign Role', Icons.assignment_turned_in),
-        _ModuleHubItem('Manage Access', Icons.lock_open),
+      items: [
+        _ModuleHubItem(
+          'Create Role',
+          Icons.admin_panel_settings,
+          onTap: _showCreateRoleDialog,
+        ),
+        const _ModuleHubItem('Assign Role', Icons.assignment_turned_in),
+        _ModuleHubItem(
+          'Manage Access',
+          Icons.lock_open,
+          onTap: () {
+            setState(() {
+              _showManageAccess = true;
+            });
+          },
+        ),
       ],
+    );
+  }
+}
+
+class ManageAccessPage extends StatefulWidget {
+  const ManageAccessPage({super.key, this.embedded = false, this.onBack});
+
+  final bool embedded;
+  final VoidCallback? onBack;
+
+  @override
+  State<ManageAccessPage> createState() => _ManageAccessPageState();
+}
+
+class _ManageAccessPageState extends State<ManageAccessPage> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _roles = const [];
+
+  // Edit mode tracking
+  String? _editingRoleId;
+  Map<String, dynamic>? _editingAccess;
+  bool _isUpdating = false;
+  String? _updateError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoles();
+  }
+
+  Future<void> _loadRoles() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await ApiService.getAllRoles();
+    if (!mounted) {
+      return;
+    }
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    final isSuccess = messageCode.toUpperCase().contains('SUCC');
+    if (!isSuccess) {
+      setState(() {
+        _loading = false;
+        _roles = const [];
+        _error = response?['message']?.toString().trim().isNotEmpty == true
+            ? response!['message'].toString()
+            : 'Unable to load roles.';
+      });
+      return;
+    }
+
+    final rawRoles = response?['roles'];
+    final roles = rawRoles is List
+        ? rawRoles
+              .whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    setState(() {
+      _loading = false;
+      _roles = roles;
+      _error = roles.isEmpty ? 'No roles found.' : null;
+    });
+  }
+
+  String _readValue(Map<String, dynamic> role, String key) {
+    final value = role[key]?.toString().trim() ?? '';
+    return value;
+  }
+
+  /// Parses the access JSON string into a list of section entries.
+  /// Each entry is a MapEntry<String, Map<String, bool>>:
+  ///   key   → section name (e.g. "accountManagmentAccess")
+  ///   value → field name → bool value
+  List<MapEntry<String, Map<String, bool>>> _parseAccessSections(
+    Map<String, dynamic> role,
+  ) {
+    final raw = _readValue(role, 'access');
+    if (raw.isEmpty) return const [];
+
+    Map<String, dynamic> decoded;
+    try {
+      decoded = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return const [];
+    }
+
+    final sections = <MapEntry<String, Map<String, bool>>>[];
+    decoded.forEach((sectionKey, sectionValue) {
+      if (sectionValue is! Map) return;
+      final fields = <String, bool>{};
+      sectionValue.forEach((fieldKey, fieldValue) {
+        if (fieldValue is bool) {
+          fields[fieldKey] = fieldValue;
+        }
+      });
+      if (fields.isNotEmpty) {
+        sections.add(MapEntry(sectionKey, fields));
+      }
+    });
+    return sections;
+  }
+
+  Future<void> _handleUpdateAccess(Map<String, dynamic> role) async {
+    final roleId = _readValue(role, 'roleId');
+    final rawAccess = _readValue(role, 'access');
+
+    if (roleId.isEmpty || rawAccess.isEmpty) {
+      return;
+    }
+
+    try {
+      final decodedAccess = Map<String, dynamic>.from(
+        jsonDecode(rawAccess) as Map,
+      );
+      setState(() {
+        _editingRoleId = roleId;
+        _editingAccess = decodedAccess;
+      });
+    } catch (_) {
+      // Ignore parsing errors
+    }
+  }
+
+  Future<void> _handleUpdateRoleAccess(Map<String, dynamic> role) async {
+    final roleId = _readValue(role, 'roleId');
+    if (roleId.isEmpty || _editingAccess == null) {
+      return;
+    }
+
+    setState(() {
+      _isUpdating = true;
+      _updateError = null;
+    });
+
+    final response = await ApiService.updateRoleAccess(
+      roleId: roleId,
+      access: _editingAccess!,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    final isSuccess = messageCode.toUpperCase().contains('SUCC');
+    final responseMessage =
+        response?['message']?.toString().trim() ?? 'Operation completed';
+
+    if (!isSuccess) {
+      setState(() {
+        _isUpdating = false;
+        _updateError = responseMessage;
+      });
+      return;
+    }
+
+    // Show success modal and reload on OK
+    setState(() {
+      _editingRoleId = null;
+      _editingAccess = null;
+      _isUpdating = false;
+    });
+
+    await _showResponseModal('Success', responseMessage, true);
+  }
+
+  Future<void> _handleUpdateRoleStatus(
+    Map<String, dynamic> role,
+    String newStatus,
+  ) async {
+    final roleId = _readValue(role, 'roleId');
+    if (roleId.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isUpdating = true;
+      _updateError = null;
+    });
+
+    final response = await ApiService.updateRoleStatus(
+      roleId: roleId,
+      status: newStatus,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    final isSuccess = messageCode.toUpperCase().contains('SUCC');
+    final responseMessage =
+        response?['message']?.toString().trim() ?? 'Operation completed';
+
+    if (!isSuccess) {
+      setState(() {
+        _isUpdating = false;
+        _updateError = responseMessage;
+      });
+      return;
+    }
+
+    // Show success modal and reload on OK
+    setState(() {
+      _isUpdating = false;
+    });
+
+    await _showResponseModal('Success', responseMessage, true);
+  }
+
+  void _cancelEditMode() {
+    setState(() {
+      _editingRoleId = null;
+      _editingAccess = null;
+      _updateError = null;
+    });
+  }
+
+  Future<void> _showResponseModal(
+    String title,
+    String message,
+    bool isSuccess,
+  ) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        final headerColor = isSuccess
+            ? const Color(0xFF0F8F82)
+            : const Color(0xFFB3261E);
+
+        return AlertDialog(
+          scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          titlePadding: EdgeInsets.zero,
+          title: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            decoration: BoxDecoration(
+              color: headerColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(28),
+                topRight: Radius.circular(28),
+              ),
+            ),
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, height: 1.45),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: headerColor,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (isSuccess) {
+                  _loadRoles();
+                }
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _updateAccessField(String sectionKey, String fieldKey, bool value) {
+    if (_editingAccess == null) return;
+
+    setState(() {
+      if (_editingAccess![sectionKey] is Map) {
+        final section = Map<String, dynamic>.from(
+          _editingAccess![sectionKey] as Map,
+        );
+        section[fieldKey] = value;
+        _editingAccess![sectionKey] = section;
+      }
+    });
+  }
+
+  List<MapEntry<String, Map<String, bool>>> _parseAccessFromMap(
+    Map<String, dynamic> accessMap,
+  ) {
+    final sections = <MapEntry<String, Map<String, bool>>>[];
+    accessMap.forEach((sectionKey, sectionValue) {
+      if (sectionValue is! Map) return;
+      final fields = <String, bool>{};
+      sectionValue.forEach((fieldKey, fieldValue) {
+        if (fieldValue is bool) {
+          fields[fieldKey] = fieldValue;
+        }
+      });
+      if (fields.isNotEmpty) {
+        sections.add(MapEntry(sectionKey, fields));
+      }
+    });
+    return sections;
+  }
+
+  Widget _buildRoleCard(Map<String, dynamic> role) {
+    final roleName = _readValue(role, 'roleName');
+    final roleStatus = _readValue(role, 'roleStatus');
+    final roleId = _readValue(role, 'roleId');
+    final title = roleName.isEmpty ? 'Role' : roleName;
+    final isEditing = _editingRoleId == roleId;
+    final accessSections = isEditing && _editingAccess != null
+        ? _parseAccessFromMap(_editingAccess!)
+        : _parseAccessSections(role);
+    final isStatusActive = roleStatus.toUpperCase() == 'ACTIVE';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        title: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    'Status: $roleStatus',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            if (!isEditing) ...[
+              SizedBox(
+                height: 36,
+                child: OutlinedButton(
+                  onPressed: _isUpdating
+                      ? null
+                      : () => _handleUpdateAccess(role),
+                  child: const Text(
+                    'Update Access',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 36,
+                child: FilledButton(
+                  onPressed: _isUpdating
+                      ? null
+                      : () => _handleUpdateRoleStatus(
+                          role,
+                          isStatusActive ? 'INACTIVE' : 'ACTIVE',
+                        ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isStatusActive
+                        ? const Color(0xFFB3261E)
+                        : const Color(0xFF0F8F82),
+                  ),
+                  child: Text(
+                    isStatusActive ? 'Disable' : 'Activate',
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (_updateError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFB3261E).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFB3261E)),
+                ),
+                child: Text(
+                  _updateError!,
+                  style: const TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          if (accessSections.isNotEmpty)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const columns = 3;
+                const spacing = 10.0;
+                final itemWidth =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
+                final rows = <Widget>[];
+                for (var i = 0; i < accessSections.length; i += columns) {
+                  final rowItems = accessSections.sublist(
+                    i,
+                    (i + columns).clamp(0, accessSections.length),
+                  );
+                  rows.add(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var j = 0; j < rowItems.length; j++) ...[
+                          if (j > 0) const SizedBox(width: spacing),
+                          SizedBox(
+                            width: itemWidth,
+                            child: _AccessSectionTile(
+                              sectionKey: rowItems[j].key,
+                              fields: rowItems[j].value,
+                              isEditing: isEditing,
+                              onFieldChanged: (fieldKey, value) =>
+                                  _updateAccessField(
+                                    rowItems[j].key,
+                                    fieldKey,
+                                    value,
+                                  ),
+                            ),
+                          ),
+                        ],
+                        if (rowItems.length < columns)
+                          SizedBox(
+                            width:
+                                (columns - rowItems.length) * itemWidth +
+                                (columns - rowItems.length - 1).clamp(
+                                      0,
+                                      columns,
+                                    ) *
+                                    spacing,
+                          ),
+                      ],
+                    ),
+                  );
+                  if (i + columns < accessSections.length) {
+                    rows.add(const SizedBox(height: spacing));
+                  }
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rows,
+                );
+              },
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('No access defined for this role.'),
+            ),
+          if (isEditing)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _isUpdating ? null : _cancelEditMode,
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _isUpdating
+                        ? null
+                        : () => _handleUpdateRoleAccess(role),
+                    child: _isUpdating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text('Update'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFB3261E)),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _loadRoles, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadRoles,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _roles.length,
+        itemBuilder: (context, index) => _buildRoleCard(_roles[index]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = _buildBody();
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: widget.onBack,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  'Manage Access',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: content),
+        ],
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manage Access'),
+        leading: IconButton(
+          onPressed: widget.onBack ?? () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back),
+        ),
+      ),
+      body: content,
+    );
+  }
+}
+
+/// Converts a camelCase access key to a readable label.
+/// e.g. "createUpdateProfileAccess" → "Create Update Profile Access"
+String _formatAccessKey(String key) {
+  // Remove trailing 'Access' word if present
+  var cleaned = key.replaceAll(RegExp(r'Access$'), '');
+  if (cleaned.isEmpty) cleaned = key;
+  // Insert spaces before uppercase letters
+  final spaced = cleaned.replaceAllMapped(
+    RegExp(r'([A-Z])'),
+    (m) => ' ${m[0]}',
+  );
+  final trimmed = spaced.trim();
+  if (trimmed.isEmpty) return key;
+  return trimmed[0].toUpperCase() + trimmed.substring(1);
+}
+
+class _AccessSectionTile extends StatelessWidget {
+  const _AccessSectionTile({
+    required this.sectionKey,
+    required this.fields,
+    this.isEditing = false,
+    this.onFieldChanged,
+  });
+
+  final String sectionKey;
+  final Map<String, bool> fields;
+  final bool isEditing;
+  final Function(String fieldKey, bool value)? onFieldChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final parentAccess = fields['parentAccess'] ?? false;
+    final childFields = Map.of(fields)..remove('parentAccess');
+    final sectionLabel = _formatAccessKey(sectionKey);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: const Color(0xFFF5F8F7),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: Color(0xFFD0E4E1)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          title: Row(
+            children: [
+              isEditing
+                  ? Checkbox(
+                      value: parentAccess,
+                      onChanged: (value) {
+                        if (value != null && onFieldChanged != null) {
+                          onFieldChanged!('parentAccess', value);
+                        }
+                      },
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      side: WidgetStateBorderSide.resolveWith(
+                        (states) => const BorderSide(
+                          color: Color(0xFF0F8F82),
+                          width: 1.8,
+                        ),
+                      ),
+                      activeColor: const Color(0xFF0F8F82),
+                      checkColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    )
+                  : IgnorePointer(
+                      child: Checkbox(
+                        value: parentAccess,
+                        onChanged: null,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        side: WidgetStateBorderSide.resolveWith(
+                          (states) => const BorderSide(
+                            color: Color(0xFF0F8F82),
+                            width: 1.8,
+                          ),
+                        ),
+                        activeColor: const Color(0xFF0F8F82),
+                        checkColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  sectionLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: childFields.isEmpty
+              ? const [SizedBox.shrink()]
+              : childFields.entries
+                    .map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
+                        child: Row(
+                          children: [
+                            isEditing
+                                ? Checkbox(
+                                    value: e.value,
+                                    onChanged: (value) {
+                                      if (value != null &&
+                                          onFieldChanged != null) {
+                                        onFieldChanged!(e.key, value);
+                                      }
+                                    },
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                    side: WidgetStateBorderSide.resolveWith(
+                                      (states) => const BorderSide(
+                                        color: Color(0xFF0F8F82),
+                                        width: 1.8,
+                                      ),
+                                    ),
+                                    activeColor: const Color(0xFF0F8F82),
+                                    checkColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  )
+                                : IgnorePointer(
+                                    child: Checkbox(
+                                      value: e.value,
+                                      onChanged: null,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                      side: WidgetStateBorderSide.resolveWith(
+                                        (states) => const BorderSide(
+                                          color: Color(0xFF0F8F82),
+                                          width: 1.8,
+                                        ),
+                                      ),
+                                      activeColor: const Color(0xFF0F8F82),
+                                      checkColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                  ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _formatAccessKey(e.key),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleDetailRow extends StatelessWidget {
+  const _RoleDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 132,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value.isEmpty ? '-' : value)),
+        ],
+      ),
     );
   }
 }
@@ -3002,6 +4046,7 @@ class _ModuleHubPage extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.items,
+    this.onBack,
   });
 
   final bool embedded;
@@ -3009,6 +4054,7 @@ class _ModuleHubPage extends StatelessWidget {
   final String title;
   final String subtitle;
   final List<_ModuleHubItem> items;
+  final VoidCallback? onBack;
 
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
@@ -3050,70 +4096,88 @@ class _ModuleHubPage extends StatelessWidget {
                     ),
                     borderRadius: BorderRadius.circular(24),
                   ),
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    runSpacing: 16,
-                    spacing: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: mobile ? double.infinity : 520,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              subtitle,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                height: 1.45,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.14),
+                      if (embedded && onBack != null) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: IconButton(
+                            onPressed: onBack,
+                            icon: const Icon(Icons.arrow_back),
+                            color: Colors.white,
+                            iconSize: 28,
+                            constraints: const BoxConstraints(),
+                            padding: EdgeInsets.zero,
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                      ],
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        runSpacing: 16,
+                        spacing: 16,
+                        children: [
+                          SizedBox(
+                            width: mobile ? double.infinity : 520,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.14),
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${items.length} Active Actions',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${items.length} Active Actions',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

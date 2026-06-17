@@ -467,56 +467,75 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     required bool isSuccess,
     String? profileId,
   }) {
+    final headerColor = isSuccess ? _brandColor : const Color(0xFFB3261E);
+
     return showDialog<void>(
       context: context,
       builder: (context) {
         return AlertDialog(
           scrollable: true,
-          insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
           clipBehavior: Clip.antiAlias,
-          backgroundColor: Color(0xFFF7F4FB),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(28),
           ),
           titlePadding: EdgeInsets.zero,
           title: Container(
             width: double.infinity,
-            color: isSuccess ? Colors.green : Colors.red,
-            padding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            decoration: BoxDecoration(
+              color: headerColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(28),
+                topRight: Radius.circular(28),
+              ),
+            ),
             child: Text(
               title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
                 fontSize: 20,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.56,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, height: 1.45),
+              ),
+              if (profileId != null && profileId.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
                 Text(
-                  message,
+                  'Profile ID: $profileId',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                if (profileId != null && profileId.trim().isNotEmpty) ...[
-                  SizedBox(height: 12),
-                  Text(
-                    'Profile ID: $profileId',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
           actions: [
             TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: headerColor,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              ),
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK'),
+              child: const Text('OK'),
             ),
           ],
         );

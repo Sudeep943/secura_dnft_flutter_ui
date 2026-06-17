@@ -67,7 +67,10 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _selectedSection = widget.initialSection;
+    final visibleSections = _visibleSections();
+    _selectedSection = visibleSections.contains(widget.initialSection)
+        ? widget.initialSection
+        : AppSection.dashboard;
     _refreshWorklistCount();
     if (_selectedSection == AppSection.dashboard) {
       _loadHeaderApartmentLogo();
@@ -159,7 +162,96 @@ class _AppShellState extends State<AppShell> {
     return MediaQuery.of(context).size.width < 800;
   }
 
+  bool _toBool(dynamic value) {
+    if (value is bool) return value;
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    return text == 'true' || text == 'y' || text == 'yes';
+  }
+
+  Map<String, dynamic> _readAccessMap() {
+    final rawAccess = ApiService.userHeader?['access'];
+    if (rawAccess is Map<String, dynamic>) {
+      return rawAccess;
+    }
+    if (rawAccess is Map) {
+      return Map<String, dynamic>.from(rawAccess);
+    }
+    if (rawAccess is String) {
+      final text = rawAccess.trim();
+      if (text.startsWith('{')) {
+        try {
+          final decoded = jsonDecode(text);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+          if (decoded is Map) {
+            return Map<String, dynamic>.from(decoded);
+          }
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }
+    }
+    return <String, dynamic>{};
+  }
+
+  bool _hasParentAccess(String moduleKey) {
+    final accessMap = _readAccessMap();
+    final module = accessMap[moduleKey];
+    if (module is Map<String, dynamic>) {
+      return _toBool(module['parentAccess']);
+    }
+    if (module is Map) {
+      return _toBool(module['parentAccess']);
+    }
+    return false;
+  }
+
+  Set<AppSection> _visibleSections() {
+    final sections = <AppSection>{AppSection.dashboard};
+
+    if (_hasParentAccess('accountManagmentAccess')) {
+      sections.add(AppSection.profileManagement);
+    }
+    if (_hasParentAccess('adminAccess')) {
+      sections.add(AppSection.adminSection);
+      // Admin child pages are launched from Admin Section cards.
+      sections.add(AppSection.roleAndAccess);
+      sections.add(AppSection.flatManagement);
+      sections.add(AppSection.staffManagement);
+    }
+    if (_hasParentAccess('bookingAccess')) {
+      sections.add(AppSection.bookings);
+    }
+    if (_hasParentAccess('meetingAndNoticeAccess')) {
+      sections.add(AppSection.meetingAndNotice);
+    }
+    if (_hasParentAccess('financeAccess')) {
+      sections.add(AppSection.finance);
+    }
+    if (_hasParentAccess('ticketManagementAccess')) {
+      sections.add(AppSection.ticketManagement);
+    }
+    if (_hasParentAccess('securityAccess')) {
+      sections.add(AppSection.security);
+    }
+    if (_hasParentAccess('vendorManagementAccess')) {
+      sections.add(AppSection.vendorManagement);
+    }
+    if (_hasParentAccess('reportAccess')) {
+      sections.add(AppSection.reports);
+    }
+
+    return sections;
+  }
+
   void _selectSection(AppSection section) {
+    final visibleSections = _visibleSections();
+    if (!visibleSections.contains(section)) {
+      _showShellMessage('You do not have access to this module.');
+      return;
+    }
+
     if (_selectedSection == section) {
       if (_isMobile(context)) {
         Navigator.of(context).maybePop();
@@ -391,6 +483,10 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final mobile = _isMobile(context);
+    final visibleSections = _visibleSections();
+    if (!visibleSections.contains(_selectedSection)) {
+      _selectedSection = AppSection.dashboard;
+    }
     final currentIndex = _sections.indexOf(_selectedSection);
 
     return Scaffold(
@@ -410,6 +506,7 @@ class _AppShellState extends State<AppShell> {
               child: SideBar(
                 selectedSection: _selectedSection,
                 onSectionSelected: _selectSection,
+                visibleSections: visibleSections,
               ),
             )
           : null,
@@ -420,6 +517,7 @@ class _AppShellState extends State<AppShell> {
               SideBar(
                 selectedSection: _selectedSection,
                 onSectionSelected: _selectSection,
+                visibleSections: visibleSections,
               ),
             Expanded(
               child: IndexedStack(index: currentIndex, children: _pages),

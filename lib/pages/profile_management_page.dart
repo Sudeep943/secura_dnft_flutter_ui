@@ -3797,6 +3797,12 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
     }
   }
 
+  bool _hasAccountAccessFlag(String flagKey) {
+    final access = _jsonMapValue(ApiService.userHeader?['access']);
+    final accountAccess = _jsonMapValue(access['accountManagmentAccess']);
+    return _boolValue(accountAccess[flagKey]);
+  }
+
   Widget _buildSelectedSectionContent(bool mobile) {
     switch (_selectedSection!) {
       case _ProfileManagementSection.createProfile:
@@ -4125,12 +4131,13 @@ class _ProfileManagementPageState extends State<ProfileManagementPage> {
 
   Widget _buildProfileManagementContent(bool mobile) {
     final items = [
-      _ProfileActionCard(
-        title: 'Create Profile',
-        icon: Icons.person_add_alt_1,
-        selected: false,
-        onTap: () => _openSection(_ProfileManagementSection.createProfile),
-      ),
+      if (_hasAccountAccessFlag('createUpdateProfileAccess'))
+        _ProfileActionCard(
+          title: 'Create Profile',
+          icon: Icons.person_add_alt_1,
+          selected: false,
+          onTap: () => _openSection(_ProfileManagementSection.createProfile),
+        ),
       _ProfileActionCard(
         title: 'Update Profile',
         icon: Icons.manage_accounts,

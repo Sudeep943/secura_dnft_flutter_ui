@@ -10,10 +10,12 @@ class SideBar extends StatefulWidget {
     super.key,
     required this.selectedSection,
     required this.onSectionSelected,
+    this.visibleSections,
   });
 
   final AppSection selectedSection;
   final ValueChanged<AppSection> onSectionSelected;
+  final Set<AppSection>? visibleSections;
 
   @override
   State<SideBar> createState() => _SideBarState();
@@ -23,12 +25,24 @@ class _SideBarState extends State<SideBar> {
   String? _cachedProfileSource;
   MemoryImage? _cachedProfileImage;
 
+  bool _isSectionVisible(AppSection section) {
+    final visibleSections = widget.visibleSections;
+    if (visibleSections == null) {
+      return true;
+    }
+    return visibleSections.contains(section);
+  }
+
   Widget item(
     String title,
     IconData icon, {
     AppSection? section,
     VoidCallback? onTap,
   }) {
+    if (section != null && !_isSectionVisible(section)) {
+      return const SizedBox.shrink();
+    }
+
     final effectiveOnTap =
         onTap ??
         (section == null ? null : () => widget.onSectionSelected(section));
@@ -172,7 +186,6 @@ class _SideBarState extends State<SideBar> {
             section: AppSection.ticketManagement,
           ),
           item("Security", Icons.security, section: AppSection.security),
-          item("Forms And Responses", Icons.list),
           item(
             "Group Management",
             Icons.groups,
@@ -185,7 +198,6 @@ class _SideBarState extends State<SideBar> {
           ),
           item("Reports", Icons.assessment, section: AppSection.reports),
           item("Others", Icons.more_horiz, section: AppSection.others),
-          item("Create Skill Class", Icons.school),
         ],
       ),
     );

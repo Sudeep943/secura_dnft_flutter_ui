@@ -25,6 +25,55 @@ import 'view_transactions_page.dart';
 import 'view_update_payments_page.dart';
 import 'create_ledger_entry_page.dart';
 
+bool _accessBool(dynamic value) {
+  if (value is bool) return value;
+  final text = value?.toString().trim().toLowerCase() ?? '';
+  return text == 'true' || text == 'y' || text == 'yes';
+}
+
+Map<String, dynamic> _accessMapValue(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+  if (value is String) {
+    final text = value.trim();
+    if (text.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        if (decoded is Map) {
+          return Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }
+  }
+  return <String, dynamic>{};
+}
+
+bool _hasAccessFlag(String moduleKey, String flagKey) {
+  final access = _accessMapValue(ApiService.userHeader?['access']);
+  final module = _accessMapValue(access[moduleKey]);
+  return _accessBool(module[flagKey]);
+}
+
+bool _hasAnyAccessFlag(String moduleKey, List<String> flagKeys) {
+  final access = _accessMapValue(ApiService.userHeader?['access']);
+  final module = _accessMapValue(access[moduleKey]);
+  for (final key in flagKeys) {
+    if (_accessBool(module[key])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class MeetingAndNoticeManagementPage extends StatefulWidget {
   const MeetingAndNoticeManagementPage({super.key, this.embedded = false});
 
@@ -51,16 +100,33 @@ class _MeetingAndNoticeManagementPageState
       );
     }
 
-    return _ModuleHubPage(
-      embedded: widget.embedded,
-      section: AppSection.meetingAndNotice,
-      title: 'Meeting And Notice Management',
-      subtitle:
-          'Choose one of the meeting, notice, event, or poll actions below.',
-      items: [
+    final canScheduleMeeting = _hasAccessFlag(
+      'meetingAndNoticeAccess',
+      'scheduleMeetingAccess',
+    );
+    final canUpdateMom = _hasAnyAccessFlag('meetingAndNoticeAccess', const [
+      'updateMOMAccess',
+      'updateMOMgAccess',
+    ]);
+    final canCreateNotice = _hasAccessFlag(
+      'meetingAndNoticeAccess',
+      'createNoticeAccess',
+    );
+    final canCreateEvent = _hasAccessFlag(
+      'meetingAndNoticeAccess',
+      'createEventAccess',
+    );
+    final canCreatePoll = _hasAccessFlag(
+      'meetingAndNoticeAccess',
+      'createPollAccess',
+    );
+
+    final items = <_ModuleHubItem>[
+      if (canScheduleMeeting)
         _ModuleHubItem('Schedule New Meeting', Icons.event_note),
-        _ModuleHubItem('View Meeting Details', Icons.visibility),
-        _ModuleHubItem('Update MOM', Icons.edit_document),
+      _ModuleHubItem('View Meeting Details', Icons.visibility),
+      if (canUpdateMom) _ModuleHubItem('Update MOM', Icons.edit_document),
+      if (canCreateNotice)
         _ModuleHubItem(
           'Create Notice',
           Icons.campaign,
@@ -72,20 +138,28 @@ class _MeetingAndNoticeManagementPageState
             );
           },
         ),
-        _ModuleHubItem(
-          'View All Notice',
-          Icons.notifications_active,
-          onTap: () {
-            setState(() {
-              _showViewAllNotices = true;
-            });
-          },
-        ),
-        _ModuleHubItem('Create Event', Icons.event),
-        _ModuleHubItem('View Events', Icons.calendar_month),
-        _ModuleHubItem('Create Poll', Icons.how_to_vote),
-        _ModuleHubItem('View Poll', Icons.poll),
-      ],
+      _ModuleHubItem(
+        'View All Notice',
+        Icons.notifications_active,
+        onTap: () {
+          setState(() {
+            _showViewAllNotices = true;
+          });
+        },
+      ),
+      if (canCreateEvent) _ModuleHubItem('Create Event', Icons.event),
+      _ModuleHubItem('View Events', Icons.calendar_month),
+      if (canCreatePoll) _ModuleHubItem('Create Poll', Icons.how_to_vote),
+      _ModuleHubItem('View Poll', Icons.poll),
+    ];
+
+    return _ModuleHubPage(
+      embedded: widget.embedded,
+      section: AppSection.meetingAndNotice,
+      title: 'Meeting And Notice Management',
+      subtitle:
+          'Choose one of the meeting, notice, event, or poll actions below.',
+      items: items,
     );
   }
 }
@@ -97,16 +171,24 @@ class TicketManagementPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canAssignTicket = _hasAccessFlag(
+      'ticketManagementAccess',
+      'reAsignTicketAccess',
+    );
+
+    final items = <_ModuleHubItem>[
+      const _ModuleHubItem('Raise A New Ticket', Icons.support_agent),
+      const _ModuleHubItem('View Ticket', Icons.confirmation_number),
+      if (canAssignTicket)
+        const _ModuleHubItem('Assign Ticket', Icons.assignment_ind),
+    ];
+
     return _ModuleHubPage(
       embedded: embedded,
       section: AppSection.ticketManagement,
       title: 'Ticket Management',
       subtitle: 'Choose one of the ticket management actions below.',
-      items: const [
-        _ModuleHubItem('Raise A New Ticket', Icons.support_agent),
-        _ModuleHubItem('View Ticket', Icons.confirmation_number),
-        _ModuleHubItem('Assign Ticket', Icons.assignment_ind),
-      ],
+      items: items,
     );
   }
 }
@@ -171,6 +253,37 @@ class FlatManagementPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canAddUpdateFlat = _hasAccessFlag(
+      'adminAccess',
+      'addUpdateFlatAccess',
+    );
+
+    final items = <_ModuleHubItem>[
+      if (canAddUpdateFlat)
+        _ModuleHubItem(
+          'Add Flat',
+          Icons.add_home_work_outlined,
+          onTap: () => _showPlaceholderMessage(context, 'Add Flat'),
+        ),
+      if (canAddUpdateFlat)
+        _ModuleHubItem(
+          'Update Flat',
+          Icons.edit_outlined,
+          onTap: () => _showPlaceholderMessage(context, 'Update Flat'),
+        ),
+      _ModuleHubItem(
+        'Upload Flat Details',
+        Icons.upload_file_outlined,
+        onTap: () {
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const _UploadFlatDetailsDialog(),
+          );
+        },
+      ),
+    ];
+
     return _ModuleHubPage(
       embedded: embedded,
       onBack:
@@ -182,29 +295,7 @@ class FlatManagementPage extends StatelessWidget {
       title: 'Flat Management',
       subtitle:
           'Choose one of the flat management actions below to add, update, or upload flat details.',
-      items: [
-        _ModuleHubItem(
-          'Add Flat',
-          Icons.add_home_work_outlined,
-          onTap: () => _showPlaceholderMessage(context, 'Add Flat'),
-        ),
-        _ModuleHubItem(
-          'Update Flat',
-          Icons.edit_outlined,
-          onTap: () => _showPlaceholderMessage(context, 'Update Flat'),
-        ),
-        _ModuleHubItem(
-          'Upload Flat Details',
-          Icons.upload_file_outlined,
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => const _UploadFlatDetailsDialog(),
-            );
-          },
-        ),
-      ],
+      items: items,
     );
   }
 }
@@ -234,28 +325,26 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
       );
     }
 
-    return _ModuleHubPage(
-      embedded: widget.embedded,
-      section: AppSection.adminSection,
-      title: 'Admin Section',
-      subtitle:
-          'Choose one of the administration actions below for roles, staff, and flat operations.',
-      items: [
+    final items = <_ModuleHubItem>[
+      if (_hasAccessFlag('adminAccess', 'roleManagmentparentAccess'))
         _ModuleHubItem(
           'Role Management',
           Icons.lock_person_outlined,
           onTap: () => openAppShellSection(context, AppSection.roleAndAccess),
         ),
+      if (_hasAccessFlag('adminAccess', 'staffeManagmentparentAccess'))
         _ModuleHubItem(
           'Staff Management',
           Icons.groups_outlined,
           onTap: () => openAppShellSection(context, AppSection.staffManagement),
         ),
+      if (_hasAccessFlag('adminAccess', 'flateManagmentparentAccess'))
         _ModuleHubItem(
           'Flat Management',
           Icons.door_front_door_outlined,
           onTap: () => openAppShellSection(context, AppSection.flatManagement),
         ),
+      if (_hasAccessFlag('adminAccess', 'societyDetailsManagmentparentAccess'))
         _ModuleHubItem(
           'Update Society Details',
           Icons.apartment_outlined,
@@ -265,7 +354,15 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
             });
           },
         ),
-      ],
+    ];
+
+    return _ModuleHubPage(
+      embedded: widget.embedded,
+      section: AppSection.adminSection,
+      title: 'Admin Section',
+      subtitle:
+          'Choose one of the administration actions below for roles, staff, and flat operations.',
+      items: items,
     );
   }
 }
@@ -298,17 +395,14 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
       );
     }
 
-    return _ModuleHubPage(
-      embedded: widget.embedded,
-      onBack:
-          widget.onBack ??
-          (widget.embedded
-              ? () => openAppShellSection(context, AppSection.adminSection)
-              : null),
-      section: AppSection.staffManagement,
-      title: 'Staff Management',
-      subtitle: 'Choose one of the staff management actions below.',
-      items: [
+    final canOnboard = _hasAccessFlag('adminAccess', 'onboardStaffAccess');
+    final canAttendance = _hasAccessFlag(
+      'adminAccess',
+      'staffAttendanceAccess',
+    );
+
+    final items = <_ModuleHubItem>[
+      if (canOnboard)
         _ModuleHubItem(
           'Onboard Employee',
           Icons.person_add_alt_1,
@@ -319,6 +413,7 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
             });
           },
         ),
+      if (canAttendance)
         _ModuleHubItem(
           'Today Attendance',
           Icons.today_outlined,
@@ -329,6 +424,7 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
             });
           },
         ),
+      if (canAttendance)
         _ModuleHubItem(
           'Employee Attendance',
           Icons.badge_outlined,
@@ -339,7 +435,19 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
             });
           },
         ),
-      ],
+    ];
+
+    return _ModuleHubPage(
+      embedded: widget.embedded,
+      onBack:
+          widget.onBack ??
+          (widget.embedded
+              ? () => openAppShellSection(context, AppSection.adminSection)
+              : null),
+      section: AppSection.staffManagement,
+      title: 'Staff Management',
+      subtitle: 'Choose one of the staff management actions below.',
+      items: items,
     );
   }
 }
@@ -351,16 +459,34 @@ class VendorManagementPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canAddVendor = _hasAccessFlag(
+      'vendorManagementAccess',
+      'addNewVendorAccess',
+    );
+    final canUpdateVendor = _hasAccessFlag(
+      'vendorManagementAccess',
+      'updateVendorAccess',
+    );
+    final canViewVendors = _hasAccessFlag(
+      'vendorManagementAccess',
+      'viewVendorsAccess',
+    );
+
+    final items = <_ModuleHubItem>[
+      if (canAddVendor)
+        const _ModuleHubItem('Add Vendor', Icons.storefront_outlined),
+      if (canUpdateVendor)
+        const _ModuleHubItem('Update Vendor', Icons.edit_note_outlined),
+      if (canViewVendors)
+        const _ModuleHubItem('View Vendors', Icons.list_alt_outlined),
+    ];
+
     return _ModuleHubPage(
       embedded: embedded,
       section: AppSection.vendorManagement,
       title: 'Vendor Management',
       subtitle: 'Choose one of the vendor management actions below.',
-      items: const [
-        _ModuleHubItem('Add Vendor', Icons.storefront_outlined),
-        _ModuleHubItem('Update Vendor', Icons.edit_note_outlined),
-        _ModuleHubItem('View Vendors', Icons.list_alt_outlined),
-      ],
+      items: items,
     );
   }
 }
@@ -593,6 +719,27 @@ class _RoleAndAccessPageState extends State<RoleAndAccessPage> {
       );
     }
 
+    final items = <_ModuleHubItem>[
+      if (_hasAccessFlag('adminAccess', 'createRoleAccess'))
+        _ModuleHubItem(
+          'Create Role',
+          Icons.admin_panel_settings,
+          onTap: _showCreateRoleDialog,
+        ),
+      if (_hasAccessFlag('adminAccess', 'assigneRoleAccess'))
+        const _ModuleHubItem('Assign Role', Icons.assignment_turned_in),
+      if (_hasAccessFlag('adminAccess', 'manageRoleAccess'))
+        _ModuleHubItem(
+          'Manage Access',
+          Icons.lock_open,
+          onTap: () {
+            setState(() {
+              _showManageAccess = true;
+            });
+          },
+        ),
+    ];
+
     return _ModuleHubPage(
       embedded: widget.embedded,
       onBack:
@@ -603,23 +750,7 @@ class _RoleAndAccessPageState extends State<RoleAndAccessPage> {
       section: AppSection.roleAndAccess,
       title: 'Role And Access',
       subtitle: 'Choose one of the role and access control actions below.',
-      items: [
-        _ModuleHubItem(
-          'Create Role',
-          Icons.admin_panel_settings,
-          onTap: _showCreateRoleDialog,
-        ),
-        const _ModuleHubItem('Assign Role', Icons.assignment_turned_in),
-        _ModuleHubItem(
-          'Manage Access',
-          Icons.lock_open,
-          onTap: () {
-            setState(() {
-              _showManageAccess = true;
-            });
-          },
-        ),
-      ],
+      items: items,
     );
   }
 }
@@ -644,6 +775,7 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
   Map<String, dynamic>? _editingAccess;
   bool _isUpdating = false;
   String? _updateError;
+  final Set<String> _expandedRoleIds = {};
 
   @override
   void initState() {
@@ -936,6 +1068,36 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
     });
   }
 
+  void _selectAllSectionFields(String sectionKey, bool value) {
+    if (_editingAccess == null) return;
+    setState(() {
+      if (_editingAccess![sectionKey] is Map) {
+        final section = Map<String, dynamic>.from(
+          _editingAccess![sectionKey] as Map,
+        );
+        for (final k in section.keys.toList()) {
+          section[k] = value;
+        }
+        _editingAccess![sectionKey] = section;
+      }
+    });
+  }
+
+  void _selectAllFields(bool value) {
+    if (_editingAccess == null) return;
+    setState(() {
+      _editingAccess!.forEach((sectionKey, sectionValue) {
+        if (sectionValue is Map) {
+          final section = Map<String, dynamic>.from(sectionValue);
+          for (final k in section.keys.toList()) {
+            section[k] = value;
+          }
+          _editingAccess![sectionKey] = section;
+        }
+      });
+    });
+  }
+
   List<MapEntry<String, Map<String, bool>>> _parseAccessFromMap(
     Map<String, dynamic> accessMap,
   ) {
@@ -966,10 +1128,27 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
         : _parseAccessSections(role);
     final isStatusActive = roleStatus.toUpperCase() == 'ACTIVE';
 
+    final isExpanded = _expandedRoleIds.contains(roleId);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        onExpansionChanged: (expanded) {
+          setState(() {
+            if (expanded) {
+              _expandedRoleIds.add(roleId);
+            } else {
+              _expandedRoleIds.remove(roleId);
+              // Cancel edit mode when tile collapses
+              if (_editingRoleId == roleId) {
+                _editingRoleId = null;
+                _editingAccess = null;
+                _updateError = null;
+              }
+            }
+          });
+        },
         title: Row(
           children: [
             Expanded(
@@ -991,7 +1170,7 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
               SizedBox(
                 height: 36,
                 child: OutlinedButton(
-                  onPressed: _isUpdating
+                  onPressed: (!isExpanded || _isUpdating)
                       ? null
                       : () => _handleUpdateAccess(role),
                   child: const Text(
@@ -1045,6 +1224,65 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
                 ),
               ),
             ),
+          // Role-level "Select All" — only visible when editing
+          if (isEditing && accessSections.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  const Text(
+                    'Select All Sections',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF124B45),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Builder(
+                    builder: (context) {
+                      // Compute tri-state across all fields
+                      final allValues = <bool>[];
+                      if (_editingAccess != null) {
+                        _editingAccess!.forEach((_, sectionValue) {
+                          if (sectionValue is Map) {
+                            sectionValue.forEach((_, v) {
+                              if (v is bool) allValues.add(v);
+                            });
+                          }
+                        });
+                      }
+                      final allSelected =
+                          allValues.isNotEmpty && allValues.every((v) => v);
+                      final anySelected = allValues.any((v) => v);
+                      final bool? triState = allSelected
+                          ? true
+                          : anySelected
+                          ? null
+                          : false;
+                      return Checkbox(
+                        value: triState,
+                        tristate: true,
+                        onChanged: (value) => _selectAllFields(value ?? false),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        side: WidgetStateBorderSide.resolveWith(
+                          (states) => const BorderSide(
+                            color: Color(0xFF0F8F82),
+                            width: 1.8,
+                          ),
+                        ),
+                        activeColor: const Color(0xFF0F8F82),
+                        checkColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           if (accessSections.isNotEmpty)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -1074,6 +1312,11 @@ class _ManageAccessPageState extends State<ManageAccessPage> {
                                   _updateAccessField(
                                     rowItems[j].key,
                                     fieldKey,
+                                    value,
+                                  ),
+                              onSelectAllChanged: (value) =>
+                                  _selectAllSectionFields(
+                                    rowItems[j].key,
                                     value,
                                   ),
                             ),
@@ -1234,24 +1477,67 @@ String _formatAccessKey(String key) {
   return trimmed[0].toUpperCase() + trimmed.substring(1);
 }
 
-class _AccessSectionTile extends StatelessWidget {
+class _AccessSectionTile extends StatefulWidget {
   const _AccessSectionTile({
     required this.sectionKey,
     required this.fields,
     this.isEditing = false,
     this.onFieldChanged,
+    this.onSelectAllChanged,
   });
 
   final String sectionKey;
   final Map<String, bool> fields;
   final bool isEditing;
   final Function(String fieldKey, bool value)? onFieldChanged;
+  final Function(bool value)? onSelectAllChanged;
+
+  @override
+  State<_AccessSectionTile> createState() => _AccessSectionTileState();
+}
+
+class _AccessSectionTileState extends State<_AccessSectionTile> {
+  bool _isExpanded = false;
+
+  Checkbox _styledCheckbox({
+    required bool? value,
+    required ValueChanged<bool?>? onChanged,
+    bool tristate = false,
+  }) {
+    return Checkbox(
+      value: value,
+      tristate: tristate,
+      onChanged: onChanged,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      side: WidgetStateBorderSide.resolveWith(
+        (states) => const BorderSide(color: Color(0xFF0F8F82), width: 1.8),
+      ),
+      activeColor: const Color(0xFF0F8F82),
+      checkColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final parentAccess = fields['parentAccess'] ?? false;
-    final childFields = Map.of(fields)..remove('parentAccess');
-    final sectionLabel = _formatAccessKey(sectionKey);
+    final parentAccess = widget.fields['parentAccess'] ?? false;
+    final childFields = Map.of(widget.fields)..remove('parentAccess');
+    final sectionLabel = _formatAccessKey(widget.sectionKey);
+
+    // Compute section-level select-all state (tristate: all/none/some)
+    final allChildValues = childFields.values.toList();
+    final allChildSelected =
+        allChildValues.isNotEmpty && allChildValues.every((v) => v);
+    final anyChildSelected = allChildValues.any((v) => v);
+    final sectionAllSelected = allChildSelected && parentAccess;
+    final sectionAnySelected = anyChildSelected || parentAccess;
+    // tri-state: null = some, true = all, false = none
+    final bool? sectionSelectAllValue = sectionAllSelected
+        ? true
+        : sectionAnySelected
+        ? null
+        : false;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1265,47 +1551,24 @@ class _AccessSectionTile extends StatelessWidget {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          onExpansionChanged: (expanded) {
+            setState(() => _isExpanded = expanded);
+          },
           title: Row(
             children: [
-              isEditing
-                  ? Checkbox(
+              widget.isEditing
+                  ? _styledCheckbox(
                       value: parentAccess,
                       onChanged: (value) {
-                        if (value != null && onFieldChanged != null) {
-                          onFieldChanged!('parentAccess', value);
+                        if (value != null && widget.onFieldChanged != null) {
+                          widget.onFieldChanged!('parentAccess', value);
                         }
                       },
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      side: WidgetStateBorderSide.resolveWith(
-                        (states) => const BorderSide(
-                          color: Color(0xFF0F8F82),
-                          width: 1.8,
-                        ),
-                      ),
-                      activeColor: const Color(0xFF0F8F82),
-                      checkColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
                     )
                   : IgnorePointer(
-                      child: Checkbox(
+                      child: _styledCheckbox(
                         value: parentAccess,
                         onChanged: null,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                        side: WidgetStateBorderSide.resolveWith(
-                          (states) => const BorderSide(
-                            color: Color(0xFF0F8F82),
-                            width: 1.8,
-                          ),
-                        ),
-                        activeColor: const Color(0xFF0F8F82),
-                        checkColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
                       ),
                     ),
               const SizedBox(width: 4),
@@ -1318,6 +1581,26 @@ class _AccessSectionTile extends StatelessWidget {
                   ),
                 ),
               ),
+              // Section-level Select All — only visible when expanded and editing
+              if (_isExpanded && widget.isEditing && childFields.isNotEmpty)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'All',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF124B45)),
+                    ),
+                    _styledCheckbox(
+                      value: sectionSelectAllValue,
+                      tristate: true,
+                      onChanged: (value) {
+                        if (widget.onSelectAllChanged != null) {
+                          widget.onSelectAllChanged!(value ?? true);
+                        }
+                      },
+                    ),
+                  ],
+                ),
             ],
           ),
           children: childFields.isEmpty
@@ -1328,48 +1611,20 @@ class _AccessSectionTile extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
                         child: Row(
                           children: [
-                            isEditing
-                                ? Checkbox(
+                            widget.isEditing
+                                ? _styledCheckbox(
                                     value: e.value,
                                     onChanged: (value) {
                                       if (value != null &&
-                                          onFieldChanged != null) {
-                                        onFieldChanged!(e.key, value);
+                                          widget.onFieldChanged != null) {
+                                        widget.onFieldChanged!(e.key, value);
                                       }
                                     },
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                    side: WidgetStateBorderSide.resolveWith(
-                                      (states) => const BorderSide(
-                                        color: Color(0xFF0F8F82),
-                                        width: 1.8,
-                                      ),
-                                    ),
-                                    activeColor: const Color(0xFF0F8F82),
-                                    checkColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
                                   )
                                 : IgnorePointer(
-                                    child: Checkbox(
+                                    child: _styledCheckbox(
                                       value: e.value,
                                       onChanged: null,
-                                      materialTapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                      visualDensity: VisualDensity.compact,
-                                      side: WidgetStateBorderSide.resolveWith(
-                                        (states) => const BorderSide(
-                                          color: Color(0xFF0F8F82),
-                                          width: 1.8,
-                                        ),
-                                      ),
-                                      activeColor: const Color(0xFF0F8F82),
-                                      checkColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
                                     ),
                                   ),
                             const SizedBox(width: 4),
@@ -1663,12 +1918,31 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       );
     }
 
-    return _ModuleHubPage(
-      embedded: widget.embedded,
-      section: AppSection.finance,
-      title: 'Finance',
-      subtitle: 'Choose one of the finance actions below.',
-      items: [
+    final canLedgerEntry = _hasAccessFlag('financeAccess', 'ledgerEntryAccess');
+    final canCreatePayment = _hasAccessFlag(
+      'financeAccess',
+      'createNewPaymentAccess',
+    );
+    final canUpdatePayment = _hasAccessFlag(
+      'financeAccess',
+      'updatePaymentAccess',
+    );
+    final canCreateReceipt = _hasAccessFlag(
+      'financeAccess',
+      'createReceiptAccess',
+    );
+    final canUploadPastPayments = _hasAccessFlag(
+      'financeAccess',
+      'uploadPastPaymentAccess',
+    );
+    final canReconcile = _hasAccessFlag(
+      'financeAccess',
+      'reconcilePaymentAccess',
+    );
+    final canBudget = _hasAccessFlag('financeAccess', 'budgetManagment');
+
+    final items = <_ModuleHubItem>[
+      if (canLedgerEntry)
         _ModuleHubItem(
           'Ledger Entry',
           Icons.credit_card_off,
@@ -1678,6 +1952,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
+      if (canCreatePayment)
         _ModuleHubItem(
           'Create New Payment',
           Icons.payment,
@@ -1687,6 +1962,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
+      if (canUpdatePayment)
         _ModuleHubItem(
           'View/Update Payments',
           Icons.account_balance,
@@ -1696,11 +1972,12 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
-        _ModuleHubItem(
-          _loadingDueDetails ? 'Loading Dues...' : 'Pay Dues',
-          Icons.currency_rupee,
-          onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
-        ),
+      _ModuleHubItem(
+        _loadingDueDetails ? 'Loading Dues...' : 'Pay Dues',
+        Icons.currency_rupee,
+        onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
+      ),
+      if (canCreateReceipt)
         _ModuleHubItem(
           'Create Receipt',
           Icons.receipt_long_outlined,
@@ -1710,15 +1987,16 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             });
           },
         ),
-        _ModuleHubItem(
-          'View Transactions',
-          Icons.receipt_outlined,
-          onTap: () {
-            setState(() {
-              _showViewTransactions = true;
-            });
-          },
-        ),
+      _ModuleHubItem(
+        'View Transactions',
+        Icons.receipt_outlined,
+        onTap: () {
+          setState(() {
+            _showViewTransactions = true;
+          });
+        },
+      ),
+      if (canUploadPastPayments)
         _ModuleHubItem(
           'Upload Other Due Payments',
           Icons.upload_file_rounded,
@@ -1730,6 +2008,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             );
           },
         ),
+      if (canReconcile)
         _ModuleHubItem(
           'Reconcile QR Payments',
           Icons.qr_code_scanner_rounded,
@@ -1741,8 +2020,16 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
             );
           },
         ),
+      if (canBudget)
         const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
-      ],
+    ];
+
+    return _ModuleHubPage(
+      embedded: widget.embedded,
+      section: AppSection.finance,
+      title: 'Finance',
+      subtitle: 'Choose one of the finance actions below.',
+      items: items,
     );
   }
 }

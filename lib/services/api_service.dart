@@ -2181,6 +2181,29 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> getAllAccess() async {
+    final genericHeader = _buildRoleAndAccessHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/roleAndAccess/getAllAccess',
+      requestBody: {'genericHeader': genericHeader},
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> updateRoleAccess({
     required String roleId,
     required Map<String, dynamic> access,

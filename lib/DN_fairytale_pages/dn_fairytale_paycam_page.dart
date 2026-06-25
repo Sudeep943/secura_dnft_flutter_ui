@@ -586,6 +586,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final compact = width < 1000;
+    final mobile = width < 700;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FBFB),
@@ -593,36 +594,54 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: compact ? 280 : 340,
-                    height: compact ? 104 : 124,
-                    child: Image.asset(
-                      'DNFarytaleIamges/dn_fairytale_logo.png',
-                      fit: BoxFit.contain,
-                    ),
+              padding: EdgeInsets.fromLTRB(
+                mobile ? 12 : 18,
+                14,
+                mobile ? 12 : 18,
+                12,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: mobile ? 210 : (compact ? 280 : 340),
+                  height: mobile ? 76 : (compact ? 104 : 124),
+                  child: Image.asset(
+                    'DNFarytaleIamges/dn_fairytale_logo.png',
+                    fit: BoxFit.contain,
                   ),
-                ],
+                ),
               ),
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                padding: EdgeInsets.fromLTRB(
+                  mobile ? 8 : 10,
+                  10,
+                  mobile ? 8 : 10,
+                  12,
+                ),
                 child: compact
                     ? ListView(
                         children: [
-                          _leftImagePanel(),
-                          const SizedBox(height: 12),
-                          _rightFormPanel(),
+                          SizedBox(
+                            height: mobile ? 240 : 300,
+                            child: _leftImagePanel(compact: true),
+                          ),
+                          SizedBox(height: mobile ? 10 : 12),
+                          _rightFormPanel(compact: true),
                         ],
                       )
                     : Row(
                         children: [
-                          Expanded(flex: 5, child: _leftImagePanel()),
+                          Expanded(
+                            flex: 5,
+                            child: _leftImagePanel(compact: false),
+                          ),
                           const SizedBox(width: 14),
-                          Expanded(flex: 3, child: _rightFormPanel()),
+                          Expanded(
+                            flex: 3,
+                            child: _rightFormPanel(compact: false),
+                          ),
                         ],
                       ),
               ),
@@ -637,16 +656,103 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   end: Alignment.centerRight,
                 ),
               ),
-              child: const Row(
+              child: mobile
+                  ? const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '(c) 2026 DN Fairytale. All rights reserved.',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Follow Us',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ],
+                    )
+                  : const Row(
+                      children: <Widget>[
+                        Text(
+                          '(c) 2026 DN Fairytale. All rights reserved.',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                        Spacer(),
+                        Text(
+                          'Follow Us',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _leftImagePanel({required bool compact}) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(12, 54, 46, 0.14),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'DNFarytaleIamges/image5.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: const Color(0xFF254E47),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.image_not_supported_outlined,
+                  color: Colors.white70,
+                  size: 48,
+                ),
+              ),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color.fromRGBO(0, 0, 0, 0.56), Color(0x00000000)],
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                ),
+              ),
+            ),
+            Positioned(
+              left: compact ? 18 : 28,
+              right: compact ? 18 : 36,
+              bottom: compact ? 20 : 32,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '© 2026 DN Fairytale. All rights reserved.',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
+                    'Welcome to\nDN Fairytale',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: compact ? 30 : 44,
+                      height: 1.05,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  Spacer(),
+                  SizedBox(height: compact ? 6 : 10),
                   Text(
-                    'Follow Us',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
+                    'A community that feels like home.',
+                    style: TextStyle(
+                      color: const Color(0xFFEFF6F3),
+                      fontSize: compact ? 15 : 22,
+                    ),
                   ),
                 ],
               ),
@@ -657,88 +763,42 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     );
   }
 
-  Widget _leftImagePanel() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'DNFarytaleIamges/image5.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: const Color(0xFF254E47),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.image_not_supported_outlined,
-                color: Colors.white70,
-                size: 48,
-              ),
-            ),
-          ),
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color.fromRGBO(0, 0, 0, 0.5), Color(0x00000000)],
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-              ),
-            ),
-          ),
-          const Positioned(
-            left: 28,
-            bottom: 32,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome to\nDN Fairytale',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 44,
-                    height: 1.05,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'A community that feels like home.',
-                  style: TextStyle(color: Color(0xFFEFF6F3), fontSize: 22),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _rightFormPanel() {
+  Widget _rightFormPanel({required bool compact}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFD8E8E3)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(12, 54, 46, 0.08),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(22),
+      padding: EdgeInsets.all(compact ? 18 : 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Pay CAM',
             style: TextStyle(
-              fontSize: 38,
+              fontSize: compact ? 30 : 38,
               fontWeight: FontWeight.w700,
               color: _title,
               height: 1,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Select your flat ID to continue.',
-            style: TextStyle(color: Color(0xFF687D76), fontSize: 15),
+            style: TextStyle(
+              color: const Color(0xFF687D76),
+              fontSize: compact ? 14 : 15,
+            ),
           ),
-          const SizedBox(height: 28),
+          SizedBox(height: compact ? 20 : 28),
           const Text(
             'Flat ID',
             style: TextStyle(

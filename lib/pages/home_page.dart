@@ -3338,107 +3338,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
             ),
           ),
           const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const headerTextStyle = TextStyle(
-                color: Color(0xFF124B45),
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              );
-              const rowTextStyle = TextStyle(
-                color: Color(0xFF124B45),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              );
-
-              Widget buildCell(
-                String value, {
-                TextStyle? style,
-                bool isHeader = false,
-              }) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 10,
-                  ),
-                  child: Center(
-                    child: Text(
-                      value,
-                      textAlign: TextAlign.center,
-                      style:
-                          style ?? (isHeader ? headerTextStyle : rowTextStyle),
-                    ),
-                  ),
-                );
-              }
-
-              return Container(
-                width: constraints.maxWidth,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD7EAE3)),
-                ),
-                child: Table(
-                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                  border: TableBorder.symmetric(
-                    inside: const BorderSide(color: Color(0xFFE2EEEA)),
-                  ),
-                  columnWidths: const {
-                    0: FlexColumnWidth(),
-                    1: FlexColumnWidth(),
-                    2: FlexColumnWidth(),
-                    3: FlexColumnWidth(),
-                    4: FlexColumnWidth(),
-                    5: FlexColumnWidth(),
-                    6: FlexColumnWidth(),
-                    7: FlexColumnWidth(),
-                    8: FlexColumnWidth(),
-                    9: FlexColumnWidth(),
-                    10: FlexColumnWidth(),
-                  },
-                  children: [
-                    TableRow(
-                      decoration: const BoxDecoration(color: Color(0xFFE4F3F0)),
-                      children: [
-                        buildCell('Cycle Start Date', isHeader: true),
-                        buildCell('Cycle End Date', isHeader: true),
-                        buildCell('Due Date', isHeader: true),
-                        buildCell('Amount', isHeader: true),
-                        buildCell('Discount', isHeader: true),
-                        buildCell('GST', isHeader: true),
-                        buildCell('Added Charges', isHeader: true),
-                        buildCell('Fine', isHeader: true),
-                        buildCell('Total Savings', isHeader: true),
-                        buildCell('Payment Type', isHeader: true),
-                        buildCell('Net Payable', isHeader: true),
-                      ],
-                    ),
-                    TableRow(
-                      children: [
-                        buildCell(dueStartDate),
-                        buildCell(dueEndDate),
-                        buildCell(dueDate),
-                        buildCell(widget.formatAsCurrency(amount)),
-                        buildCell(discountText),
-                        buildCell(gstText),
-                        buildCell(widget.formatAsCurrency(totalAddedCharges)),
-                        buildCell(fineText),
-                        buildCell(totalSavingsText),
-                        buildCell(_toCamelCase(paymentType)),
-                        buildCell(
-                          widget.formatAsCurrency(totalAmount),
-                          style: const TextStyle(
-                            color: Color(0xFF0F8F82),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+          _buildDueDetailCards(
+            dueStartDate: dueStartDate,
+            dueEndDate: dueEndDate,
+            dueDate: dueDate,
+            amount: widget.formatAsCurrency(amount),
+            discountText: discountText,
+            gstText: gstText,
+            addedCharges: widget.formatAsCurrency(totalAddedCharges),
+            fineText: fineText,
+            totalSavings: totalSavingsText,
+            paymentType: _toCamelCase(paymentType),
+            netPayable: widget.formatAsCurrency(totalAmount),
           ),
           const SizedBox(height: 12),
           Align(
@@ -3496,6 +3407,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
           child: Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: selected ? Colors.white : const Color(0xFF124B45),
               fontWeight: FontWeight.w700,
@@ -3547,6 +3460,124 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
       return '--';
     }
     return _toCamelCase(rawCycle);
+  }
+
+  Widget _buildDueDetailCards({
+    required String dueStartDate,
+    required String dueEndDate,
+    required String dueDate,
+    required String amount,
+    required String discountText,
+    required String gstText,
+    required String addedCharges,
+    required String fineText,
+    required String totalSavings,
+    required String paymentType,
+    required String netPayable,
+  }) {
+    final rows = [
+      ('Cycle Start', dueStartDate),
+      ('Cycle End', dueEndDate),
+      ('Due Date', dueDate),
+      ('Amount', amount),
+      ('Discount', discountText),
+      ('GST', gstText),
+      ('Added Charges', addedCharges),
+      ('Fine', fineText),
+      ('Total Savings', totalSavings),
+      ('Payment Type', paymentType),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: Column(
+        children: [
+          ...rows.asMap().entries.map((entry) {
+            final isLast = entry.key == rows.length - 1;
+            return Container(
+              decoration: BoxDecoration(
+                color: entry.key.isEven
+                    ? const Color(0xFFEFF8F5)
+                    : Colors.white,
+                borderRadius: isLast && netPayable.isEmpty
+                    ? const BorderRadius.vertical(bottom: Radius.circular(12))
+                    : null,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: Text(
+                        entry.value.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF3D6B63),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        entry.value.$2,
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF124B45),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0F8F82),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Net Payable',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Text(
+                  netPayable,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildOverdueDueItem(
@@ -3635,29 +3666,22 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: 0.30,
-              alignment: Alignment.centerLeft,
-              child: _buildDueTabsSection(
-                overdueCount: overdueCount,
-                activeCount: activeCount,
-                selectedTab: selectedTab,
-                onOverdueTap: () {
-                  setState(() {
-                    _selectedTabs[groupId] = _DueSectionTab.overdue;
-                    _selectedDueByGroup.remove(groupId);
-                  });
-                },
-                onActiveTap: () {
-                  setState(() {
-                    _selectedTabs[groupId] = _DueSectionTab.active;
-                    _selectedDueByGroup.remove(groupId);
-                  });
-                },
-              ),
-            ),
+          _buildDueTabsSection(
+            overdueCount: overdueCount,
+            activeCount: activeCount,
+            selectedTab: selectedTab,
+            onOverdueTap: () {
+              setState(() {
+                _selectedTabs[groupId] = _DueSectionTab.overdue;
+                _selectedDueByGroup.remove(groupId);
+              });
+            },
+            onActiveTap: () {
+              setState(() {
+                _selectedTabs[groupId] = _DueSectionTab.active;
+                _selectedDueByGroup.remove(groupId);
+              });
+            },
           ),
           const SizedBox(height: 10),
           if (dues.isEmpty)

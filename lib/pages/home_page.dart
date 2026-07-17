@@ -2983,7 +2983,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
-                  Icons.check_circle_rounded,
+                  Icons.assignment_turned_in_rounded,
                   color: Color(0xFF0F8F82),
                   size: 22,
                 ),
@@ -2991,7 +2991,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
-                  'Payment Successful',
+                  'Transaction Recorded',
                   style: TextStyle(
                     color: Color(0xFF124B45),
                     fontSize: 18,
@@ -3008,7 +3008,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  message,
+                  'Transaction Recorded. Receipt Will Be Mailed To Registered Mail Id Once Transaction Verified. Keep The Transaction No For Your Reference.',
                   style: const TextStyle(
                     color: Color(0xFF124B45),
                     fontWeight: FontWeight.w600,
@@ -3581,7 +3581,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Pay', style: TextStyle(color: Colors.white)),
+                  : const Text(
+                      'Proceed Payment',
+                      style: TextStyle(color: Colors.white),
+                    ),
             ),
           ),
         ],
@@ -3895,53 +3898,37 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         initiallyExpanded: index == 0,
         onExpansionChanged: (_) => setState(() {}),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        title: Builder(
+        title: Text(
+          _toCamelCase(group.paymentName),
+          style: const TextStyle(
+            color: Color(0xFF124B45),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Builder(
           builder: (context) {
             final hasOverdue = _groupHasOverdue(group);
             final discountCycles = _groupCyclesWithDiscount(group);
-            final isNarrow = MediaQuery.of(context).size.width < 600;
-            final nameText = Text(
-              _toCamelCase(group.paymentName),
-              style: const TextStyle(
-                color: Color(0xFF124B45),
-                fontWeight: FontWeight.w800,
-              ),
-            );
-            if (isNarrow) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  nameText,
-                  if (hasOverdue) ...[
-                    const SizedBox(height: 5),
-                    _buildOverdueBanner(),
-                  ],
-                  if (discountCycles.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    _buildDiscountBanner(discountCycles),
-                  ],
-                ],
-              );
-            }
-            return Row(
+            final hasBadges = hasOverdue || discountCycles.isNotEmpty;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(child: nameText),
-                if (hasOverdue) ...[
-                  const SizedBox(width: 6),
-                  _buildOverdueBanner(),
-                ],
-                if (discountCycles.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  _buildDiscountBanner(discountCycles),
+                const Text(
+                  'Select Any One Payment Cycle To Proceed',
+                  style: TextStyle(color: Colors.black54),
+                ),
+                if (hasBadges) ...[
+                  const SizedBox(height: 6),
+                  if (hasOverdue) _buildOverdueBanner(),
+                  if (hasOverdue && discountCycles.isNotEmpty)
+                    const SizedBox(height: 4),
+                  if (discountCycles.isNotEmpty)
+                    _buildDiscountBanner(discountCycles),
                 ],
               ],
             );
           },
-        ),
-        subtitle: const Text(
-          'Select Any One Payment Cycle To Proceed',
-          style: TextStyle(color: Colors.black54),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         children: [
@@ -3987,27 +3974,34 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   .toList(),
             )
           else ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                alignment: WrapAlignment.start,
-                runAlignment: WrapAlignment.start,
-                spacing: 8,
-                runSpacing: 8,
-                children: dues.map((due) {
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 500;
+                final chipWidgets = dues.map((due) {
                   final currentDueId = _dueId(due);
                   final isSelected =
                       currentDueId.isNotEmpty &&
                       currentDueId == _selectedDueByGroup[groupId];
                   final label = _displayCycle(due);
-
                   final hasDiscount = _dueHasDiscount(due);
                   return Stack(
                     clipBehavior: Clip.none,
                     children: [
                       ChoiceChip(
-                        label: Text(label),
+                        label: Text(
+                          label,
+                          style: TextStyle(fontSize: isNarrow ? 11 : 13),
+                        ),
                         selected: isSelected,
+                        visualDensity: isNarrow
+                            ? VisualDensity.compact
+                            : VisualDensity.standard,
+                        padding: isNarrow
+                            ? const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 0,
+                              )
+                            : null,
                         onSelected: (_) {
                           if (currentDueId.isEmpty) {
                             return;
@@ -4063,8 +4057,27 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                         ),
                     ],
                   );
-                }).toList(),
-              ),
+                }).toList();
+                if (isNarrow) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final chip in chipWidgets)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: chip,
+                          ),
+                      ],
+                    ),
+                  );
+                }
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(spacing: 8, runSpacing: 8, children: chipWidgets),
+                );
+              },
             ),
             const SizedBox(height: 8),
             if (selectedDue.isNotEmpty)
@@ -5238,7 +5251,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
               (_receiptFileError != null && _receiptFileError!.isNotEmpty)
               ? null
               : _confirmSelection,
-          child: const Text('Pay'),
+          child: const Text('Proceed'),
         ),
       ],
     );

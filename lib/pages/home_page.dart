@@ -2277,12 +2277,181 @@ class _DueGroupData {
   final List<Map<String, dynamic>> dues;
 }
 
-class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
+class _PaymentDetailsModalState extends State<PaymentDetailsModal>
+    with TickerProviderStateMixin {
   static const String _razorpayKey = 'rzp_test_SRxceBfBqGmeGy';
 
   final Map<String, bool> _submittingRows = <String, bool>{};
   final Map<String, _DueSectionTab> _selectedTabs = <String, _DueSectionTab>{};
   final Map<String, String> _selectedDueByGroup = <String, String>{};
+
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+  late final AnimationController _discountPulseController;
+  late final Animation<double> _discountPulseAnimation;
+
+  static const List<String> _cycleOrder = [
+    'YEARLY',
+    'HALFYEARLY',
+    'QUARTERLY',
+    'QUATERLY',
+    'MONTHLY',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.35, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _discountPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    )..repeat(reverse: true);
+    _discountPulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _discountPulseController,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _discountPulseController.dispose();
+    super.dispose();
+  }
+
+  /// Returns true if ANY due in this group is past-due.
+  bool _groupHasOverdue(_DueGroupData group) {
+    return group.dues.any(_isPastDue);
+  }
+
+  /// Returns display-friendly cycle labels that have a discount in this group.
+  List<String> _groupCyclesWithDiscount(_DueGroupData group) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final cycleKey in _cycleOrder) {
+      for (final due in group.dues) {
+        final rawCycle =
+            due['collectionCycle']?.toString().trim().toUpperCase() ?? '';
+        final normalized = rawCycle.replaceAll(RegExp(r'[^A-Z]'), '');
+        if (normalized == cycleKey && !seen.contains(cycleKey)) {
+          final discountedAmount =
+              due['discountedAmount']?.toString().trim() ?? '';
+          final hasDiscount =
+              discountedAmount.isNotEmpty &&
+              discountedAmount.toLowerCase() != 'null' &&
+              discountedAmount != '0' &&
+              (double.tryParse(discountedAmount) ?? 0.0) > 0;
+          if (hasDiscount) {
+            seen.add(cycleKey);
+            result.add(_toCamelCase(due['collectionCycle'].toString().trim()));
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  bool _dueHasDiscount(Map<String, dynamic> due) {
+    final discountedAmount = due['discountedAmount']?.toString().trim() ?? '';
+    return discountedAmount.isNotEmpty &&
+        discountedAmount.toLowerCase() != 'null' &&
+        discountedAmount != '0' &&
+        (double.tryParse(discountedAmount) ?? 0.0) > 0;
+  }
+
+  Widget _buildOverdueBanner() {
+    return AnimatedBuilder(
+      animation: _pulseAnimation,
+      builder: (context, _) {
+        return Opacity(
+          opacity: _pulseAnimation.value,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD32F2F),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
+                SizedBox(width: 5),
+                Text(
+                  'Overdue Pending',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDiscountBanner(List<String> cycles) {
+    final label = 'Discount in ${cycles.join(', ')}';
+    return AnimatedBuilder(
+      animation: _discountPulseAnimation,
+      builder: (context, _) {
+        final glow = _discountPulseAnimation.value;
+        return Opacity(
+          opacity: glow,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD600),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFFD600).withOpacity(glow * 0.6),
+                  blurRadius: 8 * glow,
+                  spreadRadius: 1.5 * glow,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.campaign_rounded,
+                  color: Colors.black,
+                  size: 17,
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   String _toCamelCase(String text) {
     if (text.isEmpty) return text;
@@ -2618,10 +2787,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         due['collectionCycle']?.toString().trim().toUpperCase() ?? '';
     final normalized = rawCycle.replaceAll(RegExp(r'[^A-Z]'), '');
 
-    if (normalized == 'MONTHLY') return 0;
-    if (normalized == 'QUARTERLY' || normalized == 'QUATERLY') return 1;
-    if (normalized == 'HALFYEARLY') return 2;
-    if (normalized == 'YEARLY') return 3;
+    if (normalized == 'YEARLY') return 0;
+    if (normalized == 'HALFYEARLY') return 1;
+    if (normalized == 'QUARTERLY' || normalized == 'QUATERLY') return 2;
+    if (normalized == 'MONTHLY') return 3;
     if (normalized == 'ONCE') return 4;
     return 5;
   }
@@ -3653,12 +3822,32 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
         initiallyExpanded: index == 0,
         onExpansionChanged: (_) => setState(() {}),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        title: Text(
-          _toCamelCase(group.paymentName),
-          style: const TextStyle(
-            color: Color(0xFF124B45),
-            fontWeight: FontWeight.w800,
-          ),
+        title: Builder(
+          builder: (context) {
+            final hasOverdue = _groupHasOverdue(group);
+            final discountCycles = _groupCyclesWithDiscount(group);
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _toCamelCase(group.paymentName),
+                    style: const TextStyle(
+                      color: Color(0xFF124B45),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (hasOverdue) ...[
+                  const SizedBox(width: 6),
+                  _buildOverdueBanner(),
+                ],
+                if (discountCycles.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  _buildDiscountBanner(discountCycles),
+                ],
+              ],
+            );
+          },
         ),
         subtitle: Text(
           '${group.dues.length} due cycle${group.dues.length == 1 ? '' : 's'}',
@@ -3722,26 +3911,61 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal> {
                       currentDueId == _selectedDueByGroup[groupId];
                   final label = _displayCycle(due);
 
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      if (currentDueId.isEmpty) {
-                        return;
-                      }
-                      setState(() {
-                        _selectedDueByGroup[groupId] = currentDueId;
-                      });
-                    },
-                    selectedColor: const Color(0xFF0F8F82),
-                    side: const BorderSide(color: Color(0xFF0F8F82)),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : const Color(0xFF124B45),
-                      fontWeight: FontWeight.w700,
-                    ),
-                    backgroundColor: Colors.white,
+                  final hasDiscount = _dueHasDiscount(due);
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: isSelected,
+                        onSelected: (_) {
+                          if (currentDueId.isEmpty) {
+                            return;
+                          }
+                          setState(() {
+                            _selectedDueByGroup[groupId] = currentDueId;
+                          });
+                        },
+                        selectedColor: const Color(0xFF0F8F82),
+                        side: hasDiscount
+                            ? const BorderSide(
+                                color: Color(0xFFFFD600),
+                                width: 1.5,
+                              )
+                            : const BorderSide(color: Color(0xFF0F8F82)),
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? Colors.white
+                              : const Color(0xFF124B45),
+                          fontWeight: FontWeight.w700,
+                        ),
+                        backgroundColor: Colors.white,
+                      ),
+                      if (hasDiscount)
+                        Positioned(
+                          top: -7,
+                          left: -7,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD600),
+                              borderRadius: BorderRadius.circular(5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.campaign_rounded,
+                              size: 12,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                    ],
                   );
                 }).toList(),
               ),

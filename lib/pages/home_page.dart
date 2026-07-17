@@ -4425,6 +4425,25 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return words.join(' ');
   }
 
+  IconData _tenderModeIcon(String mode) {
+    switch (mode.trim().toUpperCase()) {
+      case 'QR_PAYMENT':
+        return Icons.qr_code_2_rounded;
+      case 'CHEQUE':
+        return Icons.receipt_long_rounded;
+      case 'DEMAND_DRAFT':
+        return Icons.description_rounded;
+      case 'OFFLINE_BANK_TRANSFER':
+        return Icons.account_balance_rounded;
+      case 'CASH':
+        return Icons.payments_rounded;
+      case 'CARD':
+        return Icons.credit_card_rounded;
+      default:
+        return Icons.account_balance_wallet_rounded;
+    }
+  }
+
   String _formatSummaryAmount(double amount) {
     if (amount == amount.truncateToDouble()) {
       return widget.formatAsCurrency(amount.toInt().toString());
@@ -5099,73 +5118,72 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isNarrow = constraints.maxWidth < 500;
-                  final tenderChips = widget.allowedModes.map((mode) {
-                    final isSelected = _selectedTender == mode;
-                    return ChoiceChip(
-                      label: Text(
-                        _displayMode(mode),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      selected: isSelected,
-                      visualDensity: isNarrow
-                          ? VisualDensity.compact
-                          : VisualDensity.standard,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: isNarrow
-                          ? const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 0,
-                            )
-                          : null,
-                      onSelected: (_) {
-                        setState(() {
-                          if (_selectedTender != mode) {
-                            _clearTenderSpecificState();
-                          }
-                          _selectedTender = mode;
-                        });
-                      },
-                      selectedColor: const Color(0xFF0F8F82),
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFF0F8F82)),
-                      labelStyle: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF124B45),
-                        fontWeight: FontWeight.w700,
-                        fontSize: isNarrow ? 11 : 13,
-                      ),
-                    );
-                  }).toList();
-                  if (!isNarrow) {
-                    return Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: tenderChips,
-                    );
-                  }
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: tenderChips.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 2.25,
+                  final horizontalSpacing = isNarrow ? 8.0 : 10.0;
+                  final chipWidth = isNarrow
+                      ? (constraints.maxWidth - (horizontalSpacing * 2)) / 3
+                      : 150.0;
+                  final chipHeight = isNarrow ? 44.0 : 46.0;
+                  return Wrap(
+                    spacing: horizontalSpacing,
+                    runSpacing: 8,
+                    children: widget.allowedModes.map((mode) {
+                      final isSelected = _selectedTender == mode;
+                      return SizedBox(
+                        width: chipWidth,
+                        height: chipHeight,
+                        child: ChoiceChip(
+                          avatar: Icon(
+                            _tenderModeIcon(mode),
+                            size: isNarrow ? 16 : 18,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF0F8F82),
+                          ),
+                          label: SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              _displayMode(mode),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          selected: isSelected,
+                          showCheckmark: false,
+                          visualDensity: isNarrow
+                              ? VisualDensity.compact
+                              : VisualDensity.standard,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isNarrow ? 6 : 8,
+                            vertical: isNarrow ? 2 : 4,
+                          ),
+                          onSelected: (_) {
+                            setState(() {
+                              if (_selectedTender != mode) {
+                                _clearTenderSpecificState();
+                              }
+                              _selectedTender = mode;
+                            });
+                          },
+                          selectedColor: const Color(0xFF0F8F82),
+                          backgroundColor: Colors.white,
+                          side: const BorderSide(color: Color(0xFF0F8F82)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF124B45),
+                            fontWeight: FontWeight.w700,
+                            fontSize: isNarrow ? 11 : 12,
+                            height: 1.1,
+                          ),
                         ),
-                    itemBuilder: (context, index) => Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FittedBox(
-                          alignment: Alignment.centerLeft,
-                          fit: BoxFit.scaleDown,
-                          child: tenderChips[index],
-                        ),
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   );
                 },
               ),

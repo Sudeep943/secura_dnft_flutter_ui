@@ -2289,6 +2289,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   late final Animation<double> _pulseAnimation;
   late final AnimationController _discountPulseController;
   late final Animation<double> _discountPulseAnimation;
+  Timer? _countdownTimer;
+  DateTime _countdownNow = DateTime.now();
 
   static const List<String> _cycleOrder = [
     'YEARLY',
@@ -2318,12 +2320,16 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         curve: Curves.easeInOut,
       ),
     );
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _countdownNow = DateTime.now());
+    });
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _discountPulseController.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -2404,8 +2410,19 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  String _buildCountdownLabel() {
+    final deadline = DateTime(2026, 8, 30);
+    final diff = deadline.difference(_countdownNow);
+    if (diff.isNegative) return 'Offer Expired';
+    final days = diff.inDays;
+    final hours = diff.inHours % 24;
+    final mins = diff.inMinutes % 60;
+    final secs = diff.inSeconds % 60;
+    return 'Ends In : $days Day  $hours Hrs  $mins Mins  $secs Sec';
+  }
+
   Widget _buildDiscountBanner(List<String> cycles) {
-    final label = 'Discount in ${cycles.join(', ')} Payment';
+    final mainLabel = 'Early Bird  Discount in ${cycles.join(', ')} Payment';
     return AnimatedBuilder(
       animation: _discountPulseAnimation,
       builder: (context, _) {
@@ -2413,36 +2430,57 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         return Opacity(
           opacity: glow,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD600),
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFFAE8625),
+                  Color(0xFFF7EF8A),
+                  Color(0xFFD2AC47),
+                  Color(0xFFEDC967),
+                  Color(0xFFAE8625),
+                ],
+                stops: [0.0, 0.3, 0.55, 0.75, 1.0],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFFFD600).withOpacity(glow * 0.6),
-                  blurRadius: 8 * glow,
-                  spreadRadius: 1.5 * glow,
+                  color: const Color(0xFFD2AC47).withOpacity(glow * 0.7),
+                  blurRadius: 10 * glow,
+                  spreadRadius: 2 * glow,
                 ),
               ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.campaign_rounded,
-                  color: Colors.black,
-                  size: 17,
-                ),
+                const Icon(Icons.sell_rounded, color: Colors.black, size: 15),
                 const SizedBox(width: 5),
                 Flexible(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        mainLabel,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        _buildCountdownLabel(),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -3697,16 +3735,51 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        entry.value.$2,
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF124B45),
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isDiscountRow = entry.value.$1 == 'Discount';
+                          final value = entry.value.$2;
+                          if (isDiscountRow && value.contains('(')) {
+                            final splitIdx = value.indexOf('(');
+                            final part1 = value.substring(0, splitIdx).trim();
+                            final part2 = value.substring(splitIdx);
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  part1,
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF124B45),
+                                  ),
+                                ),
+                                Text(
+                                  part2,
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF124B45),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                          return Text(
+                            value,
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF124B45),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -3826,17 +3899,34 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           builder: (context) {
             final hasOverdue = _groupHasOverdue(group);
             final discountCycles = _groupCyclesWithDiscount(group);
+            final isNarrow = MediaQuery.of(context).size.width < 600;
+            final nameText = Text(
+              _toCamelCase(group.paymentName),
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w800,
+              ),
+            );
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  nameText,
+                  if (hasOverdue) ...[
+                    const SizedBox(height: 5),
+                    _buildOverdueBanner(),
+                  ],
+                  if (discountCycles.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    _buildDiscountBanner(discountCycles),
+                  ],
+                ],
+              );
+            }
             return Row(
               children: [
-                Expanded(
-                  child: Text(
-                    _toCamelCase(group.paymentName),
-                    style: const TextStyle(
-                      color: Color(0xFF124B45),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                Expanded(child: nameText),
                 if (hasOverdue) ...[
                   const SizedBox(width: 6),
                   _buildOverdueBanner(),
@@ -3849,9 +3939,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             );
           },
         ),
-        subtitle: Text(
-          '${group.dues.length} due cycle${group.dues.length == 1 ? '' : 's'}',
-          style: const TextStyle(color: Colors.black54),
+        subtitle: const Text(
+          'Select Any One Payment Cycle To Proceed',
+          style: TextStyle(color: Colors.black54),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         children: [
@@ -3927,12 +4017,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                           });
                         },
                         selectedColor: const Color(0xFF0F8F82),
-                        side: hasDiscount
-                            ? const BorderSide(
-                                color: Color(0xFFFFD600),
-                                width: 1.5,
-                              )
-                            : const BorderSide(color: Color(0xFF0F8F82)),
+                        side: const BorderSide(color: Color(0xFF0F8F82)),
                         labelStyle: TextStyle(
                           color: isSelected
                               ? Colors.white
@@ -3948,7 +4033,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                           child: Container(
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFD600),
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFAE8625),
+                                  Color(0xFFF7EF8A),
+                                  Color(0xFFD2AC47),
+                                  Color(0xFFEDC967),
+                                  Color(0xFFAE8625),
+                                ],
+                                stops: [0.0, 0.3, 0.55, 0.75, 1.0],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              ),
                               borderRadius: BorderRadius.circular(5),
                               boxShadow: [
                                 BoxShadow(
@@ -3959,7 +4055,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                               ],
                             ),
                             child: const Icon(
-                              Icons.campaign_rounded,
+                              Icons.sell_rounded,
                               size: 12,
                               color: Colors.black,
                             ),

@@ -2405,7 +2405,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   }
 
   Widget _buildDiscountBanner(List<String> cycles) {
-    final label = 'Discount in ${cycles.join(', ')}';
+    final label = 'Discount in ${cycles.join(', ')} Payment';
     return AnimatedBuilder(
       animation: _discountPulseAnimation,
       builder: (context, _) {

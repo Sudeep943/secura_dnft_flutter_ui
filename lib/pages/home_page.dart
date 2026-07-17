@@ -3007,9 +3007,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Transaction Recorded. Receipt Will Be Mailed To Registered Mail Id Once Transaction Verified. Keep The Transaction No For Your Reference.',
-                  style: const TextStyle(
+                const Text(
+                  'Transaction Recorded. Receipt Will Be Mailed To Registered Mail Id Once Transaction Verified.',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Keep The Transaction No For Your Reference.',
+                  style: TextStyle(
                     color: Color(0xFF124B45),
                     fontWeight: FontWeight.w600,
                     height: 1.35,

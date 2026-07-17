@@ -908,7 +908,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
             child: OutlinedButton.icon(
               onPressed: _openResidentLogin,
               icon: const Icon(Icons.person_outline_rounded),
-              label: const Text('Resident Login'),
+              label: const Text('Login'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _brandDark,
                 side: const BorderSide(color: Color(0xFF0F8F82)),

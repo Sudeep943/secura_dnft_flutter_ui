@@ -3898,18 +3898,42 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         initiallyExpanded: index == 0,
         onExpansionChanged: (_) => setState(() {}),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        title: Text(
-          _toCamelCase(group.paymentName),
-          style: const TextStyle(
-            color: Color(0xFF124B45),
-            fontWeight: FontWeight.w800,
-          ),
+        title: Builder(
+          builder: (context) {
+            final hasOverdue = _groupHasOverdue(group);
+            final discountCycles = _groupCyclesWithDiscount(group);
+            final isNarrow = MediaQuery.of(context).size.width < 600;
+            final nameText = Text(
+              _toCamelCase(group.paymentName),
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w800,
+              ),
+            );
+            if (isNarrow) {
+              return nameText;
+            }
+            return Row(
+              children: [
+                Expanded(child: nameText),
+                if (hasOverdue) ...[
+                  const SizedBox(width: 6),
+                  _buildOverdueBanner(),
+                ],
+                if (discountCycles.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  _buildDiscountBanner(discountCycles),
+                ],
+              ],
+            );
+          },
         ),
         subtitle: Builder(
           builder: (context) {
             final hasOverdue = _groupHasOverdue(group);
             final discountCycles = _groupCyclesWithDiscount(group);
             final hasBadges = hasOverdue || discountCycles.isNotEmpty;
+            final isNarrow = MediaQuery.of(context).size.width < 600;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
@@ -3918,7 +3942,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   'Select Any One Payment Cycle To Proceed',
                   style: TextStyle(color: Colors.black54),
                 ),
-                if (hasBadges) ...[
+                if (isNarrow && hasBadges) ...[
                   const SizedBox(height: 6),
                   if (hasOverdue) _buildOverdueBanner(),
                   if (hasOverdue && discountCycles.isNotEmpty)
@@ -5001,7 +5025,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           const SizedBox(width: 10),
           const Expanded(
             child: Text(
-              'Choose Tender',
+              'Choose The Tender You Want To Pay',
               style: TextStyle(
                 color: Color(0xFF124B45),
                 fontSize: 18,
@@ -5072,33 +5096,78 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                   ),
                 ),
               const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: widget.allowedModes.map((mode) {
-                  final isSelected = _selectedTender == mode;
-                  return ChoiceChip(
-                    label: Text(_displayMode(mode)),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() {
-                        if (_selectedTender != mode) {
-                          _clearTenderSpecificState();
-                        }
-                        _selectedTender = mode;
-                      });
-                    },
-                    selectedColor: const Color(0xFF0F8F82),
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFF0F8F82)),
-                    labelStyle: TextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : const Color(0xFF124B45),
-                      fontWeight: FontWeight.w700,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 500;
+                  final tenderChips = widget.allowedModes.map((mode) {
+                    final isSelected = _selectedTender == mode;
+                    return ChoiceChip(
+                      label: Text(
+                        _displayMode(mode),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: isSelected,
+                      visualDensity: isNarrow
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: isNarrow
+                          ? const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 0,
+                            )
+                          : null,
+                      onSelected: (_) {
+                        setState(() {
+                          if (_selectedTender != mode) {
+                            _clearTenderSpecificState();
+                          }
+                          _selectedTender = mode;
+                        });
+                      },
+                      selectedColor: const Color(0xFF0F8F82),
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFF0F8F82)),
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : const Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                        fontSize: isNarrow ? 11 : 13,
+                      ),
+                    );
+                  }).toList();
+                  if (!isNarrow) {
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: tenderChips,
+                    );
+                  }
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: tenderChips.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 2.25,
+                        ),
+                    itemBuilder: (context, index) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FittedBox(
+                          alignment: Alignment.centerLeft,
+                          fit: BoxFit.scaleDown,
+                          child: tenderChips[index],
+                        ),
+                      ),
                     ),
                   );
-                }).toList(),
+                },
               ),
               if (_isPerHeadCapita) ...[
                 const SizedBox(height: 14),

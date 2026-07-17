@@ -683,7 +683,7 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
                 child: OutlinedButton.icon(
                   onPressed: _openLogin,
                   icon: const Icon(Icons.person_outline_rounded),
-                  label: const Text('Resident Login'),
+                  label: const Text('Login'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _brandTeal,
                     side: const BorderSide(color: _brandTeal),

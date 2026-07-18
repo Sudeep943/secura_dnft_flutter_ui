@@ -1059,6 +1059,17 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
     });
   }
 
+  void _selectFlatAndClose(String? flatId) {
+    if (flatId == null || flatId.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _selectedFlatId = flatId;
+    });
+    Navigator.of(context).pop(flatId);
+  }
+
   Widget _buildNode(
     _FlatSelectionNode node, {
     double indent = 0,
@@ -1082,11 +1093,7 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
             value: node.flatId!,
             groupValue: _selectedFlatId,
             activeColor: _DnFairytalePayCamPageState._brand,
-            onChanged: (value) {
-              setState(() {
-                _selectedFlatId = value;
-              });
-            },
+            onChanged: _selectFlatAndClose,
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             title: Text(
@@ -1256,11 +1263,7 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
                                       groupValue: _selectedFlatId,
                                       activeColor:
                                           _DnFairytalePayCamPageState._brand,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _selectedFlatId = value;
-                                        });
-                                      },
+                                      onChanged: _selectFlatAndClose,
                                       dense: true,
                                       contentPadding:
                                           const EdgeInsets.symmetric(
@@ -1309,17 +1312,6 @@ class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
           onPressed: () => Navigator.of(context).pop(),
           style: TextButton.styleFrom(foregroundColor: const Color(0xFF5C6D7E)),
           child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: _DnFairytalePayCamPageState._brand,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          onPressed: () => Navigator.of(context).pop(_selectedFlatId),
-          child: const Text('Apply'),
         ),
       ],
     );

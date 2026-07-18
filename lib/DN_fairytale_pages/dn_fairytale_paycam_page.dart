@@ -61,7 +61,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         _flatLabelById = labelMap;
         _selectedFlatId = allFlatIds.contains(_selectedFlatId)
             ? _selectedFlatId
-            : (allFlatIds.isEmpty ? null : allFlatIds.first);
+            : null;
         _flatLoadError = allFlatIds.isEmpty
             ? 'No flats were returned for this apartment.'
             : null;
@@ -307,7 +307,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
       return 'Loading flats...';
     }
     if (_selectedFlatId == null || _selectedFlatId!.isEmpty) {
-      return 'Select flat';
+      return 'Select Flat';
     }
     return _flatLabelById[_selectedFlatId!] ?? _selectedFlatId!;
   }

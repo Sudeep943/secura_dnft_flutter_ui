@@ -47,6 +47,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   Set<String> _selectedCauses = <String>{};
   Set<String> _selectedTenders = <String>{};
   Set<String> _selectedDoneBy = <String>{};
+  Set<String> _selectedPaymentIds = <String>{};
+  Set<String> _selectedStatuses = <String>{};
   _TxnSortField _sortField = _TxnSortField.transactionDate;
   bool _sortDescending = true;
   final Map<String, Map<String, String>> _paymentHoverDetailsCache =
@@ -279,6 +281,37 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     return _sortDescending ? -cmp : cmp;
   }
 
+  String _txnPaymentId(Map<String, dynamic> txn) {
+    final candidates = [
+      txn['pymntId'],
+      txn['paymentId'],
+      txn['pymntID'],
+      txn['PaymentId'],
+    ];
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  String _txnStatus(Map<String, dynamic> txn) {
+    final candidates = [
+      txn['trnsStatus'],
+      txn['status'],
+      txn['transactionStatus'],
+    ];
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    return '';
+  }
+
   void _toggleSort(_TxnSortField field) {
     setState(() {
       if (_sortField == field) {
@@ -354,6 +387,17 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
       final doneBy = (txn['trnsBy']?.toString() ?? '').trim();
       if (_selectedDoneBy.isNotEmpty && !_selectedDoneBy.contains(doneBy)) {
+        return false;
+      }
+
+      final paymentId = _txnPaymentId(txn);
+      if (_selectedPaymentIds.isNotEmpty &&
+          !_selectedPaymentIds.contains(paymentId)) {
+        return false;
+      }
+
+      final status = _txnStatus(txn);
+      if (_selectedStatuses.isNotEmpty && !_selectedStatuses.contains(status)) {
         return false;
       }
 
@@ -451,6 +495,12 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     }
     if (_selectedDoneBy.isNotEmpty) {
       tokens.add('Done By: ${_selectedDoneBy.join(', ')}');
+    }
+    if (_selectedPaymentIds.isNotEmpty) {
+      tokens.add('Payment ID: ${_selectedPaymentIds.join(', ')}');
+    }
+    if (_selectedStatuses.isNotEmpty) {
+      tokens.add('Status: ${_selectedStatuses.join(', ')}');
     }
     return tokens;
   }
@@ -1088,6 +1138,24 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       ..sort();
   }
 
+  List<String> get _paymentIdOptions {
+    return _transactions
+        .map(_txnPaymentId)
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort(_naturalCompare);
+  }
+
+  List<String> get _statusOptions {
+    return _transactions
+        .map(_txnStatus)
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
   List<String> get _tenderOptions {
     final values = <String>{};
     for (final txn in _transactions) {
@@ -1219,6 +1287,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     var localCauses = Set<String>.from(_selectedCauses);
     var localTenders = Set<String>.from(_selectedTenders);
     var localDoneBy = Set<String>.from(_selectedDoneBy);
+    var localPaymentIds = Set<String>.from(_selectedPaymentIds);
+    var localStatuses = Set<String>.from(_selectedStatuses);
 
     await showDialog<void>(
       context: context,
@@ -1337,6 +1407,38 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                           });
                         },
                       ),
+                      _buildDropdownSelectorField(
+                        title: 'Payment ID',
+                        options: _paymentIdOptions,
+                        selected: localPaymentIds,
+                        onTap: () async {
+                          await _openMultiSelectPicker(
+                            context: dialogContext,
+                            title: 'Payment ID',
+                            options: _paymentIdOptions,
+                            selected: localPaymentIds,
+                          );
+                          setDialogState(() {
+                            localPaymentIds = Set<String>.from(localPaymentIds);
+                          });
+                        },
+                      ),
+                      _buildDropdownSelectorField(
+                        title: 'Status',
+                        options: _statusOptions,
+                        selected: localStatuses,
+                        onTap: () async {
+                          await _openMultiSelectPicker(
+                            context: dialogContext,
+                            title: 'Status',
+                            options: _statusOptions,
+                            selected: localStatuses,
+                          );
+                          setDialogState(() {
+                            localStatuses = Set<String>.from(localStatuses);
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -1355,6 +1457,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       _selectedCauses.clear();
                       _selectedTenders.clear();
                       _selectedDoneBy.clear();
+                      _selectedPaymentIds.clear();
+                      _selectedStatuses.clear();
                     });
                     Navigator.of(dialogContext).pop();
                   },
@@ -1369,6 +1473,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       _selectedCauses = localCauses;
                       _selectedTenders = localTenders;
                       _selectedDoneBy = localDoneBy;
+                      _selectedPaymentIds = localPaymentIds;
+                      _selectedStatuses = localStatuses;
                     });
                     Navigator.of(dialogContext).pop();
                   },

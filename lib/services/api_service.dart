@@ -11,9 +11,9 @@ import 'session_storage_stub.dart'
     as session_storage;
 
 class ApiService {
-  // static const String _baseUrl = 'http://localhost:8080';
-  static const String _baseUrl =
-      'https://securadnft-api-380953428736.asia-south1.run.app';
+  static const String _baseUrl = 'http://localhost:8080';
+  //static const String _baseUrl =
+  //  'https://securadnft-api-380953428736.asia-south1.run.app';
 
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';

@@ -2600,6 +2600,16 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return list;
   }
 
+  int _compareDueGroups(_DueGroupData a, _DueGroupData b) {
+    final aHasOverdue = _groupHasOverdue(a);
+    final bHasOverdue = _groupHasOverdue(b);
+    if (aHasOverdue != bHasOverdue) {
+      return aHasOverdue ? -1 : 1;
+    }
+
+    return a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase());
+  }
+
   List<_DueGroupData> _groupedPayments() {
     final grouped = <_DueGroupData>[];
     final fromDueDetails = widget.dueDetailsByPayment;
@@ -2631,10 +2641,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     }
 
     if (grouped.isNotEmpty) {
-      grouped.sort(
-        (a, b) =>
-            a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase()),
-      );
+      grouped.sort(_compareDueGroups);
       return grouped;
     }
 
@@ -2669,10 +2676,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       );
     });
 
-    grouped.sort(
-      (a, b) =>
-          a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase()),
-    );
+    grouped.sort(_compareDueGroups);
     return grouped;
   }
 
@@ -3877,7 +3881,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
-  Widget _buildGroupPanel(_DueGroupData group, int index) {
+  Widget _buildGroupPanel(
+    _DueGroupData group,
+    int index, {
+    required bool initiallyExpanded,
+  }) {
     final groupId = group.groupId;
     final selectedTab = _selectedTabs[groupId] ?? _DueSectionTab.active;
     final dues = _duesForTab(group, selectedTab);
@@ -3904,7 +3912,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         border: Border.all(color: const Color(0xFFD7EAE3)),
       ),
       child: ExpansionTile(
-        initiallyExpanded: index == 0,
+        initiallyExpanded: initiallyExpanded,
         onExpansionChanged: (_) => setState(() {}),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         title: Builder(
@@ -4124,6 +4132,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   @override
   Widget build(BuildContext context) {
     final groupedPayments = _groupedPayments();
+    final shouldAutoExpandSingleGroup = groupedPayments.length == 1;
     final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
     final maxDialogWidth = MediaQuery.of(context).size.width * 0.96;
 
@@ -4233,8 +4242,12 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                           : Column(
                               children: [
                                 ...groupedPayments.asMap().entries.map(
-                                  (entry) =>
-                                      _buildGroupPanel(entry.value, entry.key),
+                                  (entry) => _buildGroupPanel(
+                                    entry.value,
+                                    entry.key,
+                                    initiallyExpanded:
+                                        shouldAutoExpandSingleGroup,
+                                  ),
                                 ),
                               ],
                             ),
@@ -4320,6 +4333,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   final TextEditingController _transferAccountNumberController =
       TextEditingController();
   final TextEditingController _transferDateController = TextEditingController();
+  final TextEditingController _readOnlyAmountController =
+      TextEditingController();
 
   late String _selectedTender;
   late int _personCount;
@@ -4358,6 +4373,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     _transferBankNameController.dispose();
     _transferAccountNumberController.dispose();
     _transferDateController.dispose();
+    _readOnlyAmountController.dispose();
     super.dispose();
   }
 
@@ -4632,9 +4648,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     }
 
     if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
-      return _transferBankNameController.text.trim().isNotEmpty &&
-          _transferAccountNumberController.text.trim().isNotEmpty &&
-          _transferDateController.text.trim().isNotEmpty;
+      return _transferDateController.text.trim().isNotEmpty;
     }
 
     return true;
@@ -4691,9 +4705,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           'tenderType': 'OFFLINE_BANK_TRANSFER',
           'chequeNumber': null,
           'chequeDate': transferDate,
-          'bankName': _transferBankNameController.text.trim(),
+          'bankName': '',
           'accountHolderName': null,
-          'accountNumber': _transferAccountNumberController.text.trim(),
+          'accountNumber': '',
           'amount': _requestAmountText,
           'ddPayAtBranch': null,
           'ddNumber': null,
@@ -4713,6 +4727,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     TextInputType? keyboardType,
     bool readOnly = false,
     bool isDateField = false,
+    bool useReadOnlyFill = true,
     Future<void> Function()? onTap,
   }) {
     return Padding(
@@ -4725,7 +4740,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         decoration: InputDecoration(
           labelText: label,
           filled: true,
-          fillColor: (readOnly || isDateField)
+          fillColor: (useReadOnlyFill && (readOnly || isDateField))
               ? const Color(0xFFF0F5F4)
               : Colors.white,
           border: OutlineInputBorder(
@@ -4849,10 +4864,15 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   Widget _buildReadOnlyAmountField() {
+    final amountText = _requestAmountText;
+    if (_readOnlyAmountController.text != amountText) {
+      _readOnlyAmountController.text = amountText;
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
-        initialValue: _requestAmountText,
+        controller: _readOnlyAmountController,
         readOnly: true,
         decoration: InputDecoration(
           labelText: 'Amount',
@@ -4938,17 +4958,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     } else if (_selectedTender == 'OFFLINE_BANK_TRANSFER') {
       children.addAll([
         _buildInstrumentField(
-          label: 'From Bank Name',
-          controller: _transferBankNameController,
-        ),
-        _buildInstrumentField(
-          label: 'Account Number',
-          controller: _transferAccountNumberController,
-        ),
-        _buildInstrumentField(
-          label: 'Transfer Date',
+          label: 'Transaction Date',
           controller: _transferDateController,
           isDateField: true,
+          useReadOnlyFill: false,
           onTap: () => _pickInstrumentDate(_transferDateController),
         ),
       ]);

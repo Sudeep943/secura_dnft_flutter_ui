@@ -3101,6 +3101,132 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  Future<void> _showPaymentValidationErrorDialog(String message) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFFFFBFA),
+          surfaceTintColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 24,
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFF0C7C1)),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFBE7E4),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFB3261E),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Unable To Proceed',
+                  style: TextStyle(
+                    color: Color(0xFF7A1C15),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Color(0xFF5E302B),
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB3261E),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _validatePriorDuePaymentBeforeTender(
+    Map<String, dynamic> payment,
+  ) async {
+    final paymentId = payment['paymentId']?.toString().trim() ?? '';
+    final dueId =
+        payment['DueId']?.toString().trim() ??
+        payment['dueId']?.toString().trim() ??
+        '';
+
+    if (paymentId.isEmpty || dueId.isEmpty) {
+      await _showPaymentValidationErrorDialog(
+        'Unable to proceed: paymentId or DueId was not provided.',
+      );
+      return false;
+    }
+
+    final publicFlatNo = ApiService.publicPayFlatNo;
+    final validateResponse = publicFlatNo != null
+        ? await ApiService.validatePriorDuePaymentPublic(
+            flatId: publicFlatNo,
+            dueId: dueId,
+            paymentId: paymentId,
+            dueDate: payment['dueDate']?.toString().trim() ?? '',
+            paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
+          )
+        : await ApiService.validatePriorDuePayment(
+            dueId: dueId,
+            paymentId: paymentId,
+            dueDate: payment['dueDate']?.toString().trim() ?? '',
+            paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
+          );
+
+    final validateCode =
+        validateResponse?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    final isValidateSuccess = validateCode.contains('SUCC');
+    if (isValidateSuccess) {
+      return true;
+    }
+
+    final validateMessage =
+        validateResponse?['message']?.toString().trim() ??
+        'Prior due validation failed.';
+    await _showPaymentValidationErrorDialog(
+      validateMessage.isEmpty
+          ? 'Prior due validation failed.'
+          : validateMessage,
+    );
+    return false;
+  }
+
   Future<bool> _createDeepLinkOrder({
     required Map<String, dynamic> payment,
     required double netPayable,
@@ -3187,6 +3313,24 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     Map<String, dynamic> payment, {
     String bankId = '',
   }) async {
+    final rowKey = _rowPaymentKey(payment);
+    setState(() {
+      _submittingRows[rowKey] = true;
+    });
+
+    try {
+      final isValid = await _validatePriorDuePaymentBeforeTender(payment);
+      if (!isValid || !mounted) {
+        return;
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submittingRows[rowKey] = false;
+        });
+      }
+    }
+
     final selection = await showDialog<_DueTenderSelection>(
       context: context,
       builder: (dialogContext) => _DueTenderDialog(
@@ -3196,11 +3340,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       ),
     );
 
-    if (selection == null) {
+    if (selection == null || !mounted) {
       return;
     }
 
-    final rowKey = _rowPaymentKey(payment);
     setState(() {
       _submittingRows[rowKey] = true;
     });
@@ -3215,38 +3358,6 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       if (paymentId.isEmpty || dueId.isEmpty) {
         _showStatusSnack(
           'Unable to proceed: paymentId or DueId was not provided.',
-          isError: true,
-        );
-        return;
-      }
-
-      final publicFlatNo = ApiService.publicPayFlatNo;
-      final validateResponse = publicFlatNo != null
-          ? await ApiService.validatePriorDuePaymentPublic(
-              flatId: publicFlatNo,
-              dueId: dueId,
-              paymentId: paymentId,
-              dueDate: payment['dueDate']?.toString().trim() ?? '',
-              paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
-            )
-          : await ApiService.validatePriorDuePayment(
-              dueId: dueId,
-              paymentId: paymentId,
-              dueDate: payment['dueDate']?.toString().trim() ?? '',
-              paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
-            );
-      final validateCode =
-          validateResponse?['messageCode']?.toString().trim().toUpperCase() ??
-          '';
-      final isValidateSuccess = validateCode.contains('SUCC');
-      if (!isValidateSuccess) {
-        final validateMessage =
-            validateResponse?['message']?.toString().trim() ??
-            'Prior due validation failed.';
-        _showStatusSnack(
-          validateMessage.isEmpty
-              ? 'Prior due validation failed.'
-              : validateMessage,
           isError: true,
         );
         return;

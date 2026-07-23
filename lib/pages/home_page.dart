@@ -2338,6 +2338,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return group.dues.any(_isPastDue);
   }
 
+  bool _hasAnyOverdueAcrossGroups(List<_DueGroupData> groups) {
+    return groups.any(_groupHasOverdue);
+  }
+
   /// Returns display-friendly cycle labels that have a discount in this group.
   List<String> _groupCyclesWithDiscount(_DueGroupData group) {
     final seen = <String>{};
@@ -3601,6 +3605,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   Widget _buildSelectedDueSummary(
     Map<String, dynamic> due, {
     required String bankId,
+    bool disableProceed = false,
   }) {
     final amount = due['amount']?.toString().trim() ?? '0';
     final gstAmount = due['gstAmount']?.toString().trim() ?? '0';
@@ -3618,6 +3623,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     final fineAmount = due['fineAmount']?.toString().trim() ?? '';
     final rowKey = _rowPaymentKey(due);
     final isSubmitting = _submittingRows[rowKey] ?? false;
+    final canProceed = !isSubmitting && !disableProceed;
 
     final hasDiscountAmount =
         discountedAmount.isNotEmpty &&
@@ -3693,9 +3699,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   vertical: 10,
                 ),
               ),
-              onPressed: isSubmitting
-                  ? null
-                  : () => _handlePayPressed(due, bankId: bankId),
+              onPressed: canProceed
+                  ? () => _handlePayPressed(due, bankId: bankId)
+                  : null,
               child: isSubmitting
                   ? const SizedBox(
                       height: 16,
@@ -3996,6 +4002,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     _DueGroupData group,
     int index, {
     required bool initiallyExpanded,
+    required bool lockActiveDueProceed,
   }) {
     final groupId = group.groupId;
     final selectedTab = _selectedTabs[groupId] ?? _DueSectionTab.active;
@@ -4126,6 +4133,27 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   .toList(),
             )
           else ...[
+            if (lockActiveDueProceed)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF6E5),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFF2D08A)),
+                ),
+                child: const Text(
+                  'Proceed Payment is disabled for active dues until all overdue dues are cleared.',
+                  style: TextStyle(
+                    color: Color(0xFF7A5A19),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             LayoutBuilder(
               builder: (context, constraints) {
                 final isNarrow = constraints.maxWidth < 500;
@@ -4233,7 +4261,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             ),
             const SizedBox(height: 8),
             if (selectedDue.isNotEmpty)
-              _buildSelectedDueSummary(selectedDue, bankId: group.bankId),
+              _buildSelectedDueSummary(
+                selectedDue,
+                bankId: group.bankId,
+                disableProceed: lockActiveDueProceed,
+              ),
           ],
         ],
       ),
@@ -4243,6 +4275,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   @override
   Widget build(BuildContext context) {
     final groupedPayments = _groupedPayments();
+    final hasAnyOverdue = _hasAnyOverdueAcrossGroups(groupedPayments);
     final shouldAutoExpandSingleGroup = groupedPayments.length == 1;
     final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
     final maxDialogWidth = MediaQuery.of(context).size.width * 0.96;
@@ -4358,6 +4391,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                                     entry.key,
                                     initiallyExpanded:
                                         shouldAutoExpandSingleGroup,
+                                    lockActiveDueProceed: hasAnyOverdue,
                                   ),
                                 ),
                               ],

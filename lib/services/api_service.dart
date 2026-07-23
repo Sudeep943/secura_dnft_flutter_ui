@@ -343,6 +343,27 @@ class ApiService {
     return null;
   }
 
+  static String _normalizeCipherTextBase64(String value) {
+    var normalized = value.trim();
+    if (normalized.length >= 2 &&
+        ((normalized.startsWith('"') && normalized.endsWith('"')) ||
+            (normalized.startsWith("'") && normalized.endsWith("'")))) {
+      normalized = normalized.substring(1, normalized.length - 1);
+    }
+
+    // Preserve Java-compatible Base64 by repairing common transport mutations.
+    normalized = normalized
+        .replaceAll(' ', '+')
+        .replaceAll('\n', '')
+        .replaceAll('\r', '');
+
+    final remainder = normalized.length % 4;
+    if (remainder == 2) normalized = '$normalized==';
+    if (remainder == 3) normalized = '$normalized=';
+
+    return normalized;
+  }
+
   static String _encryptAuthValue(String value) {
     final key = encrypt.Key(base64Decode(_authEncryptionKeyBase64));
     final iv = encrypt.IV(base64Decode(_authEncryptionIvBase64));
@@ -350,6 +371,68 @@ class ApiService {
       encrypt.AES(key, mode: encrypt.AESMode.cbc),
     );
     return encrypter.encrypt(value, iv: iv).base64;
+  }
+
+  static String _decryptAuthValue(String value) {
+    try {
+      final key = encrypt.Key(base64Decode(_authEncryptionKeyBase64.trim()));
+      final iv = encrypt.IV(base64Decode(_authEncryptionIvBase64.trim()));
+      final encrypter = encrypt.Encrypter(
+        encrypt.AES(key, mode: encrypt.AESMode.cbc),
+      );
+      final normalizedCipherText = _normalizeCipherTextBase64(value);
+      return encrypter.decrypt64(normalizedCipherText, iv: iv);
+    } catch (error) {
+      throw ArgumentError('Failed to decrypt auth field: $error');
+    }
+  }
+
+  static dynamic _decryptPaymentGatewayResponseValue(dynamic value) {
+    if (value is Map) {
+      return value.map(
+        (key, childValue) => MapEntry(
+          key.toString(),
+          _decryptPaymentGatewayResponseValue(childValue),
+        ),
+      );
+    }
+
+    if (value is List) {
+      return value
+          .map(_decryptPaymentGatewayResponseValue)
+          .toList(growable: false);
+    }
+
+    if (value is String) {
+      try {
+        return _decryptAuthValue(value);
+      } catch (_) {
+        return value;
+      }
+    }
+
+    return value;
+  }
+
+  static Map<String, dynamic> _normalizePaymentGatewayResponse(
+    Map<String, dynamic> response,
+  ) {
+    final normalized = Map<String, dynamic>.from(response);
+    final rawData = normalized['data'];
+    if (rawData is Map) {
+      normalized['data'] = Map<String, dynamic>.from(
+        _decryptPaymentGatewayResponseValue(rawData) as Map,
+      );
+    } else if (rawData is List) {
+      normalized['data'] = _decryptPaymentGatewayResponseValue(rawData);
+    } else if (rawData is String) {
+      try {
+        normalized['data'] = _decryptAuthValue(rawData);
+      } catch (_) {
+        normalized['data'] = rawData;
+      }
+    }
+    return normalized;
   }
 
   static Future<Map<String, dynamic>?> login({
@@ -521,7 +604,12 @@ class ApiService {
       return null;
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return _normalizePaymentGatewayResponse(Map<String, dynamic>.from(data));
   }
 
   static Future<Map<String, dynamic>?> getUpcomingHallBookings() async {
@@ -536,7 +624,12 @@ class ApiService {
       return null;
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return _normalizePaymentGatewayResponse(Map<String, dynamic>.from(data));
   }
 
   static Map<String, String> _authorizedJsonHeaders() {
@@ -746,7 +839,11 @@ class ApiService {
       return null;
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+    return _normalizePaymentGatewayResponse(Map<String, dynamic>.from(data));
   }
 
   static Future<Map<String, dynamic>?> getBooking({
@@ -1350,9 +1447,11 @@ class ApiService {
           continue;
         }
 
-        final data = jsonDecode(response.body);
-        if (data is Map) {
-          return Map<String, dynamic>.from(data);
+        final decodedResponse = jsonDecode(response.body);
+        if (decodedResponse is Map) {
+          return _normalizePaymentGatewayResponse(
+            Map<String, dynamic>.from(decodedResponse),
+          );
         }
       }
 
@@ -1386,7 +1485,13 @@ class ApiService {
       return null;
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final decodedResponse = jsonDecode(response.body);
+    if (decodedResponse is! Map) {
+      return null;
+    }
+    return _normalizePaymentGatewayResponse(
+      Map<String, dynamic>.from(decodedResponse),
+    );
   }
 
   static Future<Map<String, dynamic>?> payDues(

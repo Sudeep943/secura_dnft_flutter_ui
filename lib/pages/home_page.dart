@@ -2416,7 +2416,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   }
 
   String _buildCountdownLabel() {
-    final deadline = DateTime(2026, 8, 30);
+    final deadline = DateTime(2026, 8, 15);
     final diff = deadline.difference(_countdownNow);
     if (diff.isNegative) return 'Offer Expired';
     final days = diff.inDays;

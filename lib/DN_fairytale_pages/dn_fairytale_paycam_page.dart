@@ -1561,11 +1561,6 @@ class _OwnerProfileCard extends StatelessWidget {
           _SelectableInfoRow(label: 'Owner Name', value: profile.ownerName),
           const SizedBox(height: 8),
           _SelectableInfoRow(
-            label: 'Mobile Number',
-            value: profile.mobileNumber,
-          ),
-          const SizedBox(height: 8),
-          _SelectableInfoRow(
             label: 'Email Address',
             value: profile.emailAddress,
           ),

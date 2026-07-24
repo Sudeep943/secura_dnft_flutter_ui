@@ -2284,6 +2284,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   final Map<String, bool> _submittingRows = <String, bool>{};
   final Map<String, _DueSectionTab> _selectedTabs = <String, _DueSectionTab>{};
   final Map<String, String> _selectedDueByGroup = <String, String>{};
+  final Map<String, String> _selectedOverdueCycleByGroup = <String, String>{};
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -3802,6 +3803,78 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return _toCamelCase(rawCycle);
   }
 
+  String _displayCycleWithRange(Map<String, dynamic> due) {
+    final cycle = _displayCycle(due);
+    final dueStartDate = due['dueStartDate']?.toString().trim() ?? '';
+    final dueEndDate = due['dueEndDate']?.toString().trim() ?? '';
+
+    final fromDate =
+        dueStartDate.isEmpty || dueStartDate.toLowerCase() == 'null'
+        ? '--'
+        : dueStartDate;
+    final toDate = dueEndDate.isEmpty || dueEndDate.toLowerCase() == 'null'
+        ? '--'
+        : dueEndDate;
+
+    return '$cycle ($fromDate - $toDate)';
+  }
+
+  String _cycleKey(Map<String, dynamic> due) {
+    final rawCycle =
+        due['collectionCycle']?.toString().trim().toUpperCase() ?? '';
+    if (rawCycle.isEmpty || rawCycle == 'NULL') {
+      return '--';
+    }
+    return rawCycle.replaceAll(RegExp(r'[^A-Z]'), '');
+  }
+
+  List<MapEntry<String, List<Map<String, dynamic>>>> _overdueCycleBuckets(
+    List<Map<String, dynamic>> overdueDues,
+  ) {
+    final buckets = <String, List<Map<String, dynamic>>>{};
+    for (final due in overdueDues) {
+      final key = _cycleKey(due);
+      buckets.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(due);
+    }
+
+    final sortedKeys = buckets.keys.toList()
+      ..sort((a, b) {
+        final rankA = _cycleSortRank({'collectionCycle': a});
+        final rankB = _cycleSortRank({'collectionCycle': b});
+        if (rankA != rankB) return rankA.compareTo(rankB);
+        return a.compareTo(b);
+      });
+
+    return sortedKeys
+        .map((key) => MapEntry(key, buckets[key]!))
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _overdueDuesForSelectedCycle(
+    String groupId,
+    List<Map<String, dynamic>> overdueDues,
+  ) {
+    if (overdueDues.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final availableCycleKeys = overdueDues
+        .map(_cycleKey)
+        .where((key) => key.isNotEmpty)
+        .toSet();
+
+    var selectedCycleKey = _selectedOverdueCycleByGroup[groupId];
+    if (selectedCycleKey == null ||
+        !availableCycleKeys.contains(selectedCycleKey)) {
+      selectedCycleKey = _cycleKey(overdueDues.first);
+      _selectedOverdueCycleByGroup[groupId] = selectedCycleKey;
+    }
+
+    return overdueDues
+        .where((due) => _cycleKey(due) == selectedCycleKey)
+        .toList(growable: false);
+  }
+
   Widget _buildDueDetailCards({
     required String dueStartDate,
     required String dueEndDate,
@@ -3959,7 +4032,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     Map<String, dynamic> due, {
     required String bankId,
   }) {
-    final cycle = _displayCycle(due);
+    final cycle = _displayCycleWithRange(due);
     final dueDateText = due['dueDate']?.toString().trim() ?? '--';
 
     return Container(
@@ -4099,12 +4172,14 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               setState(() {
                 _selectedTabs[groupId] = _DueSectionTab.overdue;
                 _selectedDueByGroup.remove(groupId);
+                _selectedOverdueCycleByGroup.remove(groupId);
               });
             },
             onActiveTap: () {
               setState(() {
                 _selectedTabs[groupId] = _DueSectionTab.active;
                 _selectedDueByGroup.remove(groupId);
+                _selectedOverdueCycleByGroup.remove(groupId);
               });
             },
           ),
@@ -4126,11 +4201,130 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               ),
             )
           else if (selectedTab == _DueSectionTab.overdue)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: dues
-                  .map((due) => _buildOverdueDueItem(due, bankId: group.bankId))
-                  .toList(),
+            Builder(
+              builder: (context) {
+                final overdueCycleBuckets = _overdueCycleBuckets(dues);
+                final selectedCycleKey =
+                    _selectedOverdueCycleByGroup[groupId] ??
+                    (overdueCycleBuckets.isNotEmpty
+                        ? overdueCycleBuckets.first.key
+                        : '');
+                final selectedCycleDues = _overdueDuesForSelectedCycle(
+                  groupId,
+                  dues,
+                );
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isNarrow = constraints.maxWidth < 500;
+                        final cycleChips = overdueCycleBuckets
+                            .map((bucket) {
+                              final cycleLabel = _toCamelCase(
+                                bucket.value.first['collectionCycle']
+                                        ?.toString()
+                                        .trim() ??
+                                    bucket.key,
+                              );
+                              final isSelected = bucket.key == selectedCycleKey;
+                              final itemCount = bucket.value.length;
+
+                              return ChoiceChip(
+                                label: Text(
+                                  '$cycleLabel ($itemCount)',
+                                  style: TextStyle(
+                                    fontSize: isNarrow ? 11 : 13,
+                                  ),
+                                ),
+                                selected: isSelected,
+                                visualDensity: isNarrow
+                                    ? VisualDensity.compact
+                                    : VisualDensity.standard,
+                                padding: isNarrow
+                                    ? const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 0,
+                                      )
+                                    : null,
+                                onSelected: (_) {
+                                  setState(() {
+                                    _selectedOverdueCycleByGroup[groupId] =
+                                        bucket.key;
+                                  });
+                                },
+                                selectedColor: const Color(0xFFB3261E),
+                                side: const BorderSide(
+                                  color: Color(0xFFB3261E),
+                                ),
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF7A1C15),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                backgroundColor: Colors.white,
+                              );
+                            })
+                            .toList(growable: false);
+
+                        if (isNarrow) {
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final chip in cycleChips)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: chip,
+                                  ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: cycleChips,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    if (selectedCycleDues.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7FCFA),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD7EAE3)),
+                        ),
+                        child: const Text(
+                          'No overdue dues in the selected cycle.',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: selectedCycleDues
+                            .map(
+                              (due) => _buildOverdueDueItem(
+                                due,
+                                bankId: group.bankId,
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                  ],
+                );
+              },
             )
           else ...[
             if (lockActiveDueProceed)

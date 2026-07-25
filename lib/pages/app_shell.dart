@@ -565,8 +565,10 @@ class _WorklistDialogState extends State<_WorklistDialog>
   final Set<String> _expandedWorklistIds = <String>{};
   final Set<String> _pendingSelectedTypes = <String>{};
   final Set<String> _pendingSelectedFlatNos = <String>{};
+  final Set<String> _pendingSelectedTenders = <String>{};
   final Set<String> _completedSelectedTypes = <String>{};
   final Set<String> _completedSelectedFlatNos = <String>{};
+  final Set<String> _completedSelectedTenders = <String>{};
   late final AnimationController _statusGlowController;
 
   @override
@@ -736,6 +738,8 @@ class _WorklistDialogState extends State<_WorklistDialog>
     final isLoading = _loadingTransaction[referenceId] == true;
     final expandKey = worklistId == '--' ? referenceId : worklistId;
     final isExpanded = _expandedWorklistIds.contains(expandKey);
+    final canOpenReference =
+        referenceId.isNotEmpty && isTransactionReview && !isLoading;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -803,6 +807,20 @@ class _WorklistDialogState extends State<_WorklistDialog>
               _metaPill(
                 icon: Icons.calendar_month_rounded,
                 text: 'From: ${_formatDate(item['creatTs']?.toString())}',
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: canOpenReference
+                    ? () => _openTransactionDetails(item)
+                    : null,
+                child: Opacity(
+                  opacity: referenceId.isEmpty ? 0.55 : 1,
+                  child: _metaPill(
+                    icon: Icons.confirmation_number_outlined,
+                    text:
+                        'Reference: ${referenceId.isEmpty ? '--' : referenceId}',
+                  ),
+                ),
               ),
             ],
           ),
@@ -909,6 +927,60 @@ class _WorklistDialogState extends State<_WorklistDialog>
     return values;
   }
 
+  String _normalizeTenderText(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+      return '';
+    }
+    return normalized.replaceAll('_', ' ').toUpperCase();
+  }
+
+  Set<String> _tenderValues(Map<String, dynamic> item) {
+    final values = <String>{};
+
+    void addValue(dynamic raw) {
+      final text = _normalizeTenderText(raw?.toString() ?? '');
+      if (text.isNotEmpty) {
+        values.add(text);
+      }
+    }
+
+    final directCandidates = [
+      item['tenderName'],
+      item['tenderType'],
+      item['paymentTenderType'],
+      item['bankInstrumentTenderType'],
+      item['mode'],
+    ];
+    for (final candidate in directCandidates) {
+      addValue(candidate);
+    }
+
+    final rawTenders = item['trnsTender'];
+    if (rawTenders is List) {
+      for (final entry in rawTenders) {
+        if (entry is Map) {
+          addValue(entry['tenderName']);
+          addValue(entry['tenderType']);
+          addValue(entry['paymentTenderType']);
+        } else {
+          addValue(entry);
+        }
+      }
+    }
+
+    return values;
+  }
+
+  List<String> _distinctTenderOptions(List<Map<String, dynamic>> rows) {
+    final values = <String>{};
+    for (final row in rows) {
+      values.addAll(_tenderValues(row));
+    }
+    final result = values.toList()..sort();
+    return result;
+  }
+
   Set<String> _selectedTypesForTab(_WorklistTabKind tab) {
     return tab == _WorklistTabKind.pending
         ? _pendingSelectedTypes
@@ -921,9 +993,16 @@ class _WorklistDialogState extends State<_WorklistDialog>
         : _completedSelectedFlatNos;
   }
 
+  Set<String> _selectedTendersForTab(_WorklistTabKind tab) {
+    return tab == _WorklistTabKind.pending
+        ? _pendingSelectedTenders
+        : _completedSelectedTenders;
+  }
+
   int _activeFilterCount(_WorklistTabKind tab) {
     return _selectedTypesForTab(tab).length +
-        _selectedFlatNosForTab(tab).length;
+        _selectedFlatNosForTab(tab).length +
+        _selectedTendersForTab(tab).length;
   }
 
   List<Map<String, dynamic>> _applyFilters(
@@ -932,13 +1011,17 @@ class _WorklistDialogState extends State<_WorklistDialog>
   ) {
     final selectedTypes = _selectedTypesForTab(tab);
     final selectedFlatNos = _selectedFlatNosForTab(tab);
+    final selectedTenders = _selectedTendersForTab(tab);
     return rows.where((item) {
       final typeMatches =
           selectedTypes.isEmpty || selectedTypes.contains(_typeValue(item));
       final flatMatches =
           selectedFlatNos.isEmpty ||
           selectedFlatNos.contains(_flatNoValue(item));
-      return typeMatches && flatMatches;
+      final itemTenders = _tenderValues(item);
+      final tenderMatches =
+          selectedTenders.isEmpty || itemTenders.any(selectedTenders.contains);
+      return typeMatches && flatMatches && tenderMatches;
     }).toList();
   }
 
@@ -948,14 +1031,24 @@ class _WorklistDialogState extends State<_WorklistDialog>
   ) async {
     final typeOptions = _distinctTypeOptions(sourceRows);
     final flatNoOptions = _distinctFlatNoOptions(sourceRows);
+    final transactionReviewRows = sourceRows
+        .where(
+          (item) => _typeValue(item).toUpperCase() == _transactionReviewType,
+        )
+        .toList(growable: false);
+    final tenderOptions = _distinctTenderOptions(transactionReviewRows);
     final tempTypes = Set<String>.from(_selectedTypesForTab(tab));
     final tempFlats = Set<String>.from(_selectedFlatNosForTab(tab));
+    final tempTenders = Set<String>.from(_selectedTendersForTab(tab));
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setInnerState) {
+            final isTransactionReviewSelected = tempTypes.any(
+              (value) => value.toUpperCase() == _transactionReviewType,
+            );
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -1122,35 +1215,118 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                             ),
                                           ),
                                         ]
-                                      : flatNoOptions
-                                            .map(
-                                              (value) => CheckboxListTile(
-                                                dense: true,
-                                                value: tempFlats.contains(
-                                                  value,
-                                                ),
-                                                title: Text(value),
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 12,
+                                      : [
+                                          SizedBox(
+                                            height: 236,
+                                            child: Scrollbar(
+                                              thumbVisibility: true,
+                                              child: ListView.builder(
+                                                itemCount: flatNoOptions.length,
+                                                itemBuilder: (context, index) {
+                                                  final value =
+                                                      flatNoOptions[index];
+                                                  return CheckboxListTile(
+                                                    dense: true,
+                                                    value: tempFlats.contains(
+                                                      value,
                                                     ),
-                                                controlAffinity:
-                                                    ListTileControlAffinity
-                                                        .leading,
-                                                onChanged: (selected) {
-                                                  setInnerState(() {
-                                                    if (selected == true) {
-                                                      tempFlats.add(value);
-                                                    } else {
-                                                      tempFlats.remove(value);
-                                                    }
-                                                  });
+                                                    title: Text(value),
+                                                    contentPadding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 12,
+                                                        ),
+                                                    controlAffinity:
+                                                        ListTileControlAffinity
+                                                            .leading,
+                                                    onChanged: (selected) {
+                                                      setInnerState(() {
+                                                        if (selected == true) {
+                                                          tempFlats.add(value);
+                                                        } else {
+                                                          tempFlats.remove(
+                                                            value,
+                                                          );
+                                                        }
+                                                      });
+                                                    },
+                                                  );
                                                 },
                                               ),
-                                            )
-                                            .toList(),
+                                            ),
+                                          ),
+                                        ],
                                 ),
                               ),
+                              if (isTransactionReviewSelected) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF7FAFA),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFDCEAE7),
+                                    ),
+                                  ),
+                                  child: ExpansionTile(
+                                    initiallyExpanded: false,
+                                    tilePadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    title: const Text(
+                                      'Tender',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    children: tenderOptions.isEmpty
+                                        ? const [
+                                            Padding(
+                                              padding: EdgeInsets.fromLTRB(
+                                                12,
+                                                0,
+                                                12,
+                                                12,
+                                              ),
+                                              child: Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Text(
+                                                  'No tender values found',
+                                                ),
+                                              ),
+                                            ),
+                                          ]
+                                        : tenderOptions
+                                              .map(
+                                                (value) => CheckboxListTile(
+                                                  dense: true,
+                                                  value: tempTenders.contains(
+                                                    value,
+                                                  ),
+                                                  title: Text(value),
+                                                  contentPadding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                      ),
+                                                  controlAffinity:
+                                                      ListTileControlAffinity
+                                                          .leading,
+                                                  onChanged: (selected) {
+                                                    setInnerState(() {
+                                                      if (selected == true) {
+                                                        tempTenders.add(value);
+                                                      } else {
+                                                        tempTenders.remove(
+                                                          value,
+                                                        );
+                                                      }
+                                                    });
+                                                  },
+                                                ),
+                                              )
+                                              .toList(),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1167,6 +1343,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
                               setState(() {
                                 _selectedTypesForTab(tab).clear();
                                 _selectedFlatNosForTab(tab).clear();
+                                _selectedTendersForTab(tab).clear();
                               });
                               Navigator.of(dialogContext).pop();
                             },
@@ -1191,12 +1368,22 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                 final selectedFlats = _selectedFlatNosForTab(
                                   tab,
                                 );
+                                final selectedTenders = _selectedTendersForTab(
+                                  tab,
+                                );
                                 selectedTypes
                                   ..clear()
                                   ..addAll(tempTypes);
                                 selectedFlats
                                   ..clear()
                                   ..addAll(tempFlats);
+                                if (isTransactionReviewSelected) {
+                                  selectedTenders
+                                    ..clear()
+                                    ..addAll(tempTenders);
+                                } else {
+                                  selectedTenders.clear();
+                                }
                               });
                               Navigator.of(dialogContext).pop();
                             },
@@ -1551,6 +1738,9 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     'creatts',
     'creatuserid',
     'createuserid',
+    'createdby',
+    'createdbyname',
+    'createdusername',
     'noofperson',
     'numberofperson',
   };
@@ -1749,8 +1939,8 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     final entries = <Map<String, String>>[];
     final keyLabels = <String, String>{
       'trnscId': 'Transaction ID',
+      'flatId': 'Flat ID',
       'trnsDate': 'Transaction Date Time',
-      'trnsBy': 'Done By',
       'trnsType': 'Type',
       'trnsAmt': 'Amount',
       'trnsStatus': 'Status',
@@ -1758,6 +1948,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       'pymntId': 'Payment ID',
       'trnsBnkAccnt': 'Bank Account',
       'receiptNumber': 'Receipt Number',
+      'trnsBy': 'Done By',
     };
 
     for (final key in keyLabels.keys) {
@@ -1782,12 +1973,14 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     }
 
     for (final entry in widget.transaction.entries) {
+      final normalizedKey = _normalizeKey(entry.key);
       if (keyLabels.containsKey(entry.key) ||
           entry.key == 'trnsFiles' ||
           entry.key == 'trnsTender') {
         continue;
       }
-      if (_hiddenDetailKeys.contains(_normalizeKey(entry.key))) {
+      if (_hiddenDetailKeys.contains(normalizedKey) ||
+          normalizedKey.contains('createdby')) {
         continue;
       }
       final value = _displayValueForKey(entry.key, entry.value);

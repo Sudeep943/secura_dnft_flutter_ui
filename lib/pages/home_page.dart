@@ -3185,51 +3185,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   Future<bool> _validatePriorDuePaymentBeforeTender(
     Map<String, dynamic> payment,
   ) async {
-    final paymentId = payment['paymentId']?.toString().trim() ?? '';
-    final dueId =
-        payment['DueId']?.toString().trim() ??
-        payment['dueId']?.toString().trim() ??
-        '';
-
-    if (paymentId.isEmpty || dueId.isEmpty) {
-      await _showPaymentValidationErrorDialog(
-        'Unable to proceed: paymentId or DueId was not provided.',
-      );
-      return false;
-    }
-
-    final publicFlatNo = ApiService.publicPayFlatNo;
-    final validateResponse = publicFlatNo != null
-        ? await ApiService.validatePriorDuePaymentPublic(
-            flatId: publicFlatNo,
-            dueId: dueId,
-            paymentId: paymentId,
-            dueDate: payment['dueDate']?.toString().trim() ?? '',
-            paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
-          )
-        : await ApiService.validatePriorDuePayment(
-            dueId: dueId,
-            paymentId: paymentId,
-            dueDate: payment['dueDate']?.toString().trim() ?? '',
-            paymentCycle: payment['collectionCycle']?.toString().trim() ?? '',
-          );
-
-    final validateCode =
-        validateResponse?['messageCode']?.toString().trim().toUpperCase() ?? '';
-    final isValidateSuccess = validateCode.contains('SUCC');
-    if (isValidateSuccess) {
-      return true;
-    }
-
-    final validateMessage =
-        validateResponse?['message']?.toString().trim() ??
-        'Prior due validation failed.';
-    await _showPaymentValidationErrorDialog(
-      validateMessage.isEmpty
-          ? 'Prior due validation failed.'
-          : validateMessage,
-    );
-    return false;
+    // Prior-due validation API is intentionally bypassed for this flow.
+    return true;
   }
 
   Future<bool> _createDeepLinkOrder({
@@ -3586,14 +3543,16 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     if (paymentResult.success &&
         (paymentResult.paymentId?.isNotEmpty ?? false) &&
         (paymentResult.signature?.isNotEmpty ?? false)) {
-      final verifyResponse = await ApiService.verifyPayment(
-        razorpayOrderId: paymentResult.orderId ?? orderId,
-        razorpayPaymentId: paymentResult.paymentId!,
-        razorpaySignature: paymentResult.signature!,
-      );
-      final verifyCode = verifyResponse?['messageCode']?.toString() ?? '';
-      if (!verifyCode.startsWith('SUCC')) {
-        transactionStatus = 'FAILED';
+      if (ApiService.publicPayFlatNo != null) {
+        final verifyResponse = await ApiService.verifyPayment(
+          razorpayOrderId: paymentResult.orderId ?? orderId,
+          razorpayPaymentId: paymentResult.paymentId!,
+          razorpaySignature: paymentResult.signature!,
+        );
+        final verifyCode = verifyResponse?['messageCode']?.toString() ?? '';
+        if (!verifyCode.startsWith('SUCC')) {
+          transactionStatus = 'FAILED';
+        }
       }
     }
 

@@ -39,19 +39,22 @@ class _SideBarState extends State<SideBar> {
     AppSection? section,
     VoidCallback? onTap,
   }) {
-    if (section != null && !_isSectionVisible(section)) {
-      return const SizedBox.shrink();
-    }
+    final isEnabledSection =
+        section == AppSection.dashboard || section == AppSection.finance;
 
-    final effectiveOnTap =
-        onTap ??
-        (section == null ? null : () => widget.onSectionSelected(section));
+    final effectiveOnTap = isEnabledSection
+        ? (onTap ??
+              (section == null
+                  ? null
+                  : () => widget.onSectionSelected(section)))
+        : null;
 
     return _SidebarItem(
       title: title,
       icon: icon,
       selected: section != null && widget.selectedSection == section,
       onTap: effectiveOnTap,
+      enabled: isEnabledSection,
     );
   }
 
@@ -214,12 +217,14 @@ class _SidebarItem extends StatefulWidget {
   final IconData icon;
   final bool selected;
   final VoidCallback? onTap;
+  final bool enabled;
 
   const _SidebarItem({
     required this.title,
     required this.icon,
     required this.selected,
     required this.onTap,
+    required this.enabled,
   });
 
   @override
@@ -233,15 +238,27 @@ class _SidebarItemState extends State<_SidebarItem> {
   Widget build(BuildContext context) {
     final glowColor = Colors.white.withValues(alpha: 0.35);
     final isActive = widget.selected;
+    final isEnabled = widget.enabled;
     final tileColor = isActive
         ? Colors.white.withValues(alpha: 0.16)
         : hovered
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.transparent;
+    final iconColor = isEnabled
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.45);
+    final textColor = isEnabled
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.45);
 
     return MouseRegion(
-      onEnter: (_) => setState(() => hovered = true),
+      onEnter: (_) {
+        if (isEnabled) {
+          setState(() => hovered = true);
+        }
+      },
       onExit: (_) => setState(() => hovered = false),
+      cursor: isEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -255,15 +272,15 @@ class _SidebarItemState extends State<_SidebarItem> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
-          leading: Icon(widget.icon, color: Colors.white),
+          leading: Icon(widget.icon, color: iconColor),
           title: AnimatedDefaultTextStyle(
             duration: Duration(milliseconds: 180),
             style: TextStyle(
-              color: Colors.white,
+              color: textColor,
               fontWeight: (hovered || isActive)
                   ? FontWeight.bold
                   : FontWeight.w500,
-              shadows: (hovered || isActive)
+              shadows: (isEnabled && (hovered || isActive))
                   ? [Shadow(color: glowColor, blurRadius: 12)]
                   : null,
             ),

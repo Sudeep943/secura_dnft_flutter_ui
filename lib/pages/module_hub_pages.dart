@@ -1938,75 +1938,12 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
       );
     }
 
-    final canLedgerEntry = _hasAccessFlag('financeAccess', 'ledgerEntryAccess');
-    final canCreatePayment = _hasAccessFlag(
-      'financeAccess',
-      'createNewPaymentAccess',
-    );
-    final canUpdatePayment = _hasAccessFlag(
-      'financeAccess',
-      'updatePaymentAccess',
-    );
-    final canCreateReceipt = _hasAccessFlag(
-      'financeAccess',
-      'createReceiptAccess',
-    );
-    final canUploadPastPayments = _hasAccessFlag(
-      'financeAccess',
-      'uploadPastPaymentAccess',
-    );
-    final canReconcile = _hasAccessFlag(
-      'financeAccess',
-      'reconcilePaymentAccess',
-    );
-    final canBudget = _hasAccessFlag('financeAccess', 'budgetManagment');
-
     final items = <_ModuleHubItem>[
-      if (canLedgerEntry)
-        _ModuleHubItem(
-          'Ledger Entry',
-          Icons.credit_card_off,
-          onTap: () {
-            setState(() {
-              _showCreateLedgerEntry = true;
-            });
-          },
-        ),
-      if (canCreatePayment)
-        _ModuleHubItem(
-          'Create New Payment',
-          Icons.payment,
-          onTap: () {
-            setState(() {
-              _showCreatePayment = true;
-            });
-          },
-        ),
-      if (canUpdatePayment)
-        _ModuleHubItem(
-          'View/Update Payments',
-          Icons.account_balance,
-          onTap: () {
-            setState(() {
-              _showViewPayments = true;
-            });
-          },
-        ),
-      _ModuleHubItem(
-        _loadingDueDetails ? 'Loading Dues...' : 'Pay Dues',
-        Icons.currency_rupee,
-        onTap: _loadingDueDetails ? null : _openDuePaymentsDialog,
-      ),
-      if (canCreateReceipt)
-        _ModuleHubItem(
-          'Create Receipt',
-          Icons.receipt_long_outlined,
-          onTap: () {
-            setState(() {
-              _showCreateReceipt = true;
-            });
-          },
-        ),
+      const _ModuleHubItem('Ledger Entry', Icons.credit_card_off),
+      const _ModuleHubItem('Create New Payment', Icons.payment),
+      const _ModuleHubItem('View/Update Payments', Icons.account_balance),
+      const _ModuleHubItem('Pay Dues', Icons.currency_rupee),
+      const _ModuleHubItem('Create Receipt', Icons.receipt_long_outlined),
       _ModuleHubItem(
         'View Transactions',
         Icons.receipt_outlined,
@@ -2016,32 +1953,15 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
           });
         },
       ),
-      if (canUploadPastPayments)
-        _ModuleHubItem(
-          'Upload Other Due Payments',
-          Icons.upload_file_rounded,
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => const _UploadOtherDuesDialog(),
-            );
-          },
-        ),
-      if (canReconcile)
-        _ModuleHubItem(
-          'Reconcile QR Payments',
-          Icons.qr_code_scanner_rounded,
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => const _ReconcileQrPaymentsDialog(),
-            );
-          },
-        ),
-      if (canBudget)
-        const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
+      const _ModuleHubItem(
+        'Upload Other Due Payments',
+        Icons.upload_file_rounded,
+      ),
+      const _ModuleHubItem(
+        'Reconcile QR Payments',
+        Icons.qr_code_scanner_rounded,
+      ),
+      const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
     ];
 
     return _ModuleHubPage(
@@ -4670,33 +4590,32 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
   @override
   Widget build(BuildContext context) {
     final backgroundIcon = _backgroundIconForTitle(widget.title, widget.icon);
+    final isEnabled = widget.onTap != null;
 
     return MouseRegion(
-      onEnter: (_) => setState(() => hovered = true),
+      onEnter: (_) {
+        if (isEnabled) {
+          setState(() => hovered = true);
+        }
+      },
       onExit: (_) => setState(() => hovered = false),
-      cursor: SystemMouseCursors.click,
+      cursor: isEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
-        onTap: () {
-          final action = widget.onTap;
-          if (action != null) {
-            action();
-            return;
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${widget.title} page is ready for the next step.'),
-            ),
-          );
-        },
+        onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: hovered ? const Color(0xFFF8F4C6) : Colors.white,
+            color: !isEnabled
+                ? const Color(0xFFF6F8F7)
+                : hovered
+                ? const Color(0xFFF8F4C6)
+                : Colors.white,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: hovered
+              color: !isEnabled
+                  ? const Color(0xFFE1E8E5)
+                  : hovered
                   ? const Color(0xFFE0DA84)
                   : const Color(0xFFE6EFED),
             ),
@@ -4717,7 +4636,11 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
                   backgroundIcon,
                   size: 132,
                   color: _ModuleHubPage._brandColor.withValues(
-                    alpha: hovered ? 0.18 : 0.12,
+                    alpha: !isEnabled
+                        ? 0.08
+                        : hovered
+                        ? 0.18
+                        : 0.12,
                   ),
                 ),
               ),
@@ -4730,13 +4653,19 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF5FBF9),
+                        color: isEnabled
+                            ? const Color(0xFFF5FBF9)
+                            : const Color(0xFFF0F4F2),
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: Icon(
                         widget.icon,
                         size: 32,
-                        color: _ModuleHubPage._brandColor,
+                        color: isEnabled
+                            ? _ModuleHubPage._brandColor
+                            : _ModuleHubPage._brandColor.withValues(
+                                alpha: 0.45,
+                              ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -4749,27 +4678,35 @@ class _ModuleActionCardState extends State<_ModuleActionCard> {
                             widget.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 20,
-                              color: _ModuleHubPage._brandTextColor,
+                              color: isEnabled
+                                  ? _ModuleHubPage._brandTextColor
+                                  : Color(0xFF7C928B),
                               height: 1.15,
                             ),
                           ),
                           const SizedBox(height: 14),
-                          const Row(
+                          Row(
                             children: [
                               Text(
-                                'Open',
+                                isEnabled ? 'Open' : 'Disabled',
                                 style: TextStyle(
-                                  color: _ModuleHubPage._brandColor,
+                                  color: isEnabled
+                                      ? _ModuleHubPage._brandColor
+                                      : const Color(0xFF7C928B),
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Icon(
-                                Icons.arrow_forward_rounded,
-                                color: _ModuleHubPage._brandColor,
+                                isEnabled
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.block_rounded,
+                                color: isEnabled
+                                    ? _ModuleHubPage._brandColor
+                                    : const Color(0xFF7C928B),
                                 size: 18,
                               ),
                             ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
@@ -28,6 +29,7 @@ class ViewTransactionsPage extends StatefulWidget {
 class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
+  static const int _pageSize = 50;
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _tableHorizontalController = ScrollController();
@@ -56,6 +58,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   bool _sortDescending = true;
   final Map<String, Map<String, String>> _paymentHoverDetailsCache =
       <String, Map<String, String>>{};
+  int _currentPage = 1;
 
   @override
   void initState() {
@@ -219,6 +222,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         _loading = false;
         _transactions = list;
         _apartmentName = _extractApartmentName(response);
+        _currentPage = 1;
         _loadingProgress = 0.0;
       });
     } catch (_) {
@@ -365,7 +369,27 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         _sortField = field;
         _sortDescending = true;
       }
+      _currentPage = 1;
     });
+  }
+
+  int _totalPages(int totalRows) {
+    if (totalRows <= 0) {
+      return 1;
+    }
+    return (totalRows / _pageSize).ceil();
+  }
+
+  List<Map<String, dynamic>> _pageRows(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final totalPages = _totalPages(rows.length);
+    final current = _currentPage.clamp(1, totalPages);
+    final start = (current - 1) * _pageSize;
+    final end = math.min(start + _pageSize, rows.length);
+    return rows.sublist(start, end);
   }
 
   Widget _buildSortableHeader(String title, _TxnSortField field, double width) {
@@ -471,8 +495,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     return filtered;
   }
 
-  double get _totalCredit {
-    return _filteredTransactions
+  double _totalCreditFor(List<Map<String, dynamic>> rows) {
+    return rows
         .where(
           (txn) =>
               (txn['trnsType']?.toString().trim().toUpperCase() ?? '') ==
@@ -483,8 +507,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         .fold<double>(0, (sum, txn) => sum + _toAmount(txn['trnsAmt']));
   }
 
-  double get _totalDebit {
-    return _filteredTransactions
+  double _totalDebitFor(List<Map<String, dynamic>> rows) {
+    return rows
         .where(
           (txn) =>
               (txn['trnsType']?.toString().trim().toUpperCase() ?? '') ==
@@ -548,6 +572,11 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       tokens.add('Status: ${_selectedStatuses.join(', ')}');
     }
     return tokens;
+  }
+
+  List<Map<String, dynamic>> _rowsForExport() {
+    // Export should always use full filtered data, never the paginated view.
+    return List<Map<String, dynamic>>.from(_filteredTransactions);
   }
 
   List<String> _filterLinesForExport(List<String> tokens) {
@@ -974,6 +1003,27 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         row++;
       }
 
+      // Use stable column widths for large exports; auto-fit on huge ranges can
+      // be very slow and may make export look like it is stuck.
+      const exportColumnWidths = <int, double>{
+        1: 8,
+        2: 24,
+        3: 24,
+        4: 22,
+        5: 12,
+        6: 28,
+        7: 12,
+        8: 22,
+        9: 12,
+        10: 18,
+        11: 12,
+        12: 20,
+        13: 20,
+      };
+      exportColumnWidths.forEach((column, width) {
+        sheet.getRangeByIndex(1, column).columnWidth = width;
+      });
+
       if (row - 1 >= headerRow) {
         final tableRange = sheet.getRangeByIndex(
           headerRow,
@@ -981,7 +1031,6 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
           row - 1,
           headers.length,
         );
-        tableRange.autoFitColumns();
         tableRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
         tableRange.cellStyle.borders.all.color = '#B7D8D2';
       }
@@ -1017,7 +1066,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   }
 
   Future<void> _showDownloadOptionsDialog() async {
-    final rows = _filteredTransactions;
+    final rows = _rowsForExport();
     if (rows.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No rows available to download.')),
@@ -1514,6 +1563,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       _selectedDoneBy.clear();
                       _selectedPaymentIds.clear();
                       _selectedStatuses.clear();
+                      _currentPage = 1;
                     });
                     Navigator.of(dialogContext).pop();
                   },
@@ -1530,6 +1580,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                       _selectedDoneBy = localDoneBy;
                       _selectedPaymentIds = localPaymentIds;
                       _selectedStatuses = localStatuses;
+                      _currentPage = 1;
                     });
                     Navigator.of(dialogContext).pop();
                   },
@@ -1719,7 +1770,10 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     return details;
   }
 
-  Widget _buildTotalsBar() {
+  Widget _buildTotalsBar(List<Map<String, dynamic>> rows) {
+    final totalCredit = _totalCreditFor(rows);
+    final totalDebit = _totalDebitFor(rows);
+
     return Row(
       children: [
         Expanded(
@@ -1742,7 +1796,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _money(_totalCredit),
+                  _money(totalCredit),
                   style: const TextStyle(
                     color: _brandColor,
                     fontSize: 20,
@@ -1774,7 +1828,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _money(_totalDebit),
+                  _money(totalDebit),
                   style: const TextStyle(
                     color: Color(0xFFB3261E),
                     fontSize: 20,
@@ -1789,8 +1843,74 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     );
   }
 
-  Widget _buildTable() {
-    final rows = _filteredTransactions;
+  Widget _buildPaginationBar({
+    required int totalRows,
+    required int totalPages,
+    required int currentPage,
+  }) {
+    final start = totalRows == 0 ? 0 : ((currentPage - 1) * _pageSize) + 1;
+    final end = math.min(currentPage * _pageSize, totalRows);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
+      child: Row(
+        children: [
+          Text(
+            'Showing $start-$end of $totalRows transactions',
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFF4D6662),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          OutlinedButton.icon(
+            onPressed: currentPage > 1
+                ? () {
+                    setState(() {
+                      _currentPage = currentPage - 1;
+                    });
+                  }
+                : null,
+            icon: const Icon(Icons.chevron_left_rounded, size: 18),
+            label: const Text('Previous'),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7F4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFCFE9E2)),
+            ),
+            child: Text(
+              'Page $currentPage of $totalPages',
+              style: const TextStyle(
+                color: _brandTextColor,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: currentPage < totalPages
+                ? () {
+                    setState(() {
+                      _currentPage = currentPage + 1;
+                    });
+                  }
+                : null,
+            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            label: const Text('Next'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTable(List<Map<String, dynamic>> filteredRows) {
+    final rows = _pageRows(filteredRows);
     if (rows.isEmpty) {
       return const Center(
         child: Text('No transactions found for current selection.'),
@@ -2322,12 +2442,34 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
       );
     }
 
+    final filteredRows = _filteredTransactions;
+    final totalRows = filteredRows.length;
+    final totalPages = _totalPages(totalRows);
+    final currentPage = _currentPage.clamp(1, totalPages);
+
+    if (currentPage != _currentPage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _currentPage = currentPage;
+        });
+      });
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildTotalsBar(),
+        _buildTotalsBar(filteredRows),
         const SizedBox(height: 14),
-        Expanded(child: _buildTable()),
+        if (totalRows > 0)
+          _buildPaginationBar(
+            totalRows: totalRows,
+            totalPages: totalPages,
+            currentPage: currentPage,
+          ),
+        Expanded(child: _buildTable(filteredRows)),
       ],
     );
   }

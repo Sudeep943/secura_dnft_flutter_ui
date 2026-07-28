@@ -1486,13 +1486,59 @@ class _FlatDetailsConfirmationDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFE7D29E)),
                   ),
-                  child: const SelectableText(
-                    'If you notice any issue with these details, please contact society administration.',
-                    style: TextStyle(
-                      color: Color(0xFF6A5A32),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Need Help Or Found Incorrect Details? Contact The Help Desk At Activity Hall, Tower 10, Dn Fairytale.',
+                        style: TextStyle(
+                          color: Color(0xFF6A5A32),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.mail_outline_rounded,
+                            size: 16,
+                            color: Color(0xFF866C30),
+                          ),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: SelectableText(
+                              'Mail: contact@dnfaoa.org',
+                              style: TextStyle(
+                                color: Color(0xFF6A5A32),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.call_rounded,
+                            size: 16,
+                            color: Color(0xFF866C30),
+                          ),
+                          SizedBox(width: 6),
+                          SelectableText(
+                            '9777160816',
+                            style: TextStyle(
+                              color: Color(0xFF6A5A32),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],

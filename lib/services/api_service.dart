@@ -11,9 +11,9 @@ import 'session_storage_stub.dart'
     as session_storage;
 
 class ApiService {
-  // static const String _baseUrl = 'http://localhost:8080';
-  static const String _baseUrl =
-      'https://securadnft-api-380953428736.asia-south1.run.app';
+  static const String _baseUrl = 'http://localhost:8080';
+  // static const String _baseUrl =
+  //     'https://securadnft-api-380953428736.asia-south1.run.app';
 
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
@@ -2774,6 +2774,46 @@ class ApiService {
 
     final data = jsonDecode(response.body);
     if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> rejectTransactionWorkListPublic({
+    required String transactionId,
+  }) async {
+    final trimmedTransactionId = transactionId.trim();
+    if (trimmedTransactionId.isEmpty) {
+      return null;
+    }
+
+    Map<String, dynamic>? genericHeader;
+    if (_publicPayFlatNo != null && _publicPayFlatNo!.trim().isNotEmpty) {
+      genericHeader = _buildPublicGenericHeader(_publicPayFlatNo!);
+    } else {
+      genericHeader = _buildGenericHeader();
+    }
+
+    if (genericHeader == null) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/rejectTransactionWorkList'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'genericHeader': genericHeader,
+        'transactionId': trimmedTransactionId,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
 
     return Map<String, dynamic>.from(data);
   }

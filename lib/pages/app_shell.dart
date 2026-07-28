@@ -760,15 +760,17 @@ class _WorklistDialogState extends State<_WorklistDialog>
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              setState(() {
-                if (isExpanded) {
-                  _expandedWorklistIds.remove(expandKey);
-                } else {
-                  _expandedWorklistIds.add(expandKey);
-                }
-              });
-            },
+            onTap: isTransactionReview
+                ? null
+                : () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedWorklistIds.remove(expandKey);
+                      } else {
+                        _expandedWorklistIds.add(expandKey);
+                      }
+                    });
+                  },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
               child: Row(
@@ -784,13 +786,15 @@ class _WorklistDialogState extends State<_WorklistDialog>
                     ),
                   ),
                   _buildStatusBadge(status),
-                  const SizedBox(width: 8),
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: const Color(0xFF26514D),
-                  ),
+                  if (!isTransactionReview) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: const Color(0xFF26514D),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -826,7 +830,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
           ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 220),
-            crossFadeState: isExpanded
+            crossFadeState: !isTransactionReview && isExpanded
                 ? CrossFadeState.showFirst
                 : CrossFadeState.showSecond,
             firstChild: Padding(
@@ -1040,6 +1044,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
     final tempTypes = Set<String>.from(_selectedTypesForTab(tab));
     final tempFlats = Set<String>.from(_selectedFlatNosForTab(tab));
     final tempTenders = Set<String>.from(_selectedTendersForTab(tab));
+    var flatSearchText = '';
 
     await showDialog<void>(
       context: context,
@@ -1049,6 +1054,15 @@ class _WorklistDialogState extends State<_WorklistDialog>
             final isTransactionReviewSelected = tempTypes.any(
               (value) => value.toUpperCase() == _transactionReviewType,
             );
+            final normalizedFlatSearch = flatSearchText.trim().toLowerCase();
+            final filteredFlatNoOptions = normalizedFlatSearch.isEmpty
+                ? flatNoOptions
+                : flatNoOptions
+                      .where(
+                        (value) =>
+                            value.toLowerCase().contains(normalizedFlatSearch),
+                      )
+                      .toList();
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -1216,44 +1230,119 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                           ),
                                         ]
                                       : [
-                                          SizedBox(
-                                            height: 236,
-                                            child: Scrollbar(
-                                              thumbVisibility: true,
-                                              child: ListView.builder(
-                                                itemCount: flatNoOptions.length,
-                                                itemBuilder: (context, index) {
-                                                  final value =
-                                                      flatNoOptions[index];
-                                                  return CheckboxListTile(
-                                                    dense: true,
-                                                    value: tempFlats.contains(
-                                                      value,
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              12,
+                                              4,
+                                              12,
+                                              8,
+                                            ),
+                                            child: TextField(
+                                              onChanged: (value) {
+                                                setInnerState(() {
+                                                  flatSearchText = value;
+                                                });
+                                              },
+                                              decoration: InputDecoration(
+                                                hintText: 'Search Flat No',
+                                                isDense: true,
+                                                prefixIcon: const Icon(
+                                                  Icons.search_rounded,
+                                                  size: 18,
+                                                ),
+                                                border: OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                enabledBorder:
+                                                    OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                      borderSide:
+                                                          const BorderSide(
+                                                            color: Color(
+                                                              0xFFDCEAE7,
+                                                            ),
+                                                          ),
                                                     ),
-                                                    title: Text(value),
-                                                    contentPadding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 12,
-                                                        ),
-                                                    controlAffinity:
-                                                        ListTileControlAffinity
-                                                            .leading,
-                                                    onChanged: (selected) {
-                                                      setInnerState(() {
-                                                        if (selected == true) {
-                                                          tempFlats.add(value);
-                                                        } else {
-                                                          tempFlats.remove(
-                                                            value,
-                                                          );
-                                                        }
-                                                      });
-                                                    },
-                                                  );
-                                                },
+                                                focusedBorder:
+                                                    OutlineInputBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                      borderSide:
+                                                          const BorderSide(
+                                                            color: Color(
+                                                              0xFF0F8F82,
+                                                            ),
+                                                            width: 1.2,
+                                                          ),
+                                                    ),
                                               ),
                                             ),
                                           ),
+                                          if (filteredFlatNoOptions.isEmpty)
+                                            const Padding(
+                                              padding: EdgeInsets.fromLTRB(
+                                                12,
+                                                0,
+                                                12,
+                                                12,
+                                              ),
+                                              child: Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Text(
+                                                  'No matching flat numbers',
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            SizedBox(
+                                              height: 236,
+                                              child: Scrollbar(
+                                                thumbVisibility: true,
+                                                child: ListView.builder(
+                                                  itemCount:
+                                                      filteredFlatNoOptions
+                                                          .length,
+                                                  itemBuilder: (context, index) {
+                                                    final value =
+                                                        filteredFlatNoOptions[index];
+                                                    return CheckboxListTile(
+                                                      dense: true,
+                                                      value: tempFlats.contains(
+                                                        value,
+                                                      ),
+                                                      title: Text(value),
+                                                      contentPadding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 12,
+                                                          ),
+                                                      controlAffinity:
+                                                          ListTileControlAffinity
+                                                              .leading,
+                                                      onChanged: (selected) {
+                                                        setInnerState(() {
+                                                          if (selected ==
+                                                              true) {
+                                                            tempFlats.add(
+                                                              value,
+                                                            );
+                                                          } else {
+                                                            tempFlats.remove(
+                                                              value,
+                                                            );
+                                                          }
+                                                        });
+                                                      },
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                         ],
                                 ),
                               ),

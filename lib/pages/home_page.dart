@@ -3189,28 +3189,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return true;
   }
 
-  Future<bool> _createDeepLinkOrder({
+  Future<List<String>?> _createDeepLinkOrder({
     required Map<String, dynamic> payment,
     required double netPayable,
-    required String qrIdentifier,
     required String bankId,
     required BuildContext hostContext,
   }) async {
-    final tid = qrIdentifier.trim();
-    if (tid.isEmpty || tid == '--') {
-      _showStatusSnack(
-        'Payment recorded, but qrIdentifier was missing for Society QR order creation.',
-        isError: true,
-      );
-      return false;
-    }
-
     if (bankId.trim().isEmpty) {
       _showStatusSnack(
         'Payment recorded, but bank ID was missing for Society QR order creation.',
         isError: true,
       );
-      return false;
+      return null;
     }
 
     final response = await ApiService.createPaymentGatewayOrder(
@@ -3218,7 +3208,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       amountInPaisa: _toPaise(netPayable).toString(),
       eventDate: DateTime.now().toIso8601String(),
       transactionType: 'DEEPLINK',
-      data: {'tid': tid, 'tn': tid, 'bankId': bankId.trim()},
+      data: {'bankId': bankId.trim()},
     );
 
     final messageCode = response?['messageCode']?.toString().trim() ?? '';
@@ -3237,10 +3227,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             'Unable to create Society QR payment order.',
         isError: true,
       );
-      return false;
+      return null;
     }
 
-    await _showDeepLinkPaymentModal(
+    final files = await _showDeepLinkPaymentModal(
       hostContext: hostContext,
       upiPaymentURL: upiPaymentURL,
       amount: _formatAmountForRequest(netPayable),
@@ -3249,17 +3239,17 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           responseMap['accountHolderName']?.toString().trim() ?? '',
     );
 
-    return true;
+    return files;
   }
 
-  Future<void> _showDeepLinkPaymentModal({
+  Future<List<String>?> _showDeepLinkPaymentModal({
     required BuildContext hostContext,
     required String upiPaymentURL,
     required String amount,
     required String bankName,
     required String accountHolderName,
   }) async {
-    await showDialog<void>(
+    return showDialog<List<String>>(
       context: hostContext,
       barrierDismissible: false,
       builder: (dialogContext) => _DeepLinkPaymentDialog(
@@ -3328,6 +3318,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       String transactionStatus;
       String thirdPartyTransactionId = '';
       String thirdPartyName = '';
+      final filesToSubmit = <String>[...selection.listOfFiles];
+      var qrCancelledByUser = false;
 
       if (selection.tender == 'ONLINE') {
         final onlineOutcome = await _runOnlinePayment(
@@ -3343,6 +3335,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
         thirdPartyName = 'RAZORPAY';
       } else if (_isSocietyQrTender(selection.tender)) {
+        final hostContext = Navigator.of(context, rootNavigator: true).context;
+        final qrFiles = await _createDeepLinkOrder(
+          payment: payment,
+          netPayable: selection.netPayable,
+          bankId: bankId,
+          hostContext: hostContext,
+        );
+        if (qrFiles == null || qrFiles.isEmpty) {
+          qrCancelledByUser = true;
+        } else {
+          filesToSubmit.addAll(qrFiles);
+        }
         transactionStatus = 'ON_HOLD';
         thirdPartyName = 'DEEPLINKUPI';
       } else {
@@ -3372,7 +3376,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         'transactionStatus': transactionStatus,
         'thirdPartyName': thirdPartyName,
         'noOfPersons': selection.noOfPersons.toString(),
-        'files': selection.listOfFiles,
+        'files': filesToSubmit,
         'paidDueDetails': {
           'dueId': dueId,
           'collectionCycle':
@@ -3429,8 +3433,21 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         final hostContext = Navigator.of(context, rootNavigator: true).context;
         final successMessage = _extractPayDuesMessage(response);
         final transactionId = _extractPayDuesTransactionId(response);
-        final qrIdentifier = _extractPayDuesQrIdentifier(response);
         final receiptBase64 = _extractPayDuesReceiptBase64(response);
+
+        if (_isSocietyQrTender(selection.tender) && qrCancelledByUser) {
+          await ApiService.rejectTransactionWorkListPublic(
+            transactionId: transactionId,
+          );
+
+          if (!mounted) {
+            return;
+          }
+
+          Navigator.of(context).pop();
+          return;
+        }
+
         if (widget.onPaymentCompleted != null) {
           await widget.onPaymentCompleted!.call();
         }
@@ -3444,22 +3461,6 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           return;
         }
         Navigator.of(context).pop();
-        if (_isSocietyQrTender(selection.tender)) {
-          await _createDeepLinkOrder(
-            payment: payment,
-            netPayable: selection.netPayable,
-            qrIdentifier: qrIdentifier,
-            bankId: bankId,
-            hostContext: hostContext,
-          );
-          await _showPayDuesSuccessDialog(
-            hostContext: hostContext,
-            message: successMessage,
-            transactionId: transactionId,
-            receiptBase64: receiptBase64,
-          );
-          return;
-        }
         await _showPayDuesSuccessDialog(
           hostContext: hostContext,
           message: successMessage,
@@ -5434,6 +5435,52 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                     ),
                   ),
                 ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8D9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE3C96F)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'To Pay Physically Please Visit Activity Hall, Tower 10, Dn Fairytale.',
+                      style: TextStyle(
+                        color: Color(0xFF6A5723),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.call_rounded,
+                          size: 16,
+                          color: Color(0xFF876F2C),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          '9777160816',
+                          style: TextStyle(
+                            color: Color(0xFF6A5723),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 14),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -5545,13 +5592,75 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
               _buildBankInstrumentDetailsSection(),
               if (_requiresReceipts) ...[
                 const SizedBox(height: 14),
+                if (_selectedTender == 'OFFLINE_BANK_TRANSFER')
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF5E8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFFFA33A),
+                        width: 1.8,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66FF8A00),
+                          blurRadius: 26,
+                          spreadRadius: 3,
+                          offset: Offset(0, 0),
+                        ),
+                        BoxShadow(
+                          color: Color(0x55FF9B3D),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Attach Screenshot',
+                          style: TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Upload Transaction Screenshot For Reconciliation',
+                          style: TextStyle(
+                            color: Color(0xFF8C4C11),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 OutlinedButton.icon(
                   onPressed: _pickReceipts,
                   icon: const Icon(Icons.add),
                   label: const Text('Add Document'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0F8F82),
-                    side: const BorderSide(color: Color(0xFF0F8F82)),
+                    foregroundColor: _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                        ? const Color(0xFF8C4C11)
+                        : const Color(0xFF0F8F82),
+                    side: BorderSide(
+                      color: _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                          ? const Color(0xFFFFA33A)
+                          : const Color(0xFF0F8F82),
+                    ),
+                    backgroundColor: _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                        ? const Color(0xFFFFF5E8)
+                        : null,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -6492,43 +6601,169 @@ class _DeepLinkPaymentDialog extends StatefulWidget {
 }
 
 class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
-  static const Duration _countdownDuration = Duration(minutes: 3);
-
-  late int _remainingSeconds;
-  Timer? _timer;
+  _PickedReceipt? _attachedScreenshot;
+  String? _attachError;
 
   @override
   void initState() {
     super.initState();
-    _remainingSeconds = _countdownDuration.inSeconds;
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      if (_remainingSeconds <= 1) {
-        timer.cancel();
-        Navigator.of(context).pop();
-        return;
-      }
-
-      setState(() {
-        _remainingSeconds--;
-      });
-    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     super.dispose();
   }
 
-  String get _countdownLabel {
-    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+  Future<void> _pickScreenshot() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png'],
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final file = result.files.first;
+    final extension = (file.extension ?? '').toLowerCase().trim();
+    if (!(extension == 'jpg' || extension == 'jpeg' || extension == 'png')) {
+      setState(() {
+        _attachError =
+            'Only Jpg, Jpeg, Or Png Files Are Allowed. Please Select A Valid Image File.';
+      });
+      return;
+    }
+
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _attachError = 'Selected File Is Empty. Please Choose Another File.';
+      });
+      return;
+    }
+
+    final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+    final encoded = base64Encode(bytes);
+    setState(() {
+      _attachError = null;
+      _attachedScreenshot = _PickedReceipt(
+        fileName: file.name,
+        filePayload: 'data:$mimeType;name=${file.name};base64,$encoded',
+      );
+    });
+  }
+
+  Future<void> _showQrPaymentCancelledErrorModal() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFFFF4F4),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFF3B7B7)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Color(0xFFB3261E)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Qr Payment Cancelled',
+                  style: TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Qr Payment Is Cancelled.',
+            style: TextStyle(
+              color: Color(0xFF8E1B14),
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB3261E),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Ok'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _showCancelConfirmation() async {
+    final decision = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFFFF4F4),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFF3B7B7)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_rounded, color: Color(0xFFB3261E)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Cancel Qr Payment',
+                  style: TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'If You Cancel Without Uploading The Screenshot, Transaction Will Be Automatically Rejected By The System.\n\nAre You Sure To Cancel?',
+            style: TextStyle(
+              color: Color(0xFF8E1B14),
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              height: 1.45,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(
+                'No',
+                style: TextStyle(color: Color(0xFF8E1B14)),
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB3261E),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return decision == true;
   }
 
   @override
@@ -6567,13 +6802,29 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
           ),
           const SizedBox(width: 10),
           const Expanded(
-            child: Text(
-              'QR Payment',
-              style: TextStyle(
-                color: Color(0xFF124B45),
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Scan, Pay And Upload Document',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Upload The Screenshot Below Once You Complete The Transaction.',
+                  style: TextStyle(
+                    color: Color(0xFF4F6764),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -6619,7 +6870,7 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                     border: Border.all(color: const Color(0xFFFFCC80)),
                   ),
                   child: const Text(
-                    'QR code not available — UPI URL was not returned by the payment gateway.',
+                    'Qr Code Is Not Available. Upi Url Was Not Returned By The Payment Gateway.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF7C4D00), fontSize: 13),
                   ),
@@ -6636,7 +6887,7 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Scan this QR code using any UPI app to pay',
+                'Scan This Qr Code Using Any Upi App To Pay',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.black54, fontSize: 12),
               ),
@@ -6680,6 +6931,147 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                 ),
               ],
               const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5E8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFFFA33A),
+                    width: 1.8,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66FF8A00),
+                      blurRadius: 26,
+                      spreadRadius: 3,
+                      offset: Offset(0, 0),
+                    ),
+                    BoxShadow(
+                      color: Color(0x55FF9B3D),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Attach Screenshot',
+                      style: TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Upload Transaction Screenshot For Reconciliation',
+                      style: TextStyle(
+                        color: Color(0xFF8C4C11),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _pickScreenshot,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: Text(
+                        _attachedScreenshot == null
+                            ? 'Add Document'
+                            : 'Replace Document',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF8C4C11),
+                        side: const BorderSide(color: Color(0xFFFFA33A)),
+                        backgroundColor: const Color(0xFFFFF5E8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_attachError != null && _attachError!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          _attachError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    if (_attachedScreenshot == null)
+                      const Text(
+                        'Accepted Formats: Jpg, Jpeg, Png',
+                        style: TextStyle(
+                          color: Color(0xFF51605F),
+                          fontSize: 12,
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FBFB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFD7EAE3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.attachment_rounded,
+                              size: 16,
+                              color: Color(0xFF0F8F82),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _attachedScreenshot!.fileName,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF124B45),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _attachedScreenshot = null;
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: Color(0xFF5E6D6B),
+                              ),
+                              constraints: const BoxConstraints.tightFor(
+                                width: 28,
+                                height: 28,
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               // ── Instruction text ─────────────────────────────
               Container(
                 width: double.infinity,
@@ -6705,7 +7097,7 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'After Payment Close The Modal, Transaction Receipt Will be Mailed To The Registered Mail Id Once The Payment is Verified.',
+                      'After Payment, Tap Done To Continue.',
                       style: TextStyle(
                         color: Color(0xFF124B45),
                         fontSize: 12,
@@ -6715,31 +7107,34 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
-              // ── Countdown ────────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.timer_outlined,
-                    size: 14,
-                    color: Colors.black45,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Closes in $_countdownLabel',
-                    style: const TextStyle(color: Colors.black45, fontSize: 12),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+          onPressed: _attachedScreenshot != null
+              ? null
+              : () async {
+                  final shouldCancel = await _showCancelConfirmation();
+                  if (!mounted || !shouldCancel) {
+                    return;
+                  }
+                  await _showQrPaymentCancelledErrorModal();
+                  if (!mounted) {
+                    return;
+                  }
+                  Navigator.of(context).pop(null);
+                },
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _attachedScreenshot == null
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(<String>[_attachedScreenshot!.filePayload]),
+          child: const Text('Done'),
         ),
       ],
     );

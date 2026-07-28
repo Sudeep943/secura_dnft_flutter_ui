@@ -569,6 +569,8 @@ class _WorklistDialogState extends State<_WorklistDialog>
   final Set<String> _completedSelectedTypes = <String>{};
   final Set<String> _completedSelectedFlatNos = <String>{};
   final Set<String> _completedSelectedTenders = <String>{};
+  bool _pendingSortFromDateAscending = false;
+  bool _completedSortFromDateAscending = false;
   late final AnimationController _statusGlowController;
 
   @override
@@ -617,6 +619,44 @@ class _WorklistDialogState extends State<_WorklistDialog>
     } catch (_) {
       return raw;
     }
+  }
+
+  DateTime? _createdDate(Map<String, dynamic> item) {
+    final raw = item['creatTs']?.toString().trim() ?? '';
+    if (raw.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(raw);
+  }
+
+  List<Map<String, dynamic>> _sortRowsByFromDate(
+    List<Map<String, dynamic>> rows,
+    _WorklistTabKind tab,
+  ) {
+    final sorted = List<Map<String, dynamic>>.from(rows);
+    final ascending = tab == _WorklistTabKind.pending
+        ? _pendingSortFromDateAscending
+        : _completedSortFromDateAscending;
+
+    sorted.sort((a, b) {
+      final aDate = _createdDate(a);
+      final bDate = _createdDate(b);
+
+      int compare;
+      if (aDate == null && bDate == null) {
+        compare = 0;
+      } else if (aDate == null) {
+        compare = 1;
+      } else if (bDate == null) {
+        compare = -1;
+      } else {
+        compare = aDate.compareTo(bDate);
+      }
+
+      return ascending ? compare : -compare;
+    });
+
+    return sorted;
   }
 
   Future<void> _refreshWorklists() async {
@@ -1504,6 +1544,11 @@ class _WorklistDialogState extends State<_WorklistDialog>
     required List<Map<String, dynamic>> rows,
     required String emptyMessage,
   }) {
+    final sortedRows = _sortRowsByFromDate(rows, tab);
+    final sortAscending = tab == _WorklistTabKind.pending
+        ? _pendingSortFromDateAscending
+        : _completedSortFromDateAscending;
+
     if (rows.isEmpty) {
       return Center(
         child: Column(
@@ -1577,15 +1622,39 @@ class _WorklistDialogState extends State<_WorklistDialog>
                   side: const BorderSide(color: Color(0xFF9FD2CB)),
                 ),
               ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    if (tab == _WorklistTabKind.pending) {
+                      _pendingSortFromDateAscending =
+                          !_pendingSortFromDateAscending;
+                    } else {
+                      _completedSortFromDateAscending =
+                          !_completedSortFromDateAscending;
+                    }
+                  });
+                },
+                icon: Icon(
+                  sortAscending
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 18,
+                ),
+                label: Text(sortAscending ? 'From Date Asc' : 'From Date Desc'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _brandColor,
+                  side: const BorderSide(color: Color(0xFF9FD2CB)),
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 12),
         Expanded(
           child: ListView.separated(
-            itemCount: rows.length,
+            itemCount: sortedRows.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, index) => _buildWorklistCard(rows[index]),
+            itemBuilder: (_, index) => _buildWorklistCard(sortedRows[index]),
           ),
         ),
       ],

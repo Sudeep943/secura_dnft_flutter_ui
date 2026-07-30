@@ -1032,11 +1032,15 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  static Future<Map<String, dynamic>?> getDueAmountForFlat() async {
+  static Future<Map<String, dynamic>?> getDueAmountForFlat({
+    String? flatId,
+  }) async {
     if (token == null || userHeader == null) return null;
 
-    final flatId = getLoggedInFlatNo();
-    if (flatId == null || flatId.isEmpty) {
+    final resolvedFlatId = (flatId != null && flatId.trim().isNotEmpty)
+        ? flatId.trim()
+        : getLoggedInFlatNo();
+    if (resolvedFlatId == null || resolvedFlatId.isEmpty) {
       return null;
     }
 
@@ -1048,7 +1052,47 @@ class ApiService {
       },
       body: jsonEncode({
         'genericHeader': Map<String, dynamic>.from(userHeader!),
+        'flatId': resolvedFlatId,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> removePayment({
+    required String paymentId,
+    required String dueId,
+    required String flatId,
+    bool confirmDeleteTransactionFlag = false,
+  }) async {
+    if (token == null || userHeader == null) {
+      return null;
+    }
+
+    final genericHeader =
+        _buildLoginResponseHeader() ?? Map<String, dynamic>.from(userHeader!);
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/payment/removePayment'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': genericHeader,
+        'paymentId': paymentId,
+        'dueId': dueId,
         'flatId': flatId,
+        'confirmDeleteTransactionFlag': confirmDeleteTransactionFlag,
       }),
     );
 

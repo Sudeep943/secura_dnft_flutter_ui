@@ -271,6 +271,18 @@ class FlatManagementPage extends StatelessWidget {
           Icons.edit_outlined,
           onTap: () => _showPlaceholderMessage(context, 'Update Flat'),
         ),
+      if (canAddUpdateFlat)
+        _ModuleHubItem(
+          'Update Flat Due',
+          Icons.currency_rupee_rounded,
+          onTap: () {
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const _UpdateFlatDueDialog(),
+            );
+          },
+        ),
       _ModuleHubItem(
         'Upload Flat Details',
         Icons.upload_file_outlined,
@@ -296,6 +308,1438 @@ class FlatManagementPage extends StatelessWidget {
       subtitle:
           'Choose one of the flat management actions below to add, update, or upload flat details.',
       items: items,
+    );
+  }
+}
+
+class _UpdateFlatDueDialog extends StatefulWidget {
+  const _UpdateFlatDueDialog();
+
+  @override
+  State<_UpdateFlatDueDialog> createState() => _UpdateFlatDueDialogState();
+}
+
+class _UpdateFlatDueDialogState extends State<_UpdateFlatDueDialog> {
+  String? _selectedFlatId;
+  List<_FlatSelectionNode> _flatNodes = const [];
+  Map<String, String> _flatLabelById = const {};
+  bool _loadingFlats = false;
+  String? _flatLoadError;
+  bool _loadingDueDetails = false;
+  String? _dueLoadError;
+  Map<String, List<Map<String, dynamic>>> _dueDetailsByPayment = const {};
+  String? _deletingPaymentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPublicFlats();
+  }
+
+  Future<void> _loadPublicFlats() async {
+    setState(() {
+      _loadingFlats = true;
+      _flatLoadError = null;
+    });
+
+    try {
+      final response = await ApiService.getFlatsPublic();
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null || !_isSuccessResponse(response)) {
+        setState(() {
+          _flatNodes = const [];
+          _flatLabelById = const {};
+          _selectedFlatId = null;
+          _flatLoadError = _responseMessage(
+            response,
+            fallback: 'Unable to load flat list right now.',
+          );
+        });
+        return;
+      }
+
+      final nodes = _buildFlatNodes(response);
+      final allFlatIds = _collectFlatIds(nodes);
+      final labelMap = _buildFlatLabelMap(nodes);
+      setState(() {
+        _flatNodes = nodes;
+        _flatLabelById = labelMap;
+        _selectedFlatId = allFlatIds.contains(_selectedFlatId)
+            ? _selectedFlatId
+            : null;
+        _flatLoadError = allFlatIds.isEmpty
+            ? 'No flats were returned for this apartment.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _flatNodes = const [];
+        _flatLabelById = const {};
+        _selectedFlatId = null;
+        _flatLoadError = 'Unable to load flat list right now.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingFlats = false;
+        });
+      }
+    }
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic> response) {
+    final messageCode = response['messageCode']?.toString() ?? '';
+    if (messageCode.toUpperCase().startsWith('SUCC')) {
+      return true;
+    }
+
+    final payload = _extractFlatPayload(response);
+    return payload['blockList'] is List ||
+        payload['towerList'] is List ||
+        payload['flatList'] is List;
+  }
+
+  Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
+    final data = response['data'];
+    final root = data is Map
+        ? Map<String, dynamic>.from(data)
+        : Map<String, dynamic>.from(response);
+
+    dynamic readAny(List<String> keys) {
+      for (final key in keys) {
+        if (root.containsKey(key)) {
+          return root[key];
+        }
+      }
+      return null;
+    }
+
+    return {
+      'blockList': readAny(['blockList', 'blocklist', 'blocks', 'block']),
+      'towerList': readAny(['towerList', 'towerlist', 'towers', 'tower']),
+      'flatList': readAny([
+        'flatList',
+        'flatlist',
+        'flats',
+        'flatIdList',
+        'flatIds',
+      ]),
+    };
+  }
+
+  List<_FlatSelectionNode> _buildFlatNodes(Map<String, dynamic> response) {
+    final payload = _extractFlatPayload(response);
+    final nodes = <_FlatSelectionNode>[];
+    final blockList = _asMapList(payload['blockList']);
+    for (var index = 0; index < blockList.length; index++) {
+      nodes.addAll(_nodesFromBlock(blockList[index], 'block_$index'));
+    }
+
+    final topLevelTowers = _asMapList(payload['towerList']);
+    for (var index = 0; index < topLevelTowers.length; index++) {
+      nodes.addAll(_nodesFromTower(topLevelTowers[index], 'top_tower_$index'));
+    }
+
+    final rootFlatNodes = _flatLeafNodes(
+      _asStringList(payload['flatList']),
+      'root-flat',
+    );
+    if (rootFlatNodes.isNotEmpty) {
+      nodes.addAll(rootFlatNodes);
+    }
+
+    return _sortNodesRecursively(nodes);
+  }
+
+  List<_FlatSelectionNode> _sortNodesRecursively(
+    List<_FlatSelectionNode> nodes,
+  ) {
+    final sorted = nodes
+        .map(
+          (node) => _FlatSelectionNode(
+            key: node.key,
+            label: node.label,
+            flatId: node.flatId,
+            children: _sortNodesRecursively(node.children),
+          ),
+        )
+        .toList();
+
+    sorted.sort((left, right) => _naturalCompare(left.label, right.label));
+    return sorted;
+  }
+
+  int _naturalCompare(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+    final regex = RegExp(r'(\d+|\D+)');
+    final aParts = regex.allMatches(aLower).map((m) => m.group(0)!).toList();
+    final bParts = regex.allMatches(bLower).map((m) => m.group(0)!).toList();
+    final len = aParts.length < bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      if (aNum != null && bNum != null) {
+        final cmp = aNum.compareTo(bNum);
+        if (cmp != 0) return cmp;
+      } else {
+        final cmp = aPart.compareTo(bPart);
+        if (cmp != 0) return cmp;
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  List<_FlatSelectionNode> _nodesFromBlock(
+    Map<String, dynamic> block,
+    String keyBase,
+  ) {
+    final blockName = _safeText(block['blockName']);
+    final flatChildren = _flatLeafNodes(
+      _asStringList(block['flatList']),
+      '$keyBase-flat',
+    );
+    final towerChildren = <_FlatSelectionNode>[];
+    final towerList = _asMapList(block['towerList']);
+    for (var index = 0; index < towerList.length; index++) {
+      towerChildren.addAll(
+        _nodesFromTower(towerList[index], '$keyBase-tower_$index'),
+      );
+    }
+
+    final children = [...flatChildren, ...towerChildren];
+    if (blockName.isEmpty) {
+      return children;
+    }
+    if (children.isEmpty) {
+      return const [];
+    }
+
+    return [
+      _FlatSelectionNode(key: keyBase, label: blockName, children: children),
+    ];
+  }
+
+  List<_FlatSelectionNode> _nodesFromTower(
+    Map<String, dynamic> tower,
+    String keyBase,
+  ) {
+    final towerName = _safeText(tower['towerName']);
+    final flatChildren = _flatLeafNodes(
+      _asStringList(tower['flatList']),
+      '$keyBase-flat',
+    );
+
+    if (towerName.isEmpty) {
+      return flatChildren;
+    }
+    if (flatChildren.isEmpty) {
+      return const [];
+    }
+
+    return [
+      _FlatSelectionNode(
+        key: keyBase,
+        label: towerName,
+        children: flatChildren,
+      ),
+    ];
+  }
+
+  List<_FlatSelectionNode> _flatLeafNodes(
+    List<String> flatIds,
+    String keyBase,
+  ) {
+    return [
+      for (var index = 0; index < flatIds.length; index++)
+        _FlatSelectionNode(
+          key: '$keyBase-$index',
+          label: flatIds[index],
+          flatId: flatIds[index],
+        ),
+    ];
+  }
+
+  List<String> _collectFlatIds(List<_FlatSelectionNode> nodes) {
+    final flatIds = <String>[];
+    for (final node in nodes) {
+      flatIds.addAll(node.flatIds);
+    }
+    return flatIds;
+  }
+
+  Map<String, String> _buildFlatLabelMap(List<_FlatSelectionNode> nodes) {
+    final result = <String, String>{};
+
+    void visit(_FlatSelectionNode node) {
+      final flatId = node.flatId;
+      if (flatId != null && flatId.trim().isNotEmpty) {
+        result[flatId] = node.label;
+      }
+      for (final child in node.children) {
+        visit(child);
+      }
+    }
+
+    for (final node in nodes) {
+      visit(node);
+    }
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    return value
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
+  List<String> _asStringList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+
+    String? mapEntryToFlatId(Map entry) {
+      final map = Map<String, dynamic>.from(entry);
+      const candidateKeys = [
+        'flatId',
+        'flatID',
+        'flatNo',
+        'flatNumber',
+        'id',
+        'value',
+      ];
+      for (final key in candidateKeys) {
+        final text = map[key]?.toString().trim() ?? '';
+        if (text.isNotEmpty && text.toLowerCase() != 'null') {
+          return text;
+        }
+      }
+      return null;
+    }
+
+    return value
+        .map((entry) {
+          if (entry is Map) {
+            return mapEntryToFlatId(entry) ?? '';
+          }
+          return entry?.toString().trim() ?? '';
+        })
+        .where((entry) => entry.isNotEmpty)
+        .toList()
+      ..sort(
+        (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
+      );
+  }
+
+  String _safeText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.toLowerCase() == 'null' ? '' : text;
+  }
+
+  Future<void> _openFlatSelectionDialog() async {
+    if (_loadingFlats || _flatNodes.isEmpty) {
+      return;
+    }
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _FlatSelectionDialog(
+        nodes: _flatNodes,
+        initialFlatId: _selectedFlatId,
+      ),
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedFlatId = selected;
+      _dueLoadError = null;
+      _dueDetailsByPayment = const {};
+    });
+  }
+
+  String _buildSelectedFlatDisplayText() {
+    if (_loadingFlats) {
+      return 'Loading flats...';
+    }
+    if (_selectedFlatId == null || _selectedFlatId!.isEmpty) {
+      return 'Select Flat';
+    }
+    return _flatLabelById[_selectedFlatId!] ?? _selectedFlatId!;
+  }
+
+  Future<void> _loadDueDetails() async {
+    final selectedFlatId = _selectedFlatId?.trim() ?? '';
+    if (selectedFlatId.isEmpty || _loadingDueDetails) {
+      return;
+    }
+
+    setState(() {
+      _loadingDueDetails = true;
+      _dueLoadError = null;
+      _dueDetailsByPayment = const {};
+    });
+
+    try {
+      final response = await ApiService.getDueAmountForFlat(
+        flatId: selectedFlatId,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        setState(() {
+          _dueLoadError = 'Unable to load due details.';
+        });
+        return;
+      }
+
+      final dueMap = _dueDetailsByPaymentFromResponse(response);
+      if (dueMap.isEmpty) {
+        setState(() {
+          _dueLoadError = _responseMessage(
+            response,
+            fallback: 'No due details found for the selected flat.',
+          );
+        });
+        return;
+      }
+
+      setState(() {
+        _dueDetailsByPayment = dueMap;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _dueLoadError = 'Unable to load due details.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingDueDetails = false;
+        });
+      }
+    }
+  }
+
+  Map<String, List<Map<String, dynamic>>> _dueDetailsByPaymentFromResponse(
+    Map<String, dynamic>? response,
+  ) {
+    final rawDetails =
+        response?['dueDetails'] ?? response?['dueDetailsByPayment'];
+    if (rawDetails is! Map) {
+      return const <String, List<Map<String, dynamic>>>{};
+    }
+
+    final result = <String, List<Map<String, dynamic>>>{};
+    rawDetails.forEach((key, rawValue) {
+      final list = <Map<String, dynamic>>[];
+
+      if (rawValue is List) {
+        for (final item in rawValue.whereType<Map>()) {
+          list.add(Map<String, dynamic>.from(item));
+        }
+      } else if (rawValue is Map) {
+        list.add(Map<String, dynamic>.from(rawValue));
+      }
+
+      if (list.isNotEmpty) {
+        result[key.toString()] = list;
+      }
+    });
+
+    return result;
+  }
+
+  String _responseMessage(
+    Map<String, dynamic>? response, {
+    required String fallback,
+  }) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty) {
+      return message;
+    }
+    return fallback;
+  }
+
+  bool _isSuccessResponseCode(Map<String, dynamic>? response) {
+    final messageCode =
+        response?['messageCode']?.toString().toUpperCase() ?? '';
+    return messageCode.startsWith('SUCC');
+  }
+
+  bool _isErrorResponseCode(Map<String, dynamic>? response) {
+    final messageCode =
+        response?['messageCode']?.toString().toUpperCase() ?? '';
+    return messageCode.startsWith('ERR');
+  }
+
+  String _responseCode(Map<String, dynamic>? response) {
+    return response?['messageCode']?.toString().toUpperCase() ?? '';
+  }
+
+  Future<void> _showStatusDialog({
+    required String title,
+    required String message,
+    required bool isError,
+  }) async {
+    final iconColor = isError
+        ? const Color(0xFFB3261E)
+        : const Color(0xFF0F8F82);
+    final icon = isError ? Icons.error_outline_rounded : Icons.check_circle;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+        contentPadding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDeleteConfirmationDialog(String message) async {
+    final proceed =
+        await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFB26A00)),
+                SizedBox(width: 10),
+                Expanded(child: Text('Confirm Remove Payment')),
+              ],
+            ),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F8F82),
+                ),
+                child: const Text('Yes'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!proceed) {
+      return;
+    }
+
+    final selectedFlatId = _selectedFlatId?.trim() ?? '';
+    final paymentId = _pendingDeletePaymentId;
+    if (selectedFlatId.isEmpty || paymentId == null || paymentId.isEmpty) {
+      return;
+    }
+
+    final confirmedResponse = await ApiService.removePayment(
+      paymentId: paymentId,
+      dueId: '',
+      flatId: selectedFlatId,
+      confirmDeleteTransactionFlag: true,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (confirmedResponse == null) {
+      await _showStatusDialog(
+        title: 'Remove Payment',
+        message: 'Unable to remove payment.',
+        isError: true,
+      );
+      return;
+    }
+
+    await _showStatusDialog(
+      title: _isErrorResponseCode(confirmedResponse)
+          ? 'Remove Payment Failed'
+          : 'Remove Payment',
+      message: _responseMessage(
+        confirmedResponse,
+        fallback: 'Request completed.',
+      ),
+      isError: _isErrorResponseCode(confirmedResponse),
+    );
+
+    if (_isSuccessResponseCode(confirmedResponse)) {
+      await _loadDueDetails();
+    }
+  }
+
+  Future<bool> _confirmDeleteBeforeService({required String paymentId}) async {
+    final proceed =
+        await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFB26A00)),
+                SizedBox(width: 10),
+                Expanded(child: Text('Confirm Delete')),
+              ],
+            ),
+            content: Text(
+              'Are you sure you want to delete payment $paymentId for the selected flat?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F8F82),
+                ),
+                child: const Text('Yes'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    return proceed;
+  }
+
+  String? _pendingDeletePaymentId;
+
+  Future<void> _removePayment(String paymentId) async {
+    final selectedFlatId = _selectedFlatId?.trim() ?? '';
+    if (selectedFlatId.isEmpty || _deletingPaymentId != null) {
+      return;
+    }
+
+    final confirmed = await _confirmDeleteBeforeService(paymentId: paymentId);
+    if (!confirmed) {
+      return;
+    }
+
+    setState(() {
+      _deletingPaymentId = paymentId;
+      _pendingDeletePaymentId = paymentId;
+    });
+
+    try {
+      final response = await ApiService.removePayment(
+        paymentId: paymentId,
+        dueId: '',
+        flatId: selectedFlatId,
+        confirmDeleteTransactionFlag: false,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        await _showStatusDialog(
+          title: 'Remove Payment',
+          message: 'Unable to remove payment.',
+          isError: true,
+        );
+        return;
+      }
+
+      final code = _responseCode(response);
+      if (code == 'ERR_MESSAGE_33') {
+        await _showDeleteConfirmationDialog(
+          _responseMessage(
+            response,
+            fallback: 'Are you sure you want to remove this payment?',
+          ),
+        );
+        return;
+      }
+
+      await _showStatusDialog(
+        title: _isErrorResponseCode(response)
+            ? 'Remove Payment Failed'
+            : 'Remove Payment',
+        message: _responseMessage(response, fallback: 'Request completed.'),
+        isError: _isErrorResponseCode(response),
+      );
+
+      if (_isSuccessResponseCode(response)) {
+        await _loadDueDetails();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deletingPaymentId = null;
+          _pendingDeletePaymentId = null;
+        });
+      }
+    }
+  }
+
+  Map<String, String> _parseDueKey(
+    String rawKey,
+    List<Map<String, dynamic>> entries,
+  ) {
+    String parsedPaymentId = '';
+    String parsedPaymentName = '';
+
+    final normalized = rawKey.trim();
+    if (normalized.startsWith('{') && normalized.endsWith('}')) {
+      try {
+        final decoded = jsonDecode(normalized);
+        if (decoded is Map) {
+          parsedPaymentId = decoded['paymentId']?.toString().trim() ?? '';
+          parsedPaymentName = decoded['paymentName']?.toString().trim() ?? '';
+        }
+      } catch (_) {
+        // Keep fallbacks when key is not valid JSON.
+      }
+    }
+
+    if (parsedPaymentId.isEmpty) {
+      for (final entry in entries) {
+        final id = entry['paymentId']?.toString().trim() ?? '';
+        if (id.isNotEmpty) {
+          parsedPaymentId = id;
+          break;
+        }
+      }
+    }
+
+    if (parsedPaymentName.isEmpty) {
+      for (final entry in entries) {
+        final name = entry['paymentName']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          parsedPaymentName = name;
+          break;
+        }
+      }
+    }
+
+    if (parsedPaymentId.isEmpty) {
+      parsedPaymentId = rawKey;
+    }
+    if (parsedPaymentName.isEmpty) {
+      parsedPaymentName = parsedPaymentId;
+    }
+
+    return {'paymentId': parsedPaymentId, 'paymentName': parsedPaymentName};
+  }
+
+  String _formatAsRupee(String amount) {
+    final normalized = amount.trim();
+    if (normalized.isEmpty) {
+      return '₹0';
+    }
+
+    final withPrefix = normalized.startsWith('₹') ? normalized : '₹$normalized';
+    return withPrefix;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedFlatText = _buildSelectedFlatDisplayText();
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 760,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD9ECE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(15, 70, 64, 0.16),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F8F82),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.currency_rupee_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Update Flat Due',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Select flat, review due payments, and remove selected payment.',
+                            style: TextStyle(
+                              color: Color(0xFFE5FAF6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 560),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _loadingFlats || _flatNodes.isEmpty
+                            ? null
+                            : _openFlatSelectionDialog,
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Flat',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFD5E6E2),
+                              ),
+                            ),
+                            suffixIcon: _loadingFlats
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.keyboard_arrow_down_rounded),
+                          ),
+                          child: Text(
+                            selectedFlatText,
+                            style: TextStyle(
+                              color:
+                                  (_selectedFlatId == null ||
+                                      _selectedFlatId!.isEmpty)
+                                  ? Colors.black45
+                                  : Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_flatLoadError != null &&
+                          _flatLoadError!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _flatLoadError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed:
+                              (_loadingDueDetails ||
+                                  _selectedFlatId == null ||
+                                  _selectedFlatId!.trim().isEmpty)
+                              ? null
+                              : _loadDueDetails,
+                          icon: _loadingDueDetails
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.search_rounded),
+                          label: Text(
+                            _loadingDueDetails
+                                ? 'Loading...'
+                                : 'Load Due Details',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (_dueLoadError != null &&
+                          _dueLoadError!.trim().isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3F1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFF3CDC6)),
+                          ),
+                          child: Text(
+                            _dueLoadError!,
+                            style: const TextStyle(
+                              color: Color(0xFF8F3020),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else if (_dueDetailsByPayment.isNotEmpty)
+                        Column(
+                          children: _dueDetailsByPayment.entries.map((entry) {
+                            final rawPaymentKey = entry.key;
+                            final entries = entry.value;
+                            final parsed = _parseDueKey(rawPaymentKey, entries);
+                            final paymentId =
+                                parsed['paymentId'] ?? rawPaymentKey;
+                            final paymentName =
+                                parsed['paymentName'] ?? paymentId;
+                            final deleting = _deletingPaymentId == paymentId;
+
+                            final showAmountToBePaid = entries.length == 1;
+                            final amountToBePaid = showAmountToBePaid
+                                ? entries.first['totalAmount']
+                                          ?.toString()
+                                          .trim() ??
+                                      ''
+                                : '';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FBFA),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFDCEAE7),
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          paymentName,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF124B45),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Payment ID: $paymentId',
+                                          style: const TextStyle(
+                                            color: Color(0xFF5F7973),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        if (showAmountToBePaid) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Amount To Be Paid: ${_formatAsRupee(amountToBePaid)}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF2D5F57),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: deleting
+                                        ? null
+                                        : () => _removePayment(paymentId),
+                                    tooltip: 'Delete Payment',
+                                    icon: deleting
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Color(0xFF0F8F82),
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: Color(0xFFB3261E),
+                                          ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlatSelectionNode {
+  const _FlatSelectionNode({
+    required this.key,
+    required this.label,
+    this.children = const [],
+    this.flatId,
+  });
+
+  final String key;
+  final String label;
+  final List<_FlatSelectionNode> children;
+  final String? flatId;
+
+  bool get isFlat => flatId != null;
+
+  List<String> get flatIds {
+    if (flatId != null) {
+      return [flatId!];
+    }
+
+    final flatIds = <String>[];
+    for (final child in children) {
+      flatIds.addAll(child.flatIds);
+    }
+    return flatIds;
+  }
+}
+
+class _FlatSelectionDialog extends StatefulWidget {
+  const _FlatSelectionDialog({
+    required this.nodes,
+    required this.initialFlatId,
+  });
+
+  final List<_FlatSelectionNode> nodes;
+  final String? initialFlatId;
+
+  @override
+  State<_FlatSelectionDialog> createState() => _FlatSelectionDialogState();
+}
+
+class _FlatSelectionDialogState extends State<_FlatSelectionDialog> {
+  late String? _selectedFlatId;
+  final Set<String> _expandedKeys = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  late List<_FlatSelectionNode> _allFlatLeafNodes;
+  late List<_FlatSelectionNode> _visibleFlatLeafNodes;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFlatId = widget.initialFlatId;
+    _allFlatLeafNodes = _collectFlatLeafNodes(widget.nodes);
+    _visibleFlatLeafNodes = _allFlatLeafNodes;
+    _searchController.addListener(() {
+      final nextQuery = _searchController.text.toLowerCase();
+      if (nextQuery == _searchQuery) {
+        return;
+      }
+      setState(() {
+        _searchQuery = nextQuery;
+        if (_searchQuery.isEmpty) {
+          _visibleFlatLeafNodes = _allFlatLeafNodes;
+        } else {
+          _visibleFlatLeafNodes = _allFlatLeafNodes
+              .where((node) => node.label.toLowerCase().contains(_searchQuery))
+              .toList();
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<_FlatSelectionNode> _collectFlatLeafNodes(
+    List<_FlatSelectionNode> nodes,
+  ) {
+    final result = <_FlatSelectionNode>[];
+    for (final node in nodes) {
+      if (node.isFlat) {
+        result.add(node);
+      } else {
+        result.addAll(_collectFlatLeafNodes(node.children));
+      }
+    }
+    return result;
+  }
+
+  void _toggleExpansion(String key) {
+    setState(() {
+      if (_expandedKeys.contains(key)) {
+        _expandedKeys.remove(key);
+      } else {
+        _expandedKeys.add(key);
+      }
+    });
+  }
+
+  void _selectFlatAndClose(String? flatId) {
+    if (flatId == null || flatId.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _selectedFlatId = flatId;
+    });
+    Navigator.of(context).pop(flatId);
+  }
+
+  Widget _buildNode(
+    _FlatSelectionNode node, {
+    double indent = 0,
+    bool forceExpand = false,
+  }) {
+    if (node.isFlat) {
+      final selected = _selectedFlatId == node.flatId;
+      return Padding(
+        padding: EdgeInsets.only(left: indent, bottom: 6),
+        child: Container(
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEFF8F6) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? _ModuleHubPage._brandColor
+                  : const Color(0xFFD5E6E2),
+            ),
+          ),
+          child: RadioListTile<String>(
+            value: node.flatId!,
+            groupValue: _selectedFlatId,
+            activeColor: _ModuleHubPage._brandColor,
+            onChanged: _selectFlatAndClose,
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            title: Text(
+              node.label,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: const Color(0xFF214B43),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final expanded = forceExpand || _expandedKeys.contains(node.key);
+    return Padding(
+      padding: EdgeInsets.only(left: indent, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4FAF8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD5E6E2)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    node.label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E4841),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _toggleExpansion(node.key),
+                  icon: Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: const Color(0xFF1E4841),
+                  ),
+                  tooltip: expanded ? 'Collapse' : 'Expand',
+                ),
+              ],
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final child in node.children)
+                    _buildNode(child, indent: 12, forceExpand: forceExpand),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF8FBFB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Flat',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF153D36),
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Choose a flat to load due details.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF687D76)),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 460,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD5E6E2)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search flat id',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () => _searchController.clear(),
+                          icon: const Icon(Icons.close_rounded),
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 420,
+                child: _searchQuery.isNotEmpty
+                    ? (_visibleFlatLeafNodes.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No flats found for the entered text.',
+                                style: TextStyle(
+                                  color: Color(0xFF687D76),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _visibleFlatLeafNodes.length,
+                              itemBuilder: (context, index) {
+                                final node = _visibleFlatLeafNodes[index];
+                                final selected = _selectedFlatId == node.flatId;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? const Color(0xFFEFF8F6)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: selected
+                                            ? _ModuleHubPage._brandColor
+                                            : const Color(0xFFD5E6E2),
+                                      ),
+                                    ),
+                                    child: RadioListTile<String>(
+                                      value: node.flatId!,
+                                      groupValue: _selectedFlatId,
+                                      activeColor: _ModuleHubPage._brandColor,
+                                      onChanged: _selectFlatAndClose,
+                                      dense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                      title: Text(
+                                        node.label,
+                                        style: TextStyle(
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: const Color(0xFF214B43),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ))
+                    : widget.nodes.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No flats found for the entered text.',
+                          style: TextStyle(
+                            color: Color(0xFF687D76),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final node in widget.nodes)
+                              _buildNode(node, forceExpand: false),
+                          ],
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF5C6D7E)),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }
@@ -327,17 +1771,9 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
 
     final items = <_ModuleHubItem>[
       if (_hasAccessFlag('adminAccess', 'roleManagmentparentAccess'))
-        _ModuleHubItem(
-          'Role Management',
-          Icons.lock_person_outlined,
-          onTap: () => openAppShellSection(context, AppSection.roleAndAccess),
-        ),
+        const _ModuleHubItem('Role Management', Icons.lock_person_outlined),
       if (_hasAccessFlag('adminAccess', 'staffeManagmentparentAccess'))
-        _ModuleHubItem(
-          'Staff Management',
-          Icons.groups_outlined,
-          onTap: () => openAppShellSection(context, AppSection.staffManagement),
-        ),
+        const _ModuleHubItem('Staff Management', Icons.groups_outlined),
       if (_hasAccessFlag('adminAccess', 'flateManagmentparentAccess'))
         _ModuleHubItem(
           'Flat Management',
@@ -345,14 +1781,9 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
           onTap: () => openAppShellSection(context, AppSection.flatManagement),
         ),
       if (_hasAccessFlag('adminAccess', 'societyDetailsManagmentparentAccess'))
-        _ModuleHubItem(
+        const _ModuleHubItem(
           'Update Society Details',
           Icons.apartment_outlined,
-          onTap: () {
-            setState(() {
-              _showUpdateSocietyDetails = true;
-            });
-          },
         ),
     ];
 
@@ -1825,6 +3256,7 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     return flatList;
   }
 
+  // ignore: unused_element
   Future<void> _openDuePaymentsDialog() async {
     if (_loadingDueDetails) {
       return;
@@ -1879,6 +3311,24 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
         _loadingDueDetails = false;
       });
     }
+  }
+
+  // ignore: unused_element
+  Future<void> _openUploadOtherDuePaymentsDialog() async {
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => const _UploadOtherDuesDialog(),
+    );
+  }
+
+  // ignore: unused_element
+  Future<void> _openReconcileQrPaymentsDialog() async {
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => const _ReconcileQrPaymentsDialog(),
+    );
   }
 
   @override

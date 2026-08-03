@@ -2605,11 +2605,37 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return list;
   }
 
+  DateTime? _earliestDueDateForGroup(_DueGroupData group) {
+    DateTime? oldest;
+    for (final due in group.dues) {
+      final candidate =
+          _parseDueDate(due['dueDate']?.toString().trim() ?? '') ??
+          _parseDueDate(due['dueEndDate']?.toString().trim() ?? '') ??
+          _parseDueDate(due['dueStartDate']?.toString().trim() ?? '');
+      if (candidate == null) {
+        continue;
+      }
+      if (oldest == null || candidate.isBefore(oldest)) {
+        oldest = candidate;
+      }
+    }
+    return oldest;
+  }
+
   int _compareDueGroups(_DueGroupData a, _DueGroupData b) {
     final aHasOverdue = _groupHasOverdue(a);
     final bHasOverdue = _groupHasOverdue(b);
     if (aHasOverdue != bHasOverdue) {
       return aHasOverdue ? -1 : 1;
+    }
+
+    final aDate = _earliestDueDateForGroup(a);
+    final bDate = _earliestDueDateForGroup(b);
+    if (aDate != null && bDate != null) {
+      final dateComparison = aDate.compareTo(bDate);
+      if (dateComparison != 0) {
+        return dateComparison;
+      }
     }
 
     return a.paymentName.toLowerCase().compareTo(b.paymentName.toLowerCase());
@@ -3687,7 +3713,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     required String label,
     required bool selected,
     required bool isOverdueTab,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    bool disabled = false,
   }) {
     final selectedColor = isOverdueTab
         ? const Color(0xFFB3261E)
@@ -3696,14 +3723,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
+        onTap: disabled ? null : onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: selected ? selectedColor : Colors.transparent,
+            color: disabled
+                ? const Color(0xFFF2F5F4)
+                : selected
+                ? selectedColor
+                : Colors.transparent,
           ),
           child: Text(
             label,
@@ -3711,7 +3742,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF124B45),
+              color: disabled
+                  ? const Color(0xFF7A8C86)
+                  : selected
+                  ? Colors.white
+                  : const Color(0xFF124B45),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -3721,11 +3756,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   }
 
   Widget _buildDueTabsSection({
-    required int overdueCount,
-    required int activeCount,
     required _DueSectionTab selectedTab,
     required VoidCallback onOverdueTap,
     required VoidCallback onActiveTap,
+    bool disableActiveTab = false,
   }) {
     return Container(
       width: double.infinity,
@@ -3738,17 +3772,18 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       child: Row(
         children: [
           _buildDueTabButton(
-            label: 'Overdue ($overdueCount)',
+            label: 'Overdue',
             selected: selectedTab == _DueSectionTab.overdue,
             isOverdueTab: true,
             onTap: onOverdueTap,
           ),
           const SizedBox(width: 4),
           _buildDueTabButton(
-            label: 'Active Due ($activeCount)',
+            label: 'Active Due',
             selected: selectedTab == _DueSectionTab.active,
             isOverdueTab: false,
-            onTap: onActiveTap,
+            onTap: disableActiveTab ? null : onActiveTap,
+            disabled: disableActiveTab,
           ),
         ],
       ),
@@ -3992,9 +4027,6 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     Map<String, dynamic> due, {
     required String bankId,
   }) {
-    final cycle = _displayCycleWithRange(due);
-    final dueDateText = due['dueDate']?.toString().trim() ?? '--';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -4002,32 +4034,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFD7EAE3)),
       ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              cycle,
-              style: const TextStyle(
-                color: Color(0xFF124B45),
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-            Text(
-              dueDateText,
-              style: const TextStyle(
-                color: Color(0xFF124B45),
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        childrenPadding: const EdgeInsets.all(12),
-        children: [_buildSelectedDueSummary(due, bankId: bankId)],
-      ),
+      child: _buildSelectedDueSummary(due, bankId: bankId),
     );
   }
 
@@ -4036,12 +4043,16 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     int index, {
     required bool initiallyExpanded,
     required bool lockActiveDueProceed,
+    required bool isEnabled,
   }) {
     final groupId = group.groupId;
-    final selectedTab = _selectedTabs[groupId] ?? _DueSectionTab.active;
+    final hasOverdue = _groupHasOverdue(group);
+    final hasActive = group.dues.any((due) => !_isPastDue(due));
+    final initialTab = hasOverdue && hasActive
+        ? _DueSectionTab.overdue
+        : (hasOverdue ? _DueSectionTab.overdue : _DueSectionTab.active);
+    final selectedTab = _selectedTabs[groupId] ?? initialTab;
     final dues = _duesForTab(group, selectedTab);
-    final overdueCount = _duesForTab(group, _DueSectionTab.overdue).length;
-    final activeCount = _duesForTab(group, _DueSectionTab.active).length;
     final selectedDueId = _selectedDueByGroup[groupId];
     final selectedDue = dues.firstWhere(
       (due) => _dueId(due) == selectedDueId,
@@ -4062,366 +4073,375 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFD7EAE3)),
       ),
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        onExpansionChanged: (_) => setState(() {}),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        title: Builder(
-          builder: (context) {
-            final hasOverdue = _groupHasOverdue(group);
-            final discountCycles = _groupCyclesWithDiscount(group);
-            final isNarrow = MediaQuery.of(context).size.width < 600;
-            final nameText = Text(
-              _toCamelCase(group.paymentName),
-              style: const TextStyle(
-                color: Color(0xFF124B45),
-                fontWeight: FontWeight.w800,
-              ),
-            );
-            if (isNarrow) {
-              return nameText;
-            }
-            return Row(
-              children: [
-                Expanded(child: nameText),
-                if (hasOverdue) ...[
-                  const SizedBox(width: 6),
-                  _buildOverdueBanner(),
-                ],
-                if (discountCycles.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  _buildDiscountBanner(discountCycles),
-                ],
-              ],
-            );
-          },
-        ),
-        subtitle: Builder(
-          builder: (context) {
-            final hasOverdue = _groupHasOverdue(group);
-            final discountCycles = _groupCyclesWithDiscount(group);
-            final hasBadges = hasOverdue || discountCycles.isNotEmpty;
-            final isNarrow = MediaQuery.of(context).size.width < 600;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Select Any One Payment Cycle To Proceed',
-                  style: TextStyle(color: Colors.black54),
+      child: IgnorePointer(
+        ignoring: !isEnabled,
+        child: ExpansionTile(
+          initiallyExpanded: isEnabled && initiallyExpanded,
+          onExpansionChanged: isEnabled ? (_) => setState(() {}) : null,
+          enableFeedback: isEnabled,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          title: Builder(
+            builder: (context) {
+              final hasOverdue = _groupHasOverdue(group);
+              final discountCycles = _groupCyclesWithDiscount(group);
+              final isNarrow = MediaQuery.of(context).size.width < 600;
+              final nameText = Text(
+                _toCamelCase(group.paymentName),
+                style: TextStyle(
+                  color: isEnabled
+                      ? const Color(0xFF124B45)
+                      : Colors.grey.shade600,
+                  fontWeight: FontWeight.w800,
                 ),
-                if (isNarrow && hasBadges) ...[
-                  const SizedBox(height: 6),
-                  if (hasOverdue) _buildOverdueBanner(),
-                  if (hasOverdue && discountCycles.isNotEmpty)
-                    const SizedBox(height: 4),
-                  if (discountCycles.isNotEmpty)
+              );
+              if (isNarrow) {
+                return nameText;
+              }
+              return Row(
+                children: [
+                  Expanded(child: nameText),
+                  if (hasOverdue) ...[
+                    const SizedBox(width: 6),
+                    _buildOverdueBanner(),
+                  ],
+                  if (discountCycles.isNotEmpty) ...[
+                    const SizedBox(width: 6),
                     _buildDiscountBanner(discountCycles),
+                  ],
                 ],
-              ],
-            );
-          },
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        children: [
-          _buildDueTabsSection(
-            overdueCount: overdueCount,
-            activeCount: activeCount,
-            selectedTab: selectedTab,
-            onOverdueTap: () {
-              setState(() {
-                _selectedTabs[groupId] = _DueSectionTab.overdue;
-                _selectedDueByGroup.remove(groupId);
-                _selectedOverdueCycleByGroup.remove(groupId);
-              });
-            },
-            onActiveTap: () {
-              setState(() {
-                _selectedTabs[groupId] = _DueSectionTab.active;
-                _selectedDueByGroup.remove(groupId);
-                _selectedOverdueCycleByGroup.remove(groupId);
-              });
+              );
             },
           ),
-          const SizedBox(height: 10),
-          if (dues.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7FCFA),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFD7EAE3)),
-              ),
-              child: Text(
-                selectedTab == _DueSectionTab.overdue
-                    ? 'No overdue dues in this payment.'
-                    : 'No active dues in this payment.',
-                style: const TextStyle(color: Colors.black54),
-              ),
-            )
-          else if (selectedTab == _DueSectionTab.overdue)
-            Builder(
-              builder: (context) {
-                final overdueCycleBuckets = _overdueCycleBuckets(dues);
-                final selectedCycleKey =
-                    _selectedOverdueCycleByGroup[groupId] ??
-                    (overdueCycleBuckets.isNotEmpty
-                        ? overdueCycleBuckets.first.key
-                        : '');
-                final selectedCycleDues = _overdueDuesForSelectedCycle(
-                  groupId,
-                  dues,
-                );
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isNarrow = constraints.maxWidth < 500;
-                        final cycleChips = overdueCycleBuckets
-                            .map((bucket) {
-                              final cycleLabel = _toCamelCase(
-                                bucket.value.first['collectionCycle']
-                                        ?.toString()
-                                        .trim() ??
-                                    bucket.key,
-                              );
-                              final isSelected = bucket.key == selectedCycleKey;
-                              final itemCount = bucket.value.length;
-
-                              return ChoiceChip(
-                                label: Text(
-                                  '$cycleLabel ($itemCount)',
-                                  style: TextStyle(
-                                    fontSize: isNarrow ? 11 : 13,
-                                  ),
-                                ),
-                                selected: isSelected,
-                                visualDensity: isNarrow
-                                    ? VisualDensity.compact
-                                    : VisualDensity.standard,
-                                padding: isNarrow
-                                    ? const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 0,
-                                      )
-                                    : null,
-                                onSelected: (_) {
-                                  setState(() {
-                                    _selectedOverdueCycleByGroup[groupId] =
-                                        bucket.key;
-                                  });
-                                },
-                                selectedColor: const Color(0xFFB3261E),
-                                side: const BorderSide(
-                                  color: Color(0xFFB3261E),
-                                ),
-                                labelStyle: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : const Color(0xFF7A1C15),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                backgroundColor: Colors.white,
-                              );
-                            })
-                            .toList(growable: false);
-
-                        if (isNarrow) {
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (final chip in cycleChips)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: chip,
-                                  ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: cycleChips,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    if (selectedCycleDues.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF7FCFA),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFD7EAE3)),
-                        ),
-                        child: const Text(
-                          'No overdue dues in the selected cycle.',
-                          style: TextStyle(color: Colors.black54),
-                        ),
-                      )
-                    else
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: selectedCycleDues
-                            .map(
-                              (due) => _buildOverdueDueItem(
-                                due,
-                                bankId: group.bankId,
-                              ),
-                            )
-                            .toList(growable: false),
-                      ),
+          subtitle: Builder(
+            builder: (context) {
+              final hasOverdue = _groupHasOverdue(group);
+              final discountCycles = _groupCyclesWithDiscount(group);
+              final hasBadges = hasOverdue || discountCycles.isNotEmpty;
+              final isNarrow = MediaQuery.of(context).size.width < 600;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Select Any One Payment Cycle To Proceed',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                  if (isNarrow && hasBadges) ...[
+                    const SizedBox(height: 6),
+                    if (hasOverdue) _buildOverdueBanner(),
+                    if (hasOverdue && discountCycles.isNotEmpty)
+                      const SizedBox(height: 4),
+                    if (discountCycles.isNotEmpty)
+                      _buildDiscountBanner(discountCycles),
                   ],
-                );
+                ],
+              );
+            },
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          children: [
+            _buildDueTabsSection(
+              selectedTab: selectedTab,
+              disableActiveTab: hasOverdue && hasActive,
+              onOverdueTap: () {
+                setState(() {
+                  _selectedTabs[groupId] = _DueSectionTab.overdue;
+                  _selectedDueByGroup.remove(groupId);
+                  _selectedOverdueCycleByGroup.remove(groupId);
+                });
               },
-            )
-          else ...[
-            if (lockActiveDueProceed)
+              onActiveTap: () {
+                setState(() {
+                  _selectedTabs[groupId] = _DueSectionTab.active;
+                  _selectedDueByGroup.remove(groupId);
+                  _selectedOverdueCycleByGroup.remove(groupId);
+                });
+              },
+            ),
+            const SizedBox(height: 10),
+            if (dues.isEmpty)
               Container(
                 width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF6E5),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFF2D08A)),
+                  color: const Color(0xFFF7FCFA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD7EAE3)),
                 ),
-                child: const Text(
-                  'Proceed Payment is disabled for active dues until all overdue dues are cleared.',
-                  style: TextStyle(
-                    color: Color(0xFF7A5A19),
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Text(
+                  selectedTab == _DueSectionTab.overdue
+                      ? 'No overdue dues in this payment.'
+                      : 'No active dues in this payment.',
+                  style: const TextStyle(color: Colors.black54),
                 ),
-              ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 500;
-                final chipWidgets = dues.map((due) {
-                  final currentDueId = _dueId(due);
-                  final isSelected =
-                      currentDueId.isNotEmpty &&
-                      currentDueId == _selectedDueByGroup[groupId];
-                  final label = _displayCycle(due);
-                  final hasDiscount = _dueHasDiscount(due);
-                  return Stack(
-                    clipBehavior: Clip.none,
+              )
+            else if (selectedTab == _DueSectionTab.overdue)
+              Builder(
+                builder: (context) {
+                  final overdueCycleBuckets = _overdueCycleBuckets(dues);
+                  final selectedCycleKey =
+                      _selectedOverdueCycleByGroup[groupId] ??
+                      (overdueCycleBuckets.isNotEmpty
+                          ? overdueCycleBuckets.first.key
+                          : '');
+                  final selectedCycleDues = _overdueDuesForSelectedCycle(
+                    groupId,
+                    dues,
+                  );
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ChoiceChip(
-                        label: Text(
-                          label,
-                          style: TextStyle(fontSize: isNarrow ? 11 : 13),
-                        ),
-                        selected: isSelected,
-                        visualDensity: isNarrow
-                            ? VisualDensity.compact
-                            : VisualDensity.standard,
-                        padding: isNarrow
-                            ? const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 0,
-                              )
-                            : null,
-                        onSelected: (_) {
-                          if (currentDueId.isEmpty) {
-                            return;
-                          }
-                          setState(() {
-                            _selectedDueByGroup[groupId] = currentDueId;
-                          });
-                        },
-                        selectedColor: const Color(0xFF0F8F82),
-                        side: const BorderSide(color: Color(0xFF0F8F82)),
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? Colors.white
-                              : const Color(0xFF124B45),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        backgroundColor: Colors.white,
-                      ),
-                      if (hasDiscount)
-                        Positioned(
-                          top: -7,
-                          left: -7,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFFAE8625),
-                                  Color(0xFFF7EF8A),
-                                  Color(0xFFD2AC47),
-                                  Color(0xFFEDC967),
-                                  Color(0xFFAE8625),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 500;
+                          final cycleChips = overdueCycleBuckets
+                              .map((bucket) {
+                                final cycleLabel = _toCamelCase(
+                                  bucket.value.first['collectionCycle']
+                                          ?.toString()
+                                          .trim() ??
+                                      bucket.key,
+                                );
+                                final isSelected =
+                                    bucket.key == selectedCycleKey;
+
+                                return ChoiceChip(
+                                  label: Text(
+                                    cycleLabel,
+                                    style: TextStyle(
+                                      fontSize: isNarrow ? 11 : 13,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  visualDensity: isNarrow
+                                      ? VisualDensity.compact
+                                      : VisualDensity.standard,
+                                  padding: isNarrow
+                                      ? const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 0,
+                                        )
+                                      : null,
+                                  onSelected: (_) {
+                                    setState(() {
+                                      _selectedOverdueCycleByGroup[groupId] =
+                                          bucket.key;
+                                    });
+                                  },
+                                  selectedColor: const Color(0xFFB3261E),
+                                  side: const BorderSide(
+                                    color: Color(0xFFB3261E),
+                                  ),
+                                  labelStyle: TextStyle(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : const Color(0xFF7A1C15),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  backgroundColor: Colors.white,
+                                );
+                              })
+                              .toList(growable: false);
+
+                          if (isNarrow) {
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final chip in cycleChips)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: chip,
+                                    ),
                                 ],
-                                stops: [0.0, 0.3, 0.55, 0.75, 1.0],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
                               ),
-                              borderRadius: BorderRadius.circular(5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.18),
-                                  blurRadius: 3,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
+                            );
+                          }
+
+                          return Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: cycleChips,
                             ),
-                            child: const Icon(
-                              Icons.sell_rounded,
-                              size: 12,
-                              color: Colors.black,
-                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      if (selectedCycleDues.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7FCFA),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFD7EAE3)),
                           ),
+                          child: const Text(
+                            'No overdue dues in the selected cycle.',
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                        )
+                      else
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: selectedCycleDues
+                              .map(
+                                (due) => _buildOverdueDueItem(
+                                  due,
+                                  bankId: group.bankId,
+                                ),
+                              )
+                              .toList(growable: false),
                         ),
                     ],
                   );
-                }).toList();
-                if (isNarrow) {
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                },
+              )
+            else ...[
+              if (lockActiveDueProceed)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF6E5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFF2D08A)),
+                  ),
+                  child: const Text(
+                    'Proceed Payment is disabled for active dues until all overdue dues are cleared.',
+                    style: TextStyle(
+                      color: Color(0xFF7A5A19),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 500;
+                  final chipWidgets = dues.map((due) {
+                    final currentDueId = _dueId(due);
+                    final isSelected =
+                        currentDueId.isNotEmpty &&
+                        currentDueId == _selectedDueByGroup[groupId];
+                    final label = _displayCycle(due);
+                    final hasDiscount = _dueHasDiscount(due);
+                    return Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        for (final chip in chipWidgets)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: chip,
+                        ChoiceChip(
+                          label: Text(
+                            label,
+                            style: TextStyle(fontSize: isNarrow ? 11 : 13),
+                          ),
+                          selected: isSelected,
+                          visualDensity: isNarrow
+                              ? VisualDensity.compact
+                              : VisualDensity.standard,
+                          padding: isNarrow
+                              ? const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 0,
+                                )
+                              : null,
+                          onSelected: (_) {
+                            if (currentDueId.isEmpty) {
+                              return;
+                            }
+                            setState(() {
+                              _selectedDueByGroup[groupId] = currentDueId;
+                            });
+                          },
+                          selectedColor: const Color(0xFF0F8F82),
+                          side: const BorderSide(color: Color(0xFF0F8F82)),
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF124B45),
+                            fontWeight: FontWeight.w700,
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        if (hasDiscount)
+                          Positioned(
+                            top: -7,
+                            left: -7,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFAE8625),
+                                    Color(0xFFF7EF8A),
+                                    Color(0xFFD2AC47),
+                                    Color(0xFFEDC967),
+                                    Color(0xFFAE8625),
+                                  ],
+                                  stops: [0.0, 0.3, 0.55, 0.75, 1.0],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.18),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.sell_rounded,
+                                size: 12,
+                                color: Colors.black,
+                              ),
+                            ),
                           ),
                       ],
+                    );
+                  }).toList();
+                  if (isNarrow) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final chip in chipWidgets)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: chip,
+                            ),
+                        ],
+                      ),
+                    );
+                  }
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: chipWidgets,
                     ),
                   );
-                }
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(spacing: 8, runSpacing: 8, children: chipWidgets),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            if (selectedDue.isNotEmpty)
-              _buildSelectedDueSummary(
-                selectedDue,
-                bankId: group.bankId,
-                disableProceed: lockActiveDueProceed,
+                },
               ),
+              const SizedBox(height: 8),
+              if (selectedDue.isNotEmpty)
+                _buildSelectedDueSummary(
+                  selectedDue,
+                  bankId: group.bankId,
+                  disableProceed: lockActiveDueProceed,
+                ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -4431,6 +4451,27 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     final groupedPayments = _groupedPayments();
     final hasAnyOverdue = _hasAnyOverdueAcrossGroups(groupedPayments);
     final shouldAutoExpandSingleGroup = groupedPayments.length == 1;
+    final earliestDueDate = groupedPayments
+        .map(_earliestDueDateForGroup)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (previousValue, candidate) {
+          if (previousValue == null || candidate.isBefore(previousValue)) {
+            return candidate;
+          }
+          return previousValue;
+        });
+    final enabledGroupIds = groupedPayments
+        .where((group) {
+          final groupDate = _earliestDueDateForGroup(group);
+          if (groupDate == null || earliestDueDate == null) {
+            return groupedPayments.length == 1;
+          }
+          return groupDate.year == earliestDueDate.year &&
+              groupDate.month == earliestDueDate.month &&
+              groupDate.day == earliestDueDate.day;
+        })
+        .map((group) => group.groupId)
+        .toSet();
     final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
     final maxDialogWidth = MediaQuery.of(context).size.width * 0.96;
 
@@ -4546,6 +4587,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                                     initiallyExpanded:
                                         shouldAutoExpandSingleGroup,
                                     lockActiveDueProceed: hasAnyOverdue,
+                                    isEnabled: enabledGroupIds.contains(
+                                      entry.value.groupId,
+                                    ),
                                   ),
                                 ),
                               ],

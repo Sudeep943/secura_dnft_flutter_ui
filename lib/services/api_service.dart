@@ -11,9 +11,9 @@ import 'session_storage_stub.dart'
     as session_storage;
 
 class ApiService {
-  // static const String _baseUrl = 'http://localhost:8080';
-  static const String _baseUrl =
-      'https://securadnft-api-380953428736.asia-south1.run.app';
+  static const String _baseUrl = 'http://localhost:8080';
+  // static const String _baseUrl =
+  //     'https://securadnft-api-380953428736.asia-south1.run.app';
 
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
@@ -1066,6 +1066,106 @@ class ApiService {
     }
 
     return Map<String, dynamic>.from(data);
+  }
+
+  static Map<String, dynamic>? _buildCreditNoteHeader() {
+    final header =
+        _buildLoginResponseHeader() ??
+        (userHeader == null ? null : Map<String, dynamic>.from(userHeader!));
+    if (header == null || header.isEmpty) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(header);
+  }
+
+  static Future<Map<String, dynamic>?> viewCreditNoteDetails({
+    required String flatId,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final genericHeader = _buildCreditNoteHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    const paths = [
+      '/creditnote/viewCreditNoteDetails',
+      '/viewCreditNoteDetails',
+      '/payment/viewCreditNoteDetails',
+    ];
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: {'genericHeader': genericHeader, 'flatId': trimmedFlatId},
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> issueCreditNote({
+    required String flatId,
+    required String creditNoteCause,
+    required String creditNoteDetails,
+    required num creditNoteAmount,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final genericHeader = _buildCreditNoteHeader();
+    if (genericHeader == null) {
+      return null;
+    }
+
+    const paths = [
+      '/creditnote/issueCreditNote',
+      '/issueCreditNote',
+      '/payment/issueCreditNote',
+    ];
+
+    final requestBody = {
+      'genericHeader': genericHeader,
+      'flatId': trimmedFlatId,
+      'creditNoteDetails': {
+        'creditNoteAmount': creditNoteAmount,
+        'creditNoteCause': creditNoteCause.trim(),
+        'creditNoteDetails': creditNoteDetails.trim(),
+      },
+    };
+
+    for (final path in paths) {
+      final response = await _postWithOptionalAuthorization(
+        path: path,
+        requestBody: requestBody,
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
   }
 
   static Future<Map<String, dynamic>?> removePayment({

@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 import 'package:xml/xml.dart';
 
@@ -280,6 +281,18 @@ class FlatManagementPage extends StatelessWidget {
               context: context,
               barrierDismissible: false,
               builder: (_) => const _UpdateFlatDueDialog(),
+            );
+          },
+        ),
+      if (canAddUpdateFlat)
+        _ModuleHubItem(
+          'Manage Credit Note',
+          Icons.note_alt_outlined,
+          onTap: () {
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const _ManageCreditNoteDialog(),
             );
           },
         ),
@@ -1408,6 +1421,1802 @@ class _FlatSelectionNode {
       flatIds.addAll(child.flatIds);
     }
     return flatIds;
+  }
+}
+
+class _ManageCreditNoteDialog extends StatelessWidget {
+  const _ManageCreditNoteDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 760,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD9ECE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(15, 70, 64, 0.16),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F8F82),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.note_alt_outlined,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Manage Credit Note',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Issue new notes and view all existing credit notes for a selected flat.',
+                            style: TextStyle(
+                              color: Color(0xFFE5FAF6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 640;
+                    if (compact) {
+                      return Column(
+                        children: [
+                          _buildActionCard(
+                            context: context,
+                            title: 'Issue Credit Note',
+                            subtitle:
+                                'Choose a flat, review existing credit notes, and issue a new note.',
+                            icon: Icons.note_add_outlined,
+                            onTap: () => _openCreditNoteChooser(context),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildActionCard(
+                            context: context,
+                            title: 'View Credit Notes',
+                            subtitle:
+                                'Choose a flat and view summary, balances, and note history.',
+                            icon: Icons.visibility_outlined,
+                            onTap: () => _openCreditNoteChooser(context),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionCard(
+                            context: context,
+                            title: 'Issue Credit Note',
+                            subtitle:
+                                'Choose a flat, review existing credit notes, and issue a new note.',
+                            icon: Icons.note_add_outlined,
+                            onTap: () => _openCreditNoteChooser(context),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildActionCard(
+                            context: context,
+                            title: 'View Credit Notes',
+                            subtitle:
+                                'Choose a flat and view summary, balances, and note history.',
+                            icon: Icons.visibility_outlined,
+                            onTap: () => _openCreditNoteChooser(context),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FBFA),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFDCEAE7)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F8F82).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: const Color(0xFF0F8F82)),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF124B45),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: const TextStyle(color: Color(0xFF5F7973), height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCreditNoteChooser(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _CreditNoteFlatChooserDialog(),
+    );
+  }
+}
+
+class _CreditNoteFlatChooserDialog extends StatefulWidget {
+  const _CreditNoteFlatChooserDialog();
+
+  @override
+  State<_CreditNoteFlatChooserDialog> createState() =>
+      _CreditNoteFlatChooserDialogState();
+}
+
+class _CreditNoteFlatChooserDialogState
+    extends State<_CreditNoteFlatChooserDialog> {
+  String? _selectedFlatId;
+  List<_FlatSelectionNode> _flatNodes = const [];
+  Map<String, String> _flatLabelById = const {};
+  bool _loadingFlats = false;
+  bool _loadingDetails = false;
+  String? _flatLoadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPublicFlats();
+  }
+
+  Future<void> _loadPublicFlats() async {
+    setState(() {
+      _loadingFlats = true;
+      _flatLoadError = null;
+    });
+
+    try {
+      final response = await ApiService.getFlatsPublic();
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null || !_isSuccessResponse(response)) {
+        setState(() {
+          _flatNodes = const [];
+          _flatLabelById = const {};
+          _selectedFlatId = null;
+          _flatLoadError = _responseMessage(
+            response,
+            fallback: 'Unable to load flat list right now.',
+          );
+        });
+        return;
+      }
+
+      final nodes = _buildFlatNodes(response);
+      final allFlatIds = _collectFlatIds(nodes);
+      final labelMap = _buildFlatLabelMap(nodes);
+      setState(() {
+        _flatNodes = nodes;
+        _flatLabelById = labelMap;
+        _selectedFlatId = allFlatIds.contains(_selectedFlatId)
+            ? _selectedFlatId
+            : null;
+        _flatLoadError = allFlatIds.isEmpty
+            ? 'No flats were returned for this apartment.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _flatNodes = const [];
+        _flatLabelById = const {};
+        _selectedFlatId = null;
+        _flatLoadError = 'Unable to load flat list right now.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingFlats = false;
+        });
+      }
+    }
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic> response) {
+    final messageCode = response['messageCode']?.toString() ?? '';
+    if (messageCode.toUpperCase().startsWith('SUCC')) {
+      return true;
+    }
+
+    final payload = _extractFlatPayload(response);
+    return payload['blockList'] is List ||
+        payload['towerList'] is List ||
+        payload['flatList'] is List;
+  }
+
+  Map<String, dynamic> _extractFlatPayload(Map<String, dynamic> response) {
+    final data = response['data'];
+    final root = data is Map
+        ? Map<String, dynamic>.from(data)
+        : Map<String, dynamic>.from(response);
+
+    dynamic readAny(List<String> keys) {
+      for (final key in keys) {
+        if (root.containsKey(key)) {
+          return root[key];
+        }
+      }
+      return null;
+    }
+
+    return {
+      'blockList': readAny(['blockList', 'blocklist', 'blocks', 'block']),
+      'towerList': readAny(['towerList', 'towerlist', 'towers', 'tower']),
+      'flatList': readAny([
+        'flatList',
+        'flatlist',
+        'flats',
+        'flatIdList',
+        'flatIds',
+      ]),
+    };
+  }
+
+  List<_FlatSelectionNode> _buildFlatNodes(Map<String, dynamic> response) {
+    final payload = _extractFlatPayload(response);
+    final nodes = <_FlatSelectionNode>[];
+    final blockList = _asMapList(payload['blockList']);
+    for (var index = 0; index < blockList.length; index++) {
+      nodes.addAll(_nodesFromBlock(blockList[index], 'block_$index'));
+    }
+
+    final topLevelTowers = _asMapList(payload['towerList']);
+    for (var index = 0; index < topLevelTowers.length; index++) {
+      nodes.addAll(_nodesFromTower(topLevelTowers[index], 'top_tower_$index'));
+    }
+
+    final rootFlatNodes = _flatLeafNodes(
+      _asStringList(payload['flatList']),
+      'root-flat',
+    );
+    if (rootFlatNodes.isNotEmpty) {
+      nodes.addAll(rootFlatNodes);
+    }
+
+    return _sortNodesRecursively(nodes);
+  }
+
+  List<_FlatSelectionNode> _sortNodesRecursively(
+    List<_FlatSelectionNode> nodes,
+  ) {
+    final sorted = nodes
+        .map(
+          (node) => _FlatSelectionNode(
+            key: node.key,
+            label: node.label,
+            flatId: node.flatId,
+            children: _sortNodesRecursively(node.children),
+          ),
+        )
+        .toList();
+
+    sorted.sort((left, right) => _naturalCompare(left.label, right.label));
+    return sorted;
+  }
+
+  int _naturalCompare(String a, String b) {
+    final aLower = a.toLowerCase();
+    final bLower = b.toLowerCase();
+    final regex = RegExp(r'(\d+|\D+)');
+    final aParts = regex.allMatches(aLower).map((m) => m.group(0)!).toList();
+    final bParts = regex.allMatches(bLower).map((m) => m.group(0)!).toList();
+    final len = aParts.length < bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      if (aNum != null && bNum != null) {
+        final cmp = aNum.compareTo(bNum);
+        if (cmp != 0) return cmp;
+      } else {
+        final cmp = aPart.compareTo(bPart);
+        if (cmp != 0) return cmp;
+      }
+    }
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  List<_FlatSelectionNode> _nodesFromBlock(
+    Map<String, dynamic> block,
+    String keyBase,
+  ) {
+    final blockName = _safeText(block['blockName']);
+    final flatChildren = _flatLeafNodes(
+      _asStringList(block['flatList']),
+      '$keyBase-flat',
+    );
+    final towerChildren = <_FlatSelectionNode>[];
+    final towerList = _asMapList(block['towerList']);
+    for (var index = 0; index < towerList.length; index++) {
+      towerChildren.addAll(
+        _nodesFromTower(towerList[index], '$keyBase-tower_$index'),
+      );
+    }
+
+    final children = [...flatChildren, ...towerChildren];
+    if (blockName.isEmpty) {
+      return children;
+    }
+    if (children.isEmpty) {
+      return const [];
+    }
+
+    return [
+      _FlatSelectionNode(key: keyBase, label: blockName, children: children),
+    ];
+  }
+
+  List<_FlatSelectionNode> _nodesFromTower(
+    Map<String, dynamic> tower,
+    String keyBase,
+  ) {
+    final towerName = _safeText(tower['towerName']);
+    final flatChildren = _flatLeafNodes(
+      _asStringList(tower['flatList']),
+      '$keyBase-flat',
+    );
+
+    if (towerName.isEmpty) {
+      return flatChildren;
+    }
+    if (flatChildren.isEmpty) {
+      return const [];
+    }
+
+    return [
+      _FlatSelectionNode(
+        key: keyBase,
+        label: towerName,
+        children: flatChildren,
+      ),
+    ];
+  }
+
+  List<_FlatSelectionNode> _flatLeafNodes(
+    List<String> flatIds,
+    String keyBase,
+  ) {
+    return [
+      for (var index = 0; index < flatIds.length; index++)
+        _FlatSelectionNode(
+          key: '$keyBase-$index',
+          label: flatIds[index],
+          flatId: flatIds[index],
+        ),
+    ];
+  }
+
+  List<String> _collectFlatIds(List<_FlatSelectionNode> nodes) {
+    final flatIds = <String>[];
+    for (final node in nodes) {
+      flatIds.addAll(node.flatIds);
+    }
+    return flatIds;
+  }
+
+  Map<String, String> _buildFlatLabelMap(List<_FlatSelectionNode> nodes) {
+    final result = <String, String>{};
+
+    void visit(_FlatSelectionNode node) {
+      final flatId = node.flatId;
+      if (flatId != null && flatId.trim().isNotEmpty) {
+        result[flatId] = node.label;
+      }
+      for (final child in node.children) {
+        visit(child);
+      }
+    }
+
+    for (final node in nodes) {
+      visit(node);
+    }
+
+    return result;
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    return value
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
+  List<String> _asStringList(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+
+    String? mapEntryToFlatId(Map entry) {
+      final map = Map<String, dynamic>.from(entry);
+      const candidateKeys = [
+        'flatId',
+        'flatID',
+        'flatNo',
+        'flatNumber',
+        'id',
+        'value',
+      ];
+      for (final key in candidateKeys) {
+        final text = map[key]?.toString().trim() ?? '';
+        if (text.isNotEmpty && text.toLowerCase() != 'null') {
+          return text;
+        }
+      }
+      return null;
+    }
+
+    return value
+        .map((entry) {
+          if (entry is Map) {
+            return mapEntryToFlatId(entry) ?? '';
+          }
+          return entry?.toString().trim() ?? '';
+        })
+        .where((entry) => entry.isNotEmpty)
+        .toList()
+      ..sort(
+        (left, right) => left.toLowerCase().compareTo(right.toLowerCase()),
+      );
+  }
+
+  String _safeText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.toLowerCase() == 'null' ? '' : text;
+  }
+
+  String _responseMessage(
+    Map<String, dynamic>? response, {
+    required String fallback,
+  }) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty) {
+      return message;
+    }
+    return fallback;
+  }
+
+  Future<void> _openFlatSelectionDialog() async {
+    if (_loadingFlats || _flatNodes.isEmpty) {
+      return;
+    }
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _FlatSelectionDialog(
+        nodes: _flatNodes,
+        initialFlatId: _selectedFlatId,
+      ),
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedFlatId = selected;
+    });
+  }
+
+  String _buildSelectedFlatDisplayText() {
+    if (_loadingFlats) {
+      return 'Loading flats...';
+    }
+    if (_selectedFlatId == null || _selectedFlatId!.isEmpty) {
+      return 'Select Flat';
+    }
+    return _flatLabelById[_selectedFlatId!] ?? _selectedFlatId!;
+  }
+
+  Future<void> _openCreditNoteDetails() async {
+    final selectedFlatId = _selectedFlatId?.trim() ?? '';
+    if (selectedFlatId.isEmpty || _loadingDetails) {
+      return;
+    }
+
+    setState(() {
+      _loadingDetails = true;
+    });
+
+    try {
+      final response = await ApiService.viewCreditNoteDetails(
+        flatId: selectedFlatId,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      if (response == null) {
+        await _showResultDialog(
+          title: 'Credit Note Details',
+          message: 'Unable to load credit note details right now.',
+          isError: true,
+        );
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _CreditNoteDetailsDialog(
+          flatId: selectedFlatId,
+          response: response,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingDetails = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showResultDialog({
+    required String title,
+    required String message,
+    required bool isError,
+  }) async {
+    final iconColor = isError
+        ? const Color(0xFFB3261E)
+        : const Color(0xFF0F8F82);
+    final icon = isError ? Icons.error_outline_rounded : Icons.check_circle;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+        contentPadding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedFlatText = _buildSelectedFlatDisplayText();
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 760,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD9ECE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(15, 70, 64, 0.16),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F8F82),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.apartment_outlined,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Select Flat For Credit Note',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Choose a flat and load credit note details.',
+                            style: TextStyle(
+                              color: Color(0xFFE5FAF6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _loadingFlats || _flatNodes.isEmpty
+                            ? null
+                            : _openFlatSelectionDialog,
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Flat',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFD5E6E2),
+                              ),
+                            ),
+                            suffixIcon: _loadingFlats
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.keyboard_arrow_down_rounded),
+                          ),
+                          child: Text(
+                            selectedFlatText,
+                            style: TextStyle(
+                              color:
+                                  (_selectedFlatId == null ||
+                                      _selectedFlatId!.isEmpty)
+                                  ? Colors.black45
+                                  : Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_flatLoadError != null &&
+                          _flatLoadError!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _flatLoadError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed:
+                              (_loadingDetails ||
+                                  _selectedFlatId == null ||
+                                  _selectedFlatId!.trim().isEmpty)
+                              ? null
+                              : _openCreditNoteDetails,
+                          icon: _loadingDetails
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.search_rounded),
+                          label: Text(
+                            _loadingDetails
+                                ? 'Loading...'
+                                : 'View Credit Note Details',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CreditNoteDetailsDialog extends StatefulWidget {
+  const _CreditNoteDetailsDialog({
+    required this.flatId,
+    required this.response,
+  });
+
+  final String flatId;
+  final Map<String, dynamic> response;
+
+  @override
+  State<_CreditNoteDetailsDialog> createState() =>
+      _CreditNoteDetailsDialogState();
+}
+
+class _CreditNoteDetailsDialogState extends State<_CreditNoteDetailsDialog> {
+  late Map<String, dynamic> _response;
+  bool _refreshing = false;
+  final Set<int> _expandedNoteIndexes = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _response = Map<String, dynamic>.from(widget.response);
+  }
+
+  List<Map<String, dynamic>> _creditNoteList() {
+    final raw = _response['creditNoteDetails'];
+    if (raw is! List) {
+      return const [];
+    }
+    return raw
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+  }
+
+  String _message() {
+    final value = _response['message']?.toString().trim() ?? '';
+    return value.isEmpty ? 'Credit note details fetched successfully.' : value;
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic> response) {
+    final messageCode = response['messageCode']?.toString().toUpperCase() ?? '';
+    if (messageCode.startsWith('SUCC') || messageCode.contains('SUCCESS')) {
+      return true;
+    }
+    return response['creditNoteDetails'] is List;
+  }
+
+  String _formatCurrency(dynamic value) {
+    if (value == null) {
+      return '₹0.00';
+    }
+
+    final parsed = value is num
+        ? value.toDouble()
+        : double.tryParse(value.toString().trim());
+    if (parsed == null) {
+      return '₹0.00';
+    }
+
+    return '₹${parsed.toStringAsFixed(2)}';
+  }
+
+  String _formatIssueDate(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) {
+      return '-';
+    }
+
+    DateTime? parsedDate = DateTime.tryParse(text);
+    if (parsedDate == null) {
+      final slashParts = text.split('/');
+      if (slashParts.length == 3) {
+        final day = int.tryParse(slashParts[0]);
+        final month = int.tryParse(slashParts[1]);
+        final year = int.tryParse(slashParts[2]);
+        if (day != null && month != null && year != null) {
+          parsedDate = DateTime(year, month, day);
+        }
+      }
+    }
+
+    if (parsedDate == null) {
+      return text;
+    }
+    return DateFormat('dd-MMM-yyyy').format(parsedDate);
+  }
+
+  void _toggleNoteExpansion(int index) {
+    setState(() {
+      if (_expandedNoteIndexes.contains(index)) {
+        _expandedNoteIndexes.remove(index);
+      } else {
+        _expandedNoteIndexes.add(index);
+      }
+    });
+  }
+
+  Future<void> _openIssueCreditNoteModal() async {
+    final changed =
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _IssueCreditNoteDialog(flatId: widget.flatId),
+        ) ??
+        false;
+
+    if (!changed || !mounted) {
+      return;
+    }
+
+    await _refreshDetails();
+  }
+
+  Future<void> _refreshDetails() async {
+    setState(() {
+      _refreshing = true;
+    });
+
+    try {
+      final response = await ApiService.viewCreditNoteDetails(
+        flatId: widget.flatId,
+      );
+      if (!mounted || response == null) {
+        return;
+      }
+      setState(() {
+        _response = Map<String, dynamic>.from(response);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _refreshing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = _creditNoteList();
+    final totalAmount = _formatCurrency(_response['totalAmount']);
+    final usedAmount = _formatCurrency(_response['usedAmount']);
+    final remainingAmount = _formatCurrency(_response['remainingAmount']);
+    final success = _isSuccessResponse(_response);
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 860,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FBFB),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD9ECE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(15, 70, 64, 0.16),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F8F82),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.receipt_long_outlined,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Credit Note Details',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Flat ID: ${widget.flatId}',
+                            style: const TextStyle(
+                              color: Color(0xFFE5FAF6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 560),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: success
+                              ? const Color(0xFFEFF8F6)
+                              : const Color(0xFFFFF3F1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: success
+                                ? const Color(0xFFCDE8E2)
+                                : const Color(0xFFF3CDC6),
+                          ),
+                        ),
+                        child: Text(
+                          _message(),
+                          style: TextStyle(
+                            color: success
+                                ? const Color(0xFF14564E)
+                                : const Color(0xFF8F3020),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _summaryChip('Total Amount', totalAmount),
+                          _summaryChip('Used Amount', usedAmount),
+                          _summaryChip('Remaining Amount', remainingAmount),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      if (notes.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FBFA),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFDCEAE7)),
+                          ),
+                          child: const Text(
+                            'No data found in creditNoteDetails.',
+                            style: TextStyle(
+                              color: Color(0xFF5F7973),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else
+                        Column(
+                          children: [
+                            for (var index = 0; index < notes.length; index++)
+                              Builder(
+                                builder: (context) {
+                                  final note = notes[index];
+                                  final expanded = _expandedNoteIndexes
+                                      .contains(index);
+                                  final noteNo =
+                                      note['creditNoteNo']
+                                              ?.toString()
+                                              .trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? note['creditNoteNo'].toString()
+                                      : 'Credit Note';
+                                  final issueDate = _formatIssueDate(
+                                    note['creditNoteIssueDate'],
+                                  );
+                                  final cause =
+                                      note['creditNoteCause']
+                                              ?.toString()
+                                              .trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? note['creditNoteCause'].toString()
+                                      : '-';
+                                  final amount = _formatCurrency(
+                                    note['creditNoteAmount'],
+                                  );
+                                  final details =
+                                      note['creditNoteDetails']
+                                              ?.toString()
+                                              .trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? note['creditNoteDetails'].toString()
+                                      : '-';
+                                  final issuedBy =
+                                      note['creditNoteIssuedBy']
+                                              ?.toString()
+                                              .trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? note['creditNoteIssuedBy'].toString()
+                                      : '-';
+
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF6FBFA),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: expanded
+                                            ? const Color(0xFFBFDCD6)
+                                            : const Color(0xFFDCEAE7),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        InkWell(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          onTap: () =>
+                                              _toggleNoteExpansion(index),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              14,
+                                              12,
+                                              14,
+                                              12,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        noteNo,
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: Color(
+                                                            0xFF124B45,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Text(
+                                                        'Issue Date: $issueDate',
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                            0xFF3F625D,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        'Cause: $cause',
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                            0xFF3F625D,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  children: [
+                                                    const Text(
+                                                      'Amount',
+                                                      style: TextStyle(
+                                                        color: Color(
+                                                          0xFF5F7973,
+                                                        ),
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      amount,
+                                                      style: const TextStyle(
+                                                        color: Color(
+                                                          0xFF0F8F82,
+                                                        ),
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Icon(
+                                                  expanded
+                                                      ? Icons
+                                                            .expand_less_rounded
+                                                      : Icons
+                                                            .expand_more_rounded,
+                                                  color: const Color(
+                                                    0xFF0F8F82,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        if (expanded)
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.fromLTRB(
+                                              14,
+                                              0,
+                                              14,
+                                              12,
+                                            ),
+                                            decoration: const BoxDecoration(
+                                              border: Border(
+                                                top: BorderSide(
+                                                  color: Color(0xFFDCEAE7),
+                                                ),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const SizedBox(height: 10),
+                                                Text(
+                                                  details,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF365A55),
+                                                    height: 1.35,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  'Issued By: $issuedBy',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF3F625D),
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _refreshing ? null : _openIssueCreditNoteModal,
+                      icon: const Icon(Icons.note_add_outlined),
+                      label: const Text('Issue New Credit Note'),
+                    ),
+                    const Spacer(),
+                    if (_refreshing)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    const SizedBox(width: 12),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryChip(String label, String value) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F8F6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDCEAE7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF5F7973),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF124B45),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IssueCreditNoteDialog extends StatefulWidget {
+  const _IssueCreditNoteDialog({required this.flatId});
+
+  final String flatId;
+
+  @override
+  State<_IssueCreditNoteDialog> createState() => _IssueCreditNoteDialogState();
+}
+
+class _IssueCreditNoteDialogState extends State<_IssueCreditNoteDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _detailsController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
+  String? _selectedCause;
+  bool _submitting = false;
+
+  static const List<String> _defaultCauses = [
+    'Excess CAM payment adjustment',
+    'Event fee refund',
+    'Maintenance correction',
+    'Other',
+  ];
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic>? response) {
+    final messageCode =
+        response?['messageCode']?.toString().toUpperCase() ?? '';
+    return messageCode.startsWith('SUCC') || messageCode.contains('SUCCESS');
+  }
+
+  String _responseMessage(
+    Map<String, dynamic>? response, {
+    required String fallback,
+  }) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty) {
+      return message;
+    }
+    return fallback;
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _submitting) {
+      return;
+    }
+
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || amount <= 0) {
+      await _showResult(
+        title: 'Issue Credit Note Failed',
+        message: 'Enter a valid amount greater than zero.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    final cause = _selectedCause?.trim() ?? '';
+    if (cause.isEmpty) {
+      await _showResult(
+        title: 'Issue Credit Note Failed',
+        message: 'Select a credit note cause.',
+        isSuccess: false,
+      );
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+    });
+
+    try {
+      final response = await ApiService.issueCreditNote(
+        flatId: widget.flatId,
+        creditNoteCause: cause,
+        creditNoteDetails: _detailsController.text.trim(),
+        creditNoteAmount: amount,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      final success = _isSuccessResponse(response);
+      await _showResult(
+        title: success ? 'Credit Note Issued' : 'Issue Credit Note Failed',
+        message: _responseMessage(
+          response,
+          fallback: success
+              ? 'Credit note issued successfully.'
+              : 'Unable to issue credit note right now.',
+        ),
+        isSuccess: success,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (success) {
+        Navigator.of(context).pop(true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showResult({
+    required String title,
+    required String message,
+    required bool isSuccess,
+  }) async {
+    final iconColor = isSuccess
+        ? const Color(0xFF0F8F82)
+        : const Color(0xFFB3261E);
+    final icon = isSuccess ? Icons.check_circle : Icons.error_outline_rounded;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 680,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD9ECE8)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(15, 70, 64, 0.16),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F8F82),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.note_add_outlined,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Issue New Credit Note',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Flat ID: ${widget.flatId}',
+                            style: const TextStyle(
+                              color: Color(0xFFE5FAF6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedCause,
+                        decoration: InputDecoration(
+                          labelText: 'Credit Note Cause',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD5E6E2),
+                            ),
+                          ),
+                        ),
+                        items: _defaultCauses
+                            .map(
+                              (cause) => DropdownMenuItem<String>(
+                                value: cause,
+                                child: Text(cause),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedCause = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Select credit note cause';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _detailsController,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: InputDecoration(
+                          labelText: 'Credit Note Details',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD5E6E2),
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          final text = value?.trim() ?? '';
+                          if (text.isEmpty) {
+                            return 'Enter credit note details';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _amountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Credit Note Amount',
+                          prefixText: '₹ ',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD5E6E2),
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          final amount = double.tryParse((value ?? '').trim());
+                          if (amount == null || amount <= 0) {
+                            return 'Enter a valid amount';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _submitting ? null : _submit,
+                      icon: _submitting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check_circle_outline_rounded),
+                      label: Text(
+                        _submitting ? 'Issuing...' : 'Issue Credit Note',
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

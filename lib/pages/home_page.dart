@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../navigation/app_section.dart';
@@ -2843,6 +2845,26 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return payment.hashCode.toString();
   }
 
+  String _extractFlatIdFromPayment(Map<String, dynamic> payment) {
+    final candidates = [
+      payment['flatId'],
+      payment['flatNo'],
+      payment['flatNumber'],
+      payment['unitNo'],
+      ApiService.publicPayFlatNo,
+      ApiService.getLoggedInFlatNo(),
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '--';
+  }
+
   String _formatAmountForRequest(double amount) {
     if (amount == amount.truncateToDouble()) {
       return amount.toInt().toString();
@@ -3215,11 +3237,418 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return true;
   }
 
-  Future<List<String>?> _createDeepLinkOrder({
+  String _resolvePublicFlatIdFromPayment(Map<String, dynamic> payment) {
+    final candidates = [
+      payment['flatId'],
+      payment['flatNo'],
+      payment['flatNumber'],
+      ApiService.publicPayFlatNo,
+      ApiService.getLoggedInFlatNo(),
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '';
+  }
+
+  String _extractOtpId(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['otpId'],
+      response?['OTPId'],
+      response?['otpID'],
+      response?['data'] is Map ? (response?['data'] as Map)['otpId'] : null,
+      response?['data'] is Map ? (response?['data'] as Map)['OTPId'] : null,
+      response?['otpDetails'] is Map
+          ? (response?['otpDetails'] as Map)['otpId']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '';
+  }
+
+  Map<String, dynamic>? _extractResponseGenericHeader(
+    Map<String, dynamic>? response,
+  ) {
+    final raw = response?['genericHeader'];
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    return null;
+  }
+
+  bool _isOtpCreateSuccess(Map<String, dynamic>? response) {
+    if (_isSuccessResponse(response)) {
+      return true;
+    }
+
+    final otpId = _extractOtpId(response);
+    if (otpId.isEmpty) {
+      return false;
+    }
+
+    final hasEmails = _extractOtpEmailList(response).isNotEmpty;
+    return hasEmails;
+  }
+
+  List<String> _extractOtpEmailList(Map<String, dynamic>? response) {
+    dynamic raw =
+        response?['mailIdList'] ??
+        response?['emailList'] ??
+        response?['emails'] ??
+        (response?['data'] is Map
+            ? (response?['data'] as Map)['mailIdList'] ??
+                  (response?['data'] as Map)['emailList']
+            : null);
+
+    final emails = <String>[];
+    if (raw is List) {
+      for (final item in raw) {
+        final value = item?.toString().trim() ?? '';
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
+          emails.add(value);
+        }
+      }
+    } else if (raw is String) {
+      final cleaned = raw.trim();
+      if (cleaned.isNotEmpty && cleaned.toLowerCase() != 'null') {
+        final tokens = cleaned
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .split(',')
+            .map((part) => part.trim())
+            .where((part) => part.isNotEmpty && part.toLowerCase() != 'null')
+            .toList();
+        emails.addAll(tokens.isEmpty ? [cleaned] : tokens);
+      }
+    }
+
+    return emails;
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic>? response) {
+    final code =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    return code.startsWith('SUCC');
+  }
+
+  String _extractResponseMessage(
+    Map<String, dynamic>? response,
+    String fallback,
+  ) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty && message.toLowerCase() != 'null') {
+      return message;
+    }
+    return fallback;
+  }
+
+  num _asNum(dynamic value) {
+    if (value is num) {
+      return value;
+    }
+    final parsed = double.tryParse(value?.toString().trim() ?? '');
+    return parsed ?? 0;
+  }
+
+  num _parseTenderAmount(dynamic value) {
+    if (value is num) {
+      return value;
+    }
+    final parsed = double.tryParse(value?.toString().trim() ?? '');
+    return parsed ?? 0;
+  }
+
+  bool _hasCreditNoteAvailable(Map<String, dynamic>? response) {
+    final messageCode =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    if (messageCode == 'SUCC_MESSAGE_60') {
+      return true;
+    }
+
+    final candidates = [
+      response?['creditNoteAvailable'],
+      response?['available'],
+      response?['isCreditNoteAvailable'],
+      response?['hasCreditNote'],
+      response?['remainingAmount'],
+      response?['totalCreditNoteAmount'],
+      response?['data'] is Map
+          ? (response?['data'] as Map)['creditNoteAvailable']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['remainingAmount']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      if (candidate is bool) {
+        if (candidate) return true;
+        continue;
+      }
+
+      final text = candidate?.toString().trim().toLowerCase() ?? '';
+      if (text == 'true' || text == 'yes' || text == 'y') {
+        return true;
+      }
+
+      final numeric = double.tryParse(text);
+      if (numeric != null && numeric > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  double _extractCreditNoteRemainingAmount(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['remainingAmount'],
+      response?['availableAmount'],
+      response?['balanceAmount'],
+      response?['totalCreditNoteAmount'],
+      response?['creditNoteAmount'],
+      response?['data'] is Map
+          ? (response?['data'] as Map)['remainingAmount']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['availableAmount']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['balanceAmount']
+          : null,
+      response?['creditNotes'] is List &&
+              (response?['creditNotes'] as List).isNotEmpty
+          ? ((response?['creditNotes'] as List)
+                .whereType<Map>()
+                .map((item) => _asNum(item['remainingAmount']))
+                .fold<num>(0, (sum, value) => sum + value))
+          : null,
+      response?['data'] is Map &&
+              (response?['data'] as Map)['creditNotes'] is List
+          ? ((((response?['data'] as Map)['creditNotes'] as List)
+                .whereType<Map>()
+                .map((item) => _asNum(item['remainingAmount']))
+                .fold<num>(0, (sum, value) => sum + value)))
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final numeric = _asNum(candidate).toDouble();
+      if (numeric > 0) {
+        return numeric;
+      }
+    }
+
+    return 0;
+  }
+
+  Future<bool> _showUseCreditNotePrompt() async {
+    if (!mounted) {
+      return false;
+    }
+
+    final decision = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFF7FCFA),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          title: const Text(
+            'Credit Note Available',
+            style: TextStyle(
+              color: Color(0xFF124B45),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: const Text(
+            'Credit note amount is available. Would you like to use it for this payment?',
+            style: TextStyle(
+              color: Color(0xFF124B45),
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0F8F82),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return decision == true;
+  }
+
+  Future<double?> _runCreditNoteOtpAndFetchRemaining({
+    required String flatId,
+    required Map<String, dynamic> requestGenericHeader,
+  }) async {
+    final otpCreateResponse = await ApiService.createOtpPublic(
+      flatId: flatId,
+      genericHeader: requestGenericHeader,
+    );
+    if (!_isOtpCreateSuccess(otpCreateResponse)) {
+      _showStatusSnack(
+        _extractResponseMessage(
+          otpCreateResponse,
+          'Unable to create OTP for credit note verification.',
+        ),
+        isError: true,
+      );
+      return null;
+    }
+
+    if (!mounted) {
+      return null;
+    }
+
+    final otpState = _OtpPromptState(
+      otpId: _extractOtpId(otpCreateResponse),
+      emails: _extractOtpEmailList(otpCreateResponse),
+      resendDisabledSeconds: 60,
+    );
+    final otpRequestHeader =
+        _extractResponseGenericHeader(otpCreateResponse) ??
+        requestGenericHeader;
+
+    final otpVerified = await showDialog<_OtpValidateResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _CreditNoteOtpDialog<_OtpValidateResult>(
+          initialState: otpState,
+          onResendOtp: () async {
+            final resendResponse = await ApiService.createOtpPublic(
+              flatId: flatId,
+              genericHeader: otpRequestHeader,
+            );
+
+            if (!_isOtpCreateSuccess(resendResponse)) {
+              return _OtpResendResult(
+                success: false,
+                message: _extractResponseMessage(
+                  resendResponse,
+                  'Unable to resend OTP.',
+                ),
+              );
+            }
+
+            return _OtpResendResult(
+              success: true,
+              state: _OtpPromptState(
+                otpId: _extractOtpId(resendResponse),
+                emails: _extractOtpEmailList(resendResponse),
+                resendDisabledSeconds: 60,
+              ),
+            );
+          },
+          onSubmitOtp: (otp, otpId) async {
+            final validateResponse = await ApiService.validateOtpPublic(
+              otp: otp,
+              otpId: otpId,
+              flatId: flatId,
+              genericHeader: otpRequestHeader,
+            );
+
+            if (!_isSuccessResponse(validateResponse)) {
+              return _OtpValidateResult(
+                success: false,
+                message: _extractResponseMessage(
+                  validateResponse,
+                  'OTP validation failed.',
+                ),
+              );
+            }
+
+            return const _OtpValidateResult(success: true);
+          },
+        );
+      },
+    );
+
+    if (otpVerified?.success != true) {
+      return null;
+    }
+
+    final detailsResponse = await ApiService.viewCreditNoteDetailsPublic(
+      flatId: flatId,
+      genericHeader: otpRequestHeader,
+    );
+
+    if (!_isSuccessResponse(detailsResponse)) {
+      _showStatusSnack(
+        _extractResponseMessage(
+          detailsResponse,
+          'Unable to fetch credit note details.',
+        ),
+        isError: true,
+      );
+      return null;
+    }
+
+    final remainingAmount = _extractCreditNoteRemainingAmount(detailsResponse);
+    if (remainingAmount <= 0) {
+      _showStatusSnack('No usable credit note balance found.', isError: true);
+      return null;
+    }
+
+    return remainingAmount;
+  }
+
+  Future<double?> _resolveCreditNoteRemainingAmountForPayment(
+    Map<String, dynamic> payment,
+  ) async {
+    final flatId = _resolvePublicFlatIdFromPayment(payment);
+    if (flatId.isEmpty) {
+      return null;
+    }
+
+    final response = await ApiService.viewCreditNoteDetailsPublic(
+      flatId: flatId,
+    );
+
+    if (!_isSuccessResponse(response)) {
+      return null;
+    }
+
+    final remainingAmount = _extractCreditNoteRemainingAmount(response);
+    return remainingAmount > 0 ? remainingAmount : null;
+  }
+
+  Future<_QrPaymentFlowResult?> _createDeepLinkOrder({
     required Map<String, dynamic> payment,
     required double netPayable,
     required String bankId,
     required BuildContext hostContext,
+    required bool useCreditNote,
+    required double creditNoteAmount,
   }) async {
     if (bankId.trim().isEmpty) {
       _showStatusSnack(
@@ -3229,9 +3658,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       return null;
     }
 
+    final amountForGateway = netPayable;
+
     final response = await ApiService.createPaymentGatewayOrder(
       paymentGateway: 'DEEPLINK',
-      amountInPaisa: _toPaise(netPayable).toString(),
+      amountInPaisa: _toPaise(amountForGateway).toString(),
       eventDate: DateTime.now().toIso8601String(),
       transactionType: 'DEEPLINK',
       data: {'bankId': bankId.trim()},
@@ -3256,26 +3687,129 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       return null;
     }
 
-    final files = await _showDeepLinkPaymentModal(
+    return _showDeepLinkPaymentModal(
       hostContext: hostContext,
       upiPaymentURL: upiPaymentURL,
-      amount: _formatAmountForRequest(netPayable),
+      amount: _formatAmountForRequest(amountForGateway),
       bankName: responseMap['bankName']?.toString().trim() ?? '',
       accountHolderName:
           responseMap['accountHolderName']?.toString().trim() ?? '',
     );
-
-    return files;
   }
 
-  Future<List<String>?> _showDeepLinkPaymentModal({
+  Future<_QrPaymentFlowResult?> _createQrPaymentFlowWithCreditNote({
+    required Map<String, dynamic> payment,
+    required double netPayable,
+    required String bankId,
+    required BuildContext hostContext,
+    required bool useCreditNote,
+    required double creditNoteAmount,
+  }) async {
+    if (bankId.trim().isEmpty) {
+      _showStatusSnack(
+        'Payment recorded, but bank ID was missing for Society QR order creation.',
+        isError: true,
+      );
+      return null;
+    }
+
+    final amountForGateway = netPayable;
+    final flatId = _resolvePublicFlatIdFromPayment(payment);
+    final genericHeader = flatId.isNotEmpty
+        ? ApiService.buildPublicGenericHeader(flatId)
+        : null;
+
+    final otpFuture =
+        (useCreditNote && creditNoteAmount > 0 && flatId.isNotEmpty)
+        ? ApiService.createOtpPublic(
+            flatId: flatId,
+            sendMobile: false,
+            sendMail: true,
+            genericHeader: genericHeader,
+            userId:
+                ApiService.currentUserId ??
+                ApiService.userHeader?['userId']?.toString() ??
+                'ext',
+            userIds: [
+              ApiService.currentUserId ??
+                  ApiService.userHeader?['userId']?.toString() ??
+                  'ext',
+            ],
+          )
+        : Future<Map<String, dynamic>?>.value(null);
+
+    final orderFuture = ApiService.createPaymentGatewayOrder(
+      paymentGateway: 'DEEPLINK',
+      amountInPaisa: _toPaise(amountForGateway).toString(),
+      eventDate: DateTime.now().toIso8601String(),
+      transactionType: 'DEEPLINK',
+      data: {'bankId': bankId.trim()},
+    );
+
+    final results = await Future.wait([orderFuture, otpFuture]);
+    final response = results[0] as Map<String, dynamic>?;
+    final otpResponse = results[1] as Map<String, dynamic>?;
+
+    final messageCode = response?['messageCode']?.toString().trim() ?? '';
+    final responseData = response?['data'];
+    final responseMap = responseData is Map
+        ? Map<String, dynamic>.from(responseData)
+        : <String, dynamic>{};
+    final upiPaymentURL =
+        responseMap['upiPaymentURL']?.toString().trim() ??
+        responseMap['upiUrl']?.toString().trim() ??
+        '';
+
+    if (messageCode != 'SUCC_MESSAGE_44' && upiPaymentURL.isEmpty) {
+      _showStatusSnack(
+        response?['message']?.toString() ??
+            'Unable to create Society QR payment order.',
+        isError: true,
+      );
+      return null;
+    }
+
+    if (useCreditNote && creditNoteAmount > 0) {
+      if (!_isOtpCreateSuccess(otpResponse)) {
+        _showStatusSnack(
+          _extractResponseMessage(
+            otpResponse,
+            'Unable to send OTP for QR payment verification.',
+          ),
+          isError: true,
+        );
+        return null;
+      }
+    }
+
+    return _showDeepLinkPaymentModal(
+      hostContext: hostContext,
+      upiPaymentURL: upiPaymentURL,
+      amount: _formatAmountForRequest(amountForGateway),
+      bankName: responseMap['bankName']?.toString().trim() ?? '',
+      accountHolderName:
+          responseMap['accountHolderName']?.toString().trim() ?? '',
+      requireOtp: useCreditNote && creditNoteAmount > 0,
+      otpId: useCreditNote && creditNoteAmount > 0
+          ? _extractOtpId(otpResponse)
+          : '',
+      otpEmails: useCreditNote && creditNoteAmount > 0
+          ? _extractOtpEmailList(otpResponse)
+          : const <String>[],
+    );
+  }
+
+  Future<_QrPaymentFlowResult?> _showDeepLinkPaymentModal({
     required BuildContext hostContext,
     required String upiPaymentURL,
     required String amount,
     required String bankName,
     required String accountHolderName,
+    bool requireOtp = false,
+    String otpId = '',
+    List<String> otpEmails = const <String>[],
   }) async {
-    return showDialog<List<String>>(
+    return showDialog<_QrPaymentFlowResult>(
       context: hostContext,
       barrierDismissible: false,
       builder: (dialogContext) => _DeepLinkPaymentDialog(
@@ -3283,6 +3817,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         amount: amount,
         bankName: bankName,
         accountHolderName: accountHolderName,
+        requireOtp: requireOtp,
+        otpId: otpId,
+        otpEmails: otpEmails,
       ),
     );
   }
@@ -3301,209 +3838,259 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       if (!isValid || !mounted) {
         return;
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _submittingRows[rowKey] = false;
-        });
-      }
-    }
 
-    final selection = await showDialog<_DueTenderSelection>(
-      context: context,
-      builder: (dialogContext) => _DueTenderDialog(
-        duePayment: payment,
-        allowedModes: _extractAllowedPaymentModes(payment),
-        formatAsCurrency: widget.formatAsCurrency,
-      ),
-    );
-
-    if (selection == null || !mounted) {
-      return;
-    }
-
-    setState(() {
-      _submittingRows[rowKey] = true;
-    });
-
-    try {
-      final paymentId = payment['paymentId']?.toString().trim() ?? '';
-      final dueId =
-          payment['DueId']?.toString().trim() ??
-          payment['dueId']?.toString().trim() ??
-          '';
-
-      if (paymentId.isEmpty || dueId.isEmpty) {
-        _showStatusSnack(
-          'Unable to proceed: paymentId or DueId was not provided.',
-          isError: true,
-        );
+      final creditNoteRemainingAmount =
+          await _resolveCreditNoteRemainingAmountForPayment(payment);
+      if (!mounted) {
         return;
       }
 
-      String transactionStatus;
-      String thirdPartyTransactionId = '';
-      String thirdPartyName = '';
-      final filesToSubmit = <String>[...selection.listOfFiles];
-      var qrCancelledByUser = false;
+      final selection = await showDialog<_DueTenderSelection>(
+        context: context,
+        builder: (dialogContext) => _DueTenderDialog(
+          duePayment: payment,
+          allowedModes: _extractAllowedPaymentModes(payment),
+          formatAsCurrency: widget.formatAsCurrency,
+          creditNoteRemainingAmount: creditNoteRemainingAmount,
+          onPaymentSuccess:
+              ({
+                required String message,
+                required String transactionId,
+                required String? receiptBase64,
+              }) async {
+                if (!mounted) {
+                  return;
+                }
+                await _showPayDuesSuccessDialog(
+                  hostContext: context,
+                  message: message,
+                  transactionId: transactionId,
+                  receiptBase64: receiptBase64,
+                );
+              },
+        ),
+      );
 
-      if (selection.tender == 'ONLINE') {
-        final onlineOutcome = await _runOnlinePayment(
-          payment: payment,
-          amount: selection.netPayable,
-        );
+      if (selection == null || !mounted) {
+        return;
+      }
 
-        if (onlineOutcome == null) {
+      setState(() {
+        _submittingRows[rowKey] = true;
+      });
+
+      try {
+        final paymentId = payment['paymentId']?.toString().trim() ?? '';
+        final dueId =
+            payment['DueId']?.toString().trim() ??
+            payment['dueId']?.toString().trim() ??
+            '';
+
+        if (paymentId.isEmpty || dueId.isEmpty) {
+          _showStatusSnack(
+            'Unable to proceed: paymentId or DueId was not provided.',
+            isError: true,
+          );
           return;
         }
 
-        transactionStatus = onlineOutcome.transactionStatus;
-        thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
-        thirdPartyName = 'RAZORPAY';
-      } else if (_isSocietyQrTender(selection.tender)) {
-        final hostContext = Navigator.of(context, rootNavigator: true).context;
-        final qrFiles = await _createDeepLinkOrder(
-          payment: payment,
-          netPayable: selection.netPayable,
-          bankId: bankId,
-          hostContext: hostContext,
-        );
-        if (qrFiles == null || qrFiles.isEmpty) {
-          qrCancelledByUser = true;
-        } else {
-          filesToSubmit.addAll(qrFiles);
-        }
-        transactionStatus = 'ON_HOLD';
-        thirdPartyName = 'DEEPLINKUPI';
-      } else {
-        transactionStatus = 'Pending';
-      }
+        String transactionStatus;
+        String thirdPartyTransactionId = '';
+        String thirdPartyName = '';
+        final filesToSubmit = <String>[...selection.listOfFiles];
+        Map<String, dynamic>? otpDetails;
 
-      final requestBody = {
-        'genericHeader': ApiService.userHeader != null
-            ? Map<String, dynamic>.from(ApiService.userHeader!)
-            : <String, dynamic>{},
-        'paymentId': paymentId,
-        'DueId': dueId,
-        'amount': _formatAmountForRequest(selection.netPayable),
-        'paymentTenderDataList': [
+        if (selection.tender == 'ONLINE') {
+          final onlineOutcome = await _runOnlinePayment(
+            payment: payment,
+            amount: selection.netPayable,
+          );
+
+          if (onlineOutcome == null) {
+            return;
+          }
+
+          transactionStatus = onlineOutcome.transactionStatus;
+          thirdPartyTransactionId = onlineOutcome.thirdPartyTransactionId;
+          thirdPartyName = 'RAZORPAY';
+        } else if (_isSocietyQrTender(selection.tender)) {
+          final hostContext = Navigator.of(
+            context,
+            rootNavigator: true,
+          ).context;
+          final qrFlowResult =
+              selection.creditNoteUsed && selection.creditNoteConsumedAmount > 0
+              ? await _createQrPaymentFlowWithCreditNote(
+                  payment: payment,
+                  netPayable: selection.netPayable,
+                  bankId: bankId,
+                  hostContext: hostContext,
+                  useCreditNote: true,
+                  creditNoteAmount: selection.creditNoteConsumedAmount,
+                )
+              : await _createDeepLinkOrder(
+                  payment: payment,
+                  netPayable: selection.netPayable,
+                  bankId: bankId,
+                  hostContext: hostContext,
+                  useCreditNote: selection.creditNoteUsed,
+                  creditNoteAmount: selection.creditNoteConsumedAmount,
+                );
+          if (qrFlowResult == null) {
+            return;
+          }
+          filesToSubmit.addAll(qrFlowResult.files);
+          if (qrFlowResult.otp.isNotEmpty || qrFlowResult.otpId.isNotEmpty) {
+            otpDetails = {'otp': qrFlowResult.otp, 'otpId': qrFlowResult.otpId};
+          }
+          transactionStatus = 'ON_HOLD';
+          thirdPartyName = 'DEEPLINKUPI';
+        } else {
+          transactionStatus = 'Pending';
+        }
+
+        final paymentTenderDataList = <Map<String, dynamic>>[
           {
             'tenderName': selection.tender,
             'amountPaid': _formatAmountForRequest(selection.netPayable),
           },
-        ],
-        'paymentCycle': payment['collectionCycle']?.toString().trim() ?? '',
-        'paymentName': payment['paymentName']?.toString().trim() ?? '',
-        'dueDate': payment['dueDate']?.toString().trim() ?? '',
-        'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
-        'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
-        'bankInstrumentTenderDetails': selection.bankInstrumentTenderDetails,
-        'thirdPartyTransactionId': thirdPartyTransactionId,
-        'transactionStatus': transactionStatus,
-        'thirdPartyName': thirdPartyName,
-        'noOfPersons': selection.noOfPersons.toString(),
-        'files': filesToSubmit,
-        'paidDueDetails': {
-          'dueId': dueId,
-          'collectionCycle':
-              payment['collectionCycle']?.toString().trim() ?? '',
-          'flatArea': payment['flatArea']?.toString().trim() ?? '',
-          'dueDate': payment['dueDate']?.toString().trim() ?? '',
+          if (selection.creditNoteUsed &&
+              selection.creditNoteConsumedAmount > 0)
+            {
+              'tenderName': 'CREDIT_NOTE',
+              'amountPaid': _formatAmountForRequest(
+                selection.creditNoteConsumedAmount,
+              ),
+            },
+        ];
+        final totalTenderAmount = paymentTenderDataList.fold<double>(
+          0,
+          (sum, tender) => sum + _asNum(tender['amountPaid']).toDouble(),
+        );
+
+        final requestBody = {
+          'genericHeader': ApiService.userHeader != null
+              ? Map<String, dynamic>.from(ApiService.userHeader!)
+              : <String, dynamic>{},
           'paymentId': paymentId,
-          'amount': payment['amount']?.toString().trim() ?? '',
-          'gstAmount': payment['gstAmount']?.toString().trim() ?? '',
-          'totalAmount': payment['totalAmount']?.toString().trim() ?? '',
+          'DueId': dueId,
+          'amount': _formatAmountForRequest(totalTenderAmount),
+          'paymentTenderDataList': paymentTenderDataList,
+          'paymentCycle': payment['collectionCycle']?.toString().trim() ?? '',
           'paymentName': payment['paymentName']?.toString().trim() ?? '',
-          'paymentType': payment['paymentType']?.toString().trim() ?? '',
-          'cause': payment['cause']?.toString().trim() ?? '',
-          'paymentCapita': payment['paymentCapita']?.toString().trim() ?? '',
-          'addedCharges': payment['addedCharges']?.toString().trim() ?? '',
-          'amountPerMonth': payment['amountPerMonth']?.toString().trim() ?? '',
-          'totalAddedCharges':
-              payment['totalAddedCharges']?.toString().trim() ?? '',
-          'estimatedCollectionAmount':
-              payment['estimatedCollectionAmount']?.toString().trim() ?? '',
-          'gstPercentage': payment['gstPercentage']?.toString().trim() ?? '',
-          'discountCode': payment['discountCode']?.toString().trim() ?? '',
-          'discountMode': payment['discountMode']?.toString().trim() ?? '',
-          'cummilationCycle':
-              payment['cummilationCycle']?.toString().trim() ?? '',
-          'fineCode': payment['fineCode']?.toString().trim() ?? '',
-          'discValue': payment['discValue']?.toString().trim() ?? '',
-          'fnValue': payment['fnValue']?.toString().trim() ?? '',
-          'discountedAmount':
-              payment['discountedAmount']?.toString().trim() ?? '',
-          'fineAmount': payment['fineAmount']?.toString().trim() ?? '',
-          'fineMode': payment['fineMode']?.toString().trim() ?? '',
-          'fineType': payment['fineType']?.toString().trim() ?? '',
-          'roundUpAmount': payment['roundUpAmount']?.toString().trim() ?? '',
-          'alreadyPaidAmount':
-              payment['alreadyPaidAmount']?.toString().trim() ?? '',
-          'adminDiscount': payment['adminDiscount']?.toString().trim() ?? '',
-          'applicableFlats':
-              payment['applicableFlats']?.toString().trim() ?? '',
-          'paidFlats': payment['paidFlats']?.toString().trim() ?? '',
-          'allowedTenders': payment['allowedTenders']?.toString().trim() ?? '',
-          'paymentStatus': payment['paymentStatus']?.toString().trim() ?? '',
-          'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+          'dueDate': payment['dueDate']?.toString().trim() ?? '',
           'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
-          'paymentDate': payment['paymentDate']?.toString().trim() ?? '',
-        },
-      };
+          'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+          'bankInstrumentTenderDetails': selection.bankInstrumentTenderDetails,
+          'thirdPartyTransactionId': thirdPartyTransactionId,
+          'transactionStatus': transactionStatus,
+          'thirdPartyName': thirdPartyName,
+          'noOfPersons': selection.noOfPersons.toString(),
+          'files': filesToSubmit,
+          if (otpDetails != null) 'otpDetails': otpDetails,
+          'creditNoteUsed': selection.creditNoteUsed,
+          'creditNoteConsumedAmount': _formatAmountForRequest(
+            selection.creditNoteConsumedAmount,
+          ),
+          'paidDueDetails': {
+            'dueId': dueId,
+            'collectionCycle':
+                payment['collectionCycle']?.toString().trim() ?? '',
+            'flatArea': payment['flatArea']?.toString().trim() ?? '',
+            'dueDate': payment['dueDate']?.toString().trim() ?? '',
+            'paymentId': paymentId,
+            'amount': payment['amount']?.toString().trim() ?? '',
+            'gstAmount': payment['gstAmount']?.toString().trim() ?? '',
+            'totalAmount': payment['totalAmount']?.toString().trim() ?? '',
+            'paymentName': payment['paymentName']?.toString().trim() ?? '',
+            'paymentType': payment['paymentType']?.toString().trim() ?? '',
+            'cause': payment['cause']?.toString().trim() ?? '',
+            'paymentCapita': payment['paymentCapita']?.toString().trim() ?? '',
+            'addedCharges': payment['addedCharges']?.toString().trim() ?? '',
+            'amountPerMonth':
+                payment['amountPerMonth']?.toString().trim() ?? '',
+            'totalAddedCharges':
+                payment['totalAddedCharges']?.toString().trim() ?? '',
+            'estimatedCollectionAmount':
+                payment['estimatedCollectionAmount']?.toString().trim() ?? '',
+            'gstPercentage': payment['gstPercentage']?.toString().trim() ?? '',
+            'discountCode': payment['discountCode']?.toString().trim() ?? '',
+            'discountMode': payment['discountMode']?.toString().trim() ?? '',
+            'cummilationCycle':
+                payment['cummilationCycle']?.toString().trim() ?? '',
+            'fineCode': payment['fineCode']?.toString().trim() ?? '',
+            'discValue': payment['discValue']?.toString().trim() ?? '',
+            'fnValue': payment['fnValue']?.toString().trim() ?? '',
+            'discountedAmount':
+                payment['discountedAmount']?.toString().trim() ?? '',
+            'fineAmount': payment['fineAmount']?.toString().trim() ?? '',
+            'fineMode': payment['fineMode']?.toString().trim() ?? '',
+            'fineType': payment['fineType']?.toString().trim() ?? '',
+            'roundUpAmount': payment['roundUpAmount']?.toString().trim() ?? '',
+            'alreadyPaidAmount':
+                payment['alreadyPaidAmount']?.toString().trim() ?? '',
+            'adminDiscount': payment['adminDiscount']?.toString().trim() ?? '',
+            'applicableFlats':
+                payment['applicableFlats']?.toString().trim() ?? '',
+            'paidFlats': payment['paidFlats']?.toString().trim() ?? '',
+            'allowedTenders':
+                payment['allowedTenders']?.toString().trim() ?? '',
+            'paymentStatus': payment['paymentStatus']?.toString().trim() ?? '',
+            'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+            'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
+            'paymentDate': payment['paymentDate']?.toString().trim() ?? '',
+          },
+        };
 
-      final response = await ApiService.payDues(requestBody);
-      final messageCode = response?['messageCode']?.toString() ?? '';
-      final isSuccess = messageCode.startsWith('SUCC');
+        final response = await ApiService.payDues(requestBody);
+        final messageCode = response?['messageCode']?.toString() ?? '';
+        final isSuccess = messageCode.startsWith('SUCC');
 
-      if (isSuccess) {
-        final hostContext = Navigator.of(context, rootNavigator: true).context;
-        final successMessage = _extractPayDuesMessage(response);
-        final transactionId = _extractPayDuesTransactionId(response);
-        final receiptBase64 = _extractPayDuesReceiptBase64(response);
+        if (isSuccess) {
+          final hostContext = Navigator.of(
+            context,
+            rootNavigator: true,
+          ).context;
+          final successMessage = _extractPayDuesMessage(response);
+          final transactionId = _extractPayDuesTransactionId(response);
+          final receiptBase64 = _extractPayDuesReceiptBase64(response);
 
-        if (_isSocietyQrTender(selection.tender) && qrCancelledByUser) {
-          await ApiService.rejectTransactionWorkListPublic(
-            transactionId: transactionId,
-          );
-
+          if (widget.onPaymentCompleted != null) {
+            await widget.onPaymentCompleted!.call();
+          }
           if (!mounted) {
+            await _showPayDuesSuccessDialog(
+              hostContext: hostContext,
+              message: successMessage,
+              transactionId: transactionId,
+              receiptBase64: receiptBase64,
+            );
             return;
           }
-
-          Navigator.of(context).pop();
-          return;
-        }
-
-        if (widget.onPaymentCompleted != null) {
-          await widget.onPaymentCompleted!.call();
-        }
-        if (!mounted) {
           await _showPayDuesSuccessDialog(
             hostContext: hostContext,
             message: successMessage,
             transactionId: transactionId,
             receiptBase64: receiptBase64,
           );
-          return;
+        } else {
+          _showStatusSnack(
+            response?['message']?.toString() ?? 'Payment request failed.',
+            isError: true,
+          );
         }
-        Navigator.of(context).pop();
-        await _showPayDuesSuccessDialog(
-          hostContext: hostContext,
-          message: successMessage,
-          transactionId: transactionId,
-          receiptBase64: receiptBase64,
-        );
-      } else {
-        _showStatusSnack(
-          response?['message']?.toString() ?? 'Payment request failed.',
-          isError: true,
-        );
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          _submittingRows[rowKey] = false;
+        });
       }
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _submittingRows[rowKey] = false;
-      });
+      if (mounted) {
+        setState(() {
+          _submittingRows[rowKey] = false;
+        });
+      }
     }
   }
 
@@ -4449,6 +5036,12 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   @override
   Widget build(BuildContext context) {
     final groupedPayments = _groupedPayments();
+    final flatId =
+        groupedPayments.isNotEmpty && groupedPayments.first.dues.isNotEmpty
+        ? _extractFlatIdFromPayment(groupedPayments.first.dues.first)
+        : (ApiService.publicPayFlatNo ??
+              ApiService.getLoggedInFlatNo() ??
+              '--');
     final hasAnyOverdue = _hasAnyOverdueAcrossGroups(groupedPayments);
     final shouldAutoExpandSingleGroup = groupedPayments.length == 1;
     final earliestDueDate = groupedPayments
@@ -4525,11 +5118,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            const Text(
                               'Payment Details',
                               style: TextStyle(
                                 fontSize: 22,
@@ -4537,13 +5130,22 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                                 color: Color(0xFF124B45),
                               ),
                             ),
-                            SizedBox(height: 2),
-                            Text(
+                            const SizedBox(height: 2),
+                            const Text(
                               'Choose overdue/active dues and complete payment by cycle.',
                               style: TextStyle(
                                 color: Colors.black54,
                                 fontSize: 12,
                                 height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Flat ID: $flatId',
+                              style: const TextStyle(
+                                color: Color(0xFF0F8F82),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ],
@@ -4616,6 +5218,40 @@ class _OnlinePaymentOutcome {
   final String thirdPartyTransactionId;
 }
 
+class _OtpPromptState {
+  const _OtpPromptState({
+    required this.otpId,
+    required this.emails,
+    required this.resendDisabledSeconds,
+  });
+
+  final String otpId;
+  final List<String> emails;
+  final int resendDisabledSeconds;
+}
+
+class _OtpResendResult {
+  const _OtpResendResult({required this.success, this.message, this.state});
+
+  final bool success;
+  final String? message;
+  final _OtpPromptState? state;
+}
+
+class _OtpValidateResult {
+  const _OtpValidateResult({required this.success, this.message});
+
+  final bool success;
+  final String? message;
+}
+
+class _OtpInputResult {
+  const _OtpInputResult({required this.otp, required this.otpId});
+
+  final String otp;
+  final String otpId;
+}
+
 class _DueTenderSelection {
   const _DueTenderSelection({
     required this.tender,
@@ -4623,6 +5259,8 @@ class _DueTenderSelection {
     required this.noOfPersons,
     required this.listOfFiles,
     required this.bankInstrumentTenderDetails,
+    this.creditNoteUsed = false,
+    this.creditNoteConsumedAmount = 0,
   });
 
   final String tender;
@@ -4630,6 +5268,334 @@ class _DueTenderSelection {
   final int noOfPersons;
   final List<String> listOfFiles;
   final List<Map<String, dynamic>> bankInstrumentTenderDetails;
+  final bool creditNoteUsed;
+  final double creditNoteConsumedAmount;
+}
+
+class _CreditNoteOtpDialog<T> extends StatefulWidget {
+  const _CreditNoteOtpDialog({
+    required this.initialState,
+    required this.onResendOtp,
+    required this.onSubmitOtp,
+  });
+
+  final _OtpPromptState initialState;
+  final Future<_OtpResendResult> Function() onResendOtp;
+  final Future<T> Function(String otp, String otpId) onSubmitOtp;
+
+  @override
+  State<_CreditNoteOtpDialog<T>> createState() =>
+      _CreditNoteOtpDialogState<T>();
+}
+
+class _CreditNoteOtpDialogState<T> extends State<_CreditNoteOtpDialog<T>> {
+  final List<TextEditingController> _otpControllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
+
+  late String _otpId;
+  late List<String> _emails;
+  int _resendSeconds = 60;
+  Timer? _timer;
+  bool _resending = false;
+  bool _validating = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyState(widget.initialState);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    for (final controller in _otpControllers) {
+      controller.dispose();
+    }
+    for (final focusNode in _otpFocusNodes) {
+      focusNode.dispose();
+    }
+    super.dispose();
+  }
+
+  void _applyState(_OtpPromptState state) {
+    _otpId = state.otpId;
+    _emails = List<String>.from(state.emails);
+    _startResendTimer(state.resendDisabledSeconds);
+  }
+
+  void _startResendTimer(int seconds) {
+    _timer?.cancel();
+    _resendSeconds = seconds;
+    if (_resendSeconds <= 0) {
+      _resendSeconds = 0;
+      return;
+    }
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_resendSeconds <= 1) {
+        setState(() {
+          _resendSeconds = 0;
+        });
+        timer.cancel();
+      } else {
+        setState(() {
+          _resendSeconds -= 1;
+        });
+      }
+    });
+  }
+
+  String get _otpValue {
+    return _otpControllers.map((controller) => controller.text.trim()).join();
+  }
+
+  Future<void> _handleValidate() async {
+    final otp = _otpValue;
+    if (_otpId.trim().isEmpty) {
+      setState(() {
+        _errorMessage = 'OTP ID was not returned by server. Please resend OTP.';
+      });
+      return;
+    }
+
+    if (otp.length != 6) {
+      setState(() {
+        _errorMessage = 'Enter a valid 6 digit OTP.';
+      });
+      return;
+    }
+
+    setState(() {
+      _validating = true;
+      _errorMessage = null;
+    });
+
+    setState(() {
+      _validating = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.onSubmitOtp(otp, _otpId);
+    if (!mounted) {
+      return;
+    }
+
+    if (result is _OtpInputResult) {
+      if (result.otp.isNotEmpty && result.otpId.isNotEmpty) {
+        Navigator.of(context).pop(result);
+        return;
+      }
+    } else if (result is _OtpValidateResult) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+
+    setState(() {
+      _validating = false;
+      _errorMessage = 'Unable to submit OTP. Please try again.';
+    });
+  }
+
+  Future<void> _handleResend() async {
+    if (_resendSeconds > 0 || _resending) {
+      return;
+    }
+
+    setState(() {
+      _resending = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.onResendOtp();
+    if (!mounted) {
+      return;
+    }
+
+    if (!result.success || result.state == null) {
+      setState(() {
+        _resending = false;
+        _errorMessage = result.message ?? 'Unable to resend OTP.';
+      });
+      return;
+    }
+
+    for (final controller in _otpControllers) {
+      controller.clear();
+    }
+    _applyState(result.state!);
+    setState(() {
+      _resending = false;
+      _errorMessage = null;
+    });
+    _otpFocusNodes.first.requestFocus();
+  }
+
+  Widget _buildOtpBoxes() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(6, (index) {
+        return SizedBox(
+          width: 42,
+          child: TextField(
+            controller: _otpControllers[index],
+            focusNode: _otpFocusNodes[index],
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            maxLength: 1,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(1),
+            ],
+            decoration: InputDecoration(
+              counterText: '',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: Color(0xFF0F8F82),
+                  width: 1.3,
+                ),
+              ),
+            ),
+            onChanged: (value) {
+              if (value.isNotEmpty && index < _otpFocusNodes.length - 1) {
+                _otpFocusNodes[index + 1].requestFocus();
+              } else if (value.isEmpty && index > 0) {
+                _otpFocusNodes[index - 1].requestFocus();
+              }
+            },
+          ),
+        );
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final emailText = _emails.isEmpty ? '--' : _emails.join(', ');
+    final resendEnabled = _resendSeconds == 0 && !_resending;
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF7FCFA),
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFD7EAE3)),
+      ),
+      title: const Text(
+        'OTP Verification',
+        style: TextStyle(color: Color(0xFF124B45), fontWeight: FontWeight.w800),
+      ),
+      content: SizedBox(
+        width: 430,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'OTP ID: ${_otpId.isEmpty ? '--' : _otpId}',
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'OTP sent to: $emailText',
+              style: const TextStyle(
+                color: Color(0xFF124B45),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _buildOtpBoxes(),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _resendSeconds > 0
+                        ? 'Resend OTP in ${_resendSeconds}s'
+                        : 'Did not receive OTP?',
+                    style: const TextStyle(
+                      color: Color(0xFF5E6D6B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: resendEnabled ? _handleResend : null,
+                  child: _resending
+                      ? const SizedBox(
+                          height: 14,
+                          width: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Resend OTP'),
+                ),
+              ],
+            ),
+            if (_errorMessage != null && _errorMessage!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _validating
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF0F8F82),
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _validating ? null : _handleValidate,
+          child: _validating
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Pay'),
+        ),
+      ],
+    );
+  }
 }
 
 class _PickedReceipt {
@@ -4644,11 +5610,20 @@ class _DueTenderDialog extends StatefulWidget {
     required this.duePayment,
     required this.allowedModes,
     required this.formatAsCurrency,
+    this.creditNoteRemainingAmount,
+    required this.onPaymentSuccess,
   });
 
   final Map<String, dynamic> duePayment;
   final List<String> allowedModes;
   final String Function(String amount) formatAsCurrency;
+  final double? creditNoteRemainingAmount;
+  final Future<void> Function({
+    required String message,
+    required String transactionId,
+    required String? receiptBase64,
+  })
+  onPaymentSuccess;
 
   @override
   State<_DueTenderDialog> createState() => _DueTenderDialogState();
@@ -4687,6 +5662,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   double? _perHeadTotalAmount;
   int _perHeadRequestId = 0;
   String? _receiptFileError;
+  bool _useCreditNote = false;
+  String? _serviceMessage;
+  String? _validationMessage;
+  bool _isCreatingOtp = false;
 
   @override
   void initState() {
@@ -4725,6 +5704,59 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return capita.toUpperCase() == 'PER_HEAD';
   }
 
+  String _extractPayDuesMessage(Map<String, dynamic>? response) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty && message.toLowerCase() != 'null') {
+      return message;
+    }
+    return 'Payment completed successfully.';
+  }
+
+  String _extractPayDuesTransactionId(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['transactionId'],
+      response?['thirdPartyTransactionId'],
+      response?['txnId'],
+      response?['paymentTransactionId'],
+      response?['data'] is Map
+          ? (response?['data'] as Map)['transactionId']
+          : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['thirdPartyTransactionId']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '--';
+  }
+
+  String? _extractPayDuesReceiptBase64(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['receipt'],
+      response?['receiptBase64'],
+      response?['base64Receipt'],
+      response?['data'] is Map ? (response?['data'] as Map)['receipt'] : null,
+      response?['data'] is Map
+          ? (response?['data'] as Map)['receiptBase64']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
   double get _baseAmount {
     final totalAmount =
         widget.duePayment['totalAmount']?.toString().trim() ?? '';
@@ -4733,10 +5765,30 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   double get _netPayable {
+    final grossPayable = _grossPayable;
+    if (_useCreditNote && _creditNoteRemainingAmount > 0) {
+      return math.max(0, grossPayable - _creditNoteRemainingAmount);
+    }
+    return grossPayable;
+  }
+
+  double get _grossPayable {
     if (_isPerHeadCapita) {
       return _perHeadTotalAmount ?? (_baseAmount * _personCount);
     }
     return _baseAmount;
+  }
+
+  double get _creditNoteRemainingAmount {
+    final amount = widget.creditNoteRemainingAmount ?? 0;
+    return amount > 0 ? amount : 0;
+  }
+
+  double get _creditNoteConsumedAmount {
+    if (!_useCreditNote || _creditNoteRemainingAmount <= 0) {
+      return 0;
+    }
+    return math.min(_grossPayable, _creditNoteRemainingAmount);
   }
 
   String get _dueId {
@@ -4762,6 +5814,15 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     }
 
     return amount.toStringAsFixed(2);
+  }
+
+  void _setValidationMessage(String? message) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _validationMessage = message;
+    });
   }
 
   String get _requestAmountText => _formatAmountForRequestValue(_netPayable);
@@ -4793,6 +5854,26 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return words.join(' ');
   }
 
+  String _resolveFlatId() {
+    final candidates = [
+      widget.duePayment['flatId'],
+      widget.duePayment['flatNo'],
+      widget.duePayment['flatNumber'],
+      widget.duePayment['unitNo'],
+      ApiService.publicPayFlatNo,
+      ApiService.getLoggedInFlatNo(),
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '--';
+  }
+
   IconData _tenderModeIcon(String mode) {
     switch (mode.trim().toUpperCase()) {
       case 'QR_PAYMENT':
@@ -4818,6 +5899,99 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     }
 
     return widget.formatAsCurrency(amount.toStringAsFixed(2));
+  }
+
+  String _formatAmountFieldValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return widget.formatAsCurrency('0');
+    }
+
+    final normalized = text.replaceAll(RegExp(r'[^0-9.]'), '');
+    final parsed = double.tryParse(normalized);
+    if (parsed == null) {
+      return text;
+    }
+
+    if (parsed == parsed.truncateToDouble()) {
+      return widget.formatAsCurrency(parsed.toInt().toString());
+    }
+
+    return widget.formatAsCurrency(parsed.toStringAsFixed(2));
+  }
+
+  String _extractOtpId(Map<String, dynamic>? response) {
+    final candidates = [
+      response?['otpId'],
+      response?['OTPId'],
+      response?['otpID'],
+      response?['data'] is Map ? (response?['data'] as Map)['otpId'] : null,
+      response?['data'] is Map ? (response?['data'] as Map)['OTPId'] : null,
+      response?['otpDetails'] is Map
+          ? (response?['otpDetails'] as Map)['otpId']
+          : null,
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+
+    return '';
+  }
+
+  List<String> _extractOtpEmailList(Map<String, dynamic>? response) {
+    dynamic raw =
+        response?['mailIdList'] ??
+        response?['emailList'] ??
+        response?['emails'] ??
+        (response?['data'] is Map
+            ? (response?['data'] as Map)['mailIdList'] ??
+                  (response?['data'] as Map)['emailList']
+            : null);
+
+    final emails = <String>[];
+    if (raw is List) {
+      for (final item in raw) {
+        final value = item?.toString().trim() ?? '';
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
+          emails.add(value);
+        }
+      }
+    } else if (raw is String) {
+      final cleaned = raw.trim();
+      if (cleaned.isNotEmpty && cleaned.toLowerCase() != 'null') {
+        final tokens = cleaned
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .split(',')
+            .map((part) => part.trim())
+            .where((part) => part.isNotEmpty && part.toLowerCase() != 'null')
+            .toList();
+        emails.addAll(tokens.isEmpty ? [cleaned] : tokens);
+      }
+    }
+
+    return emails;
+  }
+
+  bool _isSuccessResponse(Map<String, dynamic>? response) {
+    final code =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    return code.startsWith('SUCC');
+  }
+
+  String _extractResponseMessage(
+    Map<String, dynamic>? response,
+    String fallback,
+  ) {
+    final message = response?['message']?.toString().trim() ?? '';
+    if (message.isNotEmpty && message.toLowerCase() != 'null') {
+      return message;
+    }
+    return fallback;
   }
 
   void _schedulePerHeadAmountRefresh({bool immediate = false}) {
@@ -5312,6 +6486,40 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
 
     children.add(_buildReadOnlyAmountField());
 
+    if (_serviceMessage != null && _serviceMessage!.isNotEmpty) {
+      children.add(
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF4F4),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFB3261E)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 18,
+                color: Color(0xFFB3261E),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _serviceMessage!,
+                  style: const TextStyle(
+                    color: Color(0xFFB3261E),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 14),
@@ -5328,7 +6536,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     );
   }
 
-  void _confirmSelection() {
+  Future<void> _confirmSelection() async {
     if (_isPerHeadCapita && _loadingPerHeadAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -5338,30 +6546,304 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       return;
     }
 
-    // For PER_HEAD dues, allow payment with entered person count even when
-    // per-head calculation API is unavailable; _netPayable will fall back to
-    // baseAmount * personCount.
-
     if (_requiresBankInstrumentDetails && !_validateBankInstrumentDetails()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please fill all ${_displayMode(_selectedTender)} details.',
-          ),
-          backgroundColor: const Color(0xFFB3261E),
-        ),
+      _setValidationMessage(
+        'Please fill all ${_displayMode(_selectedTender)} details.',
       );
       return;
     }
 
     if (_requiresReceipts && _receipts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add at least one receipt file.'),
-          backgroundColor: Color(0xFFB3261E),
-        ),
-      );
+      _setValidationMessage('Please add at least one receipt file.');
       return;
+    }
+
+    if (_useCreditNote &&
+        _creditNoteConsumedAmount > 0 &&
+        _selectedTender.trim().toUpperCase() != 'QR_PAYMENT') {
+      final flatId = _resolveFlatId();
+      if (flatId.isEmpty || flatId == '--') {
+        _setValidationMessage('Unable to identify the selected flat for OTP.');
+        return;
+      }
+
+      final genericHeader = ApiService.buildPublicGenericHeader(flatId);
+
+      setState(() {
+        _serviceMessage = null;
+        _validationMessage = null;
+        _isCreatingOtp = true;
+      });
+
+      try {
+        final otpCreateResponse = await ApiService.createOtpPublic(
+          flatId: flatId,
+          sendMobile: false,
+          sendMail: true,
+          genericHeader: genericHeader,
+          userId:
+              ApiService.currentUserId ??
+              ApiService.userHeader?['userId']?.toString() ??
+              'ext',
+          userIds: [
+            ApiService.currentUserId ??
+                ApiService.userHeader?['userId']?.toString() ??
+                'ext',
+          ],
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        if (!_isSuccessResponse(otpCreateResponse)) {
+          setState(() {
+            _serviceMessage = _extractResponseMessage(
+              otpCreateResponse,
+              'Unable to send OTP for credit note payment.',
+            );
+            _validationMessage = null;
+          });
+          return;
+        }
+
+        final otpInput = await showDialog<_OtpInputResult>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return _CreditNoteOtpDialog<_OtpInputResult>(
+              initialState: _OtpPromptState(
+                otpId: _extractOtpId(otpCreateResponse),
+                emails: _extractOtpEmailList(otpCreateResponse),
+                resendDisabledSeconds: 60,
+              ),
+              onResendOtp: () async {
+                final resendResponse = await ApiService.createOtpPublic(
+                  flatId: flatId,
+                  sendMobile: false,
+                  sendMail: true,
+                  genericHeader: genericHeader,
+                  userId:
+                      ApiService.currentUserId ??
+                      ApiService.userHeader?['userId']?.toString() ??
+                      'ext',
+                  userIds: [
+                    ApiService.currentUserId ??
+                        ApiService.userHeader?['userId']?.toString() ??
+                        'ext',
+                  ],
+                );
+
+                if (!_isSuccessResponse(resendResponse)) {
+                  return _OtpResendResult(
+                    success: false,
+                    message: _extractResponseMessage(
+                      resendResponse,
+                      'Unable to resend OTP.',
+                    ),
+                  );
+                }
+
+                return _OtpResendResult(
+                  success: true,
+                  state: _OtpPromptState(
+                    otpId: _extractOtpId(resendResponse),
+                    emails: _extractOtpEmailList(resendResponse),
+                    resendDisabledSeconds: 60,
+                  ),
+                );
+              },
+              onSubmitOtp: (otp, otpId) async {
+                return _OtpInputResult(otp: otp, otpId: otpId);
+              },
+            );
+          },
+        );
+
+        if (otpInput == null) {
+          return;
+        }
+
+        final paymentTenderDataList = <Map<String, dynamic>>[
+          {
+            'tenderName': _selectedTender,
+            'amountPaid': _formatAmountForRequestValue(_netPayable),
+          },
+          if (_useCreditNote && _creditNoteConsumedAmount > 0)
+            {
+              'tenderName': 'CREDIT_NOTE',
+              'amountPaid': _formatAmountForRequestValue(
+                _creditNoteConsumedAmount,
+              ),
+            },
+        ];
+        final totalTenderAmount = paymentTenderDataList.fold<double>(0, (
+          sum,
+          tender,
+        ) {
+          final amountValue = tender['amountPaid'];
+          final parsed = amountValue is num
+              ? amountValue.toDouble()
+              : double.tryParse(amountValue?.toString().trim() ?? '') ?? 0;
+          return sum + parsed;
+        });
+
+        final requestBody = {
+          'genericHeader': ApiService.userHeader != null
+              ? Map<String, dynamic>.from(ApiService.userHeader!)
+              : <String, dynamic>{},
+          'paymentId': widget.duePayment['paymentId']?.toString().trim() ?? '',
+          'DueId':
+              widget.duePayment['DueId']?.toString().trim() ??
+              widget.duePayment['dueId']?.toString().trim() ??
+              '',
+          'amount': _formatAmountForRequestValue(totalTenderAmount),
+          'paymentTenderDataList': paymentTenderDataList,
+          'paymentCycle':
+              widget.duePayment['collectionCycle']?.toString().trim() ?? '',
+          'paymentName':
+              widget.duePayment['paymentName']?.toString().trim() ?? '',
+          'dueDate': widget.duePayment['dueDate']?.toString().trim() ?? '',
+          'dueStartDate':
+              widget.duePayment['dueStartDate']?.toString().trim() ?? '',
+          'dueEndDate':
+              widget.duePayment['dueEndDate']?.toString().trim() ?? '',
+          'bankInstrumentTenderDetails': _buildBankInstrumentTenderDetails(),
+          'thirdPartyTransactionId': '',
+          'transactionStatus': 'Pending',
+          'thirdPartyName': '',
+          'noOfPersons': (_isPerHeadCapita ? _personCount : 0).toString(),
+          'files': _receipts.map((receipt) => receipt.filePayload).toList(),
+          'otpDetails': {'otp': otpInput.otp, 'otpId': otpInput.otpId},
+          'paidDueDetails': {
+            'dueId':
+                widget.duePayment['DueId']?.toString().trim() ??
+                widget.duePayment['dueId']?.toString().trim() ??
+                '',
+            'collectionCycle':
+                widget.duePayment['collectionCycle']?.toString().trim() ?? '',
+            'flatArea': widget.duePayment['flatArea']?.toString().trim() ?? '',
+            'dueDate': widget.duePayment['dueDate']?.toString().trim() ?? '',
+            'paymentId':
+                widget.duePayment['paymentId']?.toString().trim() ?? '',
+            'amount': widget.duePayment['amount']?.toString().trim() ?? '',
+            'gstAmount':
+                widget.duePayment['gstAmount']?.toString().trim() ?? '',
+            'totalAmount':
+                widget.duePayment['totalAmount']?.toString().trim() ?? '',
+            'paymentName':
+                widget.duePayment['paymentName']?.toString().trim() ?? '',
+            'paymentType':
+                widget.duePayment['paymentType']?.toString().trim() ?? '',
+            'cause': widget.duePayment['cause']?.toString().trim() ?? '',
+            'paymentCapita':
+                widget.duePayment['paymentCapita']?.toString().trim() ?? '',
+            'addedCharges':
+                widget.duePayment['addedCharges']?.toString().trim() ?? '',
+            'amountPerMonth':
+                widget.duePayment['amountPerMonth']?.toString().trim() ?? '',
+            'totalAddedCharges':
+                widget.duePayment['totalAddedCharges']?.toString().trim() ?? '',
+            'estimatedCollectionAmount':
+                widget.duePayment['estimatedCollectionAmount']
+                    ?.toString()
+                    .trim() ??
+                '',
+            'gstPercentage':
+                widget.duePayment['gstPercentage']?.toString().trim() ?? '',
+            'discountCode':
+                widget.duePayment['discountCode']?.toString().trim() ?? '',
+            'discountMode':
+                widget.duePayment['discountMode']?.toString().trim() ?? '',
+            'cummilationCycle':
+                widget.duePayment['cummilationCycle']?.toString().trim() ?? '',
+            'fineCode': widget.duePayment['fineCode']?.toString().trim() ?? '',
+            'discValue':
+                widget.duePayment['discValue']?.toString().trim() ?? '',
+            'fnValue': widget.duePayment['fnValue']?.toString().trim() ?? '',
+            'discountedAmount':
+                widget.duePayment['discountedAmount']?.toString().trim() ?? '',
+            'fineAmount':
+                widget.duePayment['fineAmount']?.toString().trim() ?? '',
+            'fineMode': widget.duePayment['fineMode']?.toString().trim() ?? '',
+            'fineType': widget.duePayment['fineType']?.toString().trim() ?? '',
+            'roundUpAmount':
+                widget.duePayment['roundUpAmount']?.toString().trim() ?? '',
+            'alreadyPaidAmount':
+                widget.duePayment['alreadyPaidAmount']?.toString().trim() ?? '',
+            'adminDiscount':
+                widget.duePayment['adminDiscount']?.toString().trim() ?? '',
+            'applicableFlats':
+                widget.duePayment['applicableFlats']?.toString().trim() ?? '',
+            'paidFlats':
+                widget.duePayment['paidFlats']?.toString().trim() ?? '',
+            'allowedTenders':
+                widget.duePayment['allowedTenders']?.toString().trim() ?? '',
+            'paymentStatus':
+                widget.duePayment['paymentStatus']?.toString().trim() ?? '',
+            'dueEndDate':
+                widget.duePayment['dueEndDate']?.toString().trim() ?? '',
+            'dueStartDate':
+                widget.duePayment['dueStartDate']?.toString().trim() ?? '',
+            'paymentDate':
+                widget.duePayment['paymentDate']?.toString().trim() ?? '',
+          },
+        };
+
+        final response = await ApiService.payDues(requestBody);
+        final messageCode = response?['messageCode']?.toString().trim() ?? '';
+        if (messageCode == 'ERR_MESSAGE_63') {
+          setState(() {
+            _serviceMessage =
+                response?['message']?.toString().trim().isNotEmpty == true
+                ? response!['message'].toString().trim()
+                : 'Unable to use the credit note for this payment.';
+          });
+          return;
+        }
+
+        if (messageCode.startsWith('SUCC')) {
+          setState(() {
+            _serviceMessage = null;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  response?['message']?.toString().trim().isNotEmpty == true
+                      ? response!['message'].toString().trim()
+                      : 'Payment completed successfully.',
+                ),
+              ),
+            );
+          }
+          if (mounted) {
+            await widget.onPaymentSuccess(
+              message: _extractPayDuesMessage(response),
+              transactionId: _extractPayDuesTransactionId(response),
+              receiptBase64: _extractPayDuesReceiptBase64(response),
+            );
+          }
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+          return;
+        }
+
+        setState(() {
+          _serviceMessage =
+              response?['message']?.toString().trim().isNotEmpty == true
+              ? response!['message'].toString().trim()
+              : 'Payment request failed.';
+        });
+        return;
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isCreatingOtp = false;
+          });
+        }
+      }
     }
 
     Navigator.of(context).pop(
@@ -5371,6 +6853,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         noOfPersons: _isPerHeadCapita ? _personCount : 0,
         listOfFiles: _receipts.map((receipt) => receipt.filePayload).toList(),
         bankInstrumentTenderDetails: _buildBankInstrumentTenderDetails(),
+        creditNoteUsed: _useCreditNote,
+        creditNoteConsumedAmount: _creditNoteConsumedAmount,
       ),
     );
   }
@@ -5379,6 +6863,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   Widget build(BuildContext context) {
     final paymentName =
         widget.duePayment['paymentName']?.toString().trim() ?? '--';
+    final flatId = _resolveFlatId();
 
     return AlertDialog(
       backgroundColor: const Color(0xFFF7FCFA),
@@ -5446,7 +6931,33 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Total Amount: ${_formatSummaryAmount(_netPayable)}',
+                      'Flat ID: $flatId',
+                      style: const TextStyle(
+                        color: Color(0xFF0F8F82),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Gross Amount: ${_formatAmountFieldValue(widget.duePayment['amount'])}',
+                      style: const TextStyle(
+                        color: Color(0xFF124B45),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (_creditNoteRemainingAmount > 0) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Credit Note Available: ${_formatSummaryAmount(_creditNoteRemainingAmount)}',
+                        style: const TextStyle(
+                          color: Color(0xFF0F8F82),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      'Payable Amount: ${_formatSummaryAmount(_netPayable)}',
                       style: const TextStyle(
                         color: Color(0xFF0F8F82),
                         fontWeight: FontWeight.w800,
@@ -5634,8 +7145,78 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                 ),
               ],
               _buildBankInstrumentDetailsSection(),
+              if (_validationMessage != null && _validationMessage!.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4F4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFB3261E)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 18,
+                        color: Color(0xFFB3261E),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _validationMessage!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_creditNoteRemainingAmount > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF7F3),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCFE6DF)),
+                  ),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: _useCreditNote,
+                        activeColor: const Color(0xFF0F8F82),
+                        onChanged: (value) {
+                          setState(() {
+                            _useCreditNote = value == true;
+                            _validationMessage = null;
+                          });
+                        },
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'Use My Credit Note Amount',
+                          style: TextStyle(
+                            color: Color(0xFF124B45),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               if (_requiresReceipts) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 4),
                 if (_selectedTender == 'OFFLINE_BANK_TRANSFER')
                   Container(
                     width: double.infinity,
@@ -5808,10 +7389,20 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
             ),
           ),
           onPressed:
-              (_receiptFileError != null && _receiptFileError!.isNotEmpty)
+              (_receiptFileError != null && _receiptFileError!.isNotEmpty) ||
+                  _isCreatingOtp
               ? null
-              : _confirmSelection,
-          child: const Text('Proceed'),
+              : () async => _confirmSelection(),
+          child: _isCreatingOtp
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Proceed'),
         ),
       ],
     );
@@ -6627,35 +8218,95 @@ class _TransactionDetailModalState extends State<_TransactionDetailModal> {
   }
 }
 
+class _QrPaymentFlowResult {
+  const _QrPaymentFlowResult({
+    required this.files,
+    required this.otp,
+    required this.otpId,
+  });
+
+  final List<String> files;
+  final String otp;
+  final String otpId;
+}
+
 class _DeepLinkPaymentDialog extends StatefulWidget {
   const _DeepLinkPaymentDialog({
     required this.upiPaymentURL,
     required this.amount,
     required this.bankName,
     required this.accountHolderName,
+    this.requireOtp = false,
+    this.otpId = '',
+    this.otpEmails = const <String>[],
   });
 
   final String upiPaymentURL;
   final String amount;
   final String bankName;
   final String accountHolderName;
+  final bool requireOtp;
+  final String otpId;
+  final List<String> otpEmails;
 
   @override
   State<_DeepLinkPaymentDialog> createState() => _DeepLinkPaymentDialogState();
 }
 
 class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
+  final List<TextEditingController> _otpControllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
   _PickedReceipt? _attachedScreenshot;
   String? _attachError;
-
-  @override
-  void initState() {
-    super.initState();
-  }
+  String? _otpError;
 
   @override
   void dispose() {
+    for (final controller in _otpControllers) {
+      controller.dispose();
+    }
+    for (final focusNode in _otpFocusNodes) {
+      focusNode.dispose();
+    }
     super.dispose();
+  }
+
+  String get _otpValue {
+    return _otpControllers.map((controller) => controller.text.trim()).join();
+  }
+
+  void _handleDone() {
+    if (_attachedScreenshot == null) {
+      setState(() {
+        _attachError = 'Please upload the payment screenshot to continue.';
+      });
+      return;
+    }
+
+    if (widget.requireOtp) {
+      if (_otpValue.length != 6) {
+        setState(() {
+          _otpError = 'Enter a valid 6 digit OTP.';
+        });
+        return;
+      }
+    }
+
+    setState(() {
+      _attachError = null;
+      _otpError = null;
+    });
+
+    Navigator.of(context).pop(
+      _QrPaymentFlowResult(
+        files: <String>[_attachedScreenshot!.filePayload],
+        otp: widget.requireOtp ? _otpValue : '',
+        otpId: widget.requireOtp ? widget.otpId : '',
+      ),
+    );
   }
 
   Future<void> _pickScreenshot() async {
@@ -6975,6 +8626,128 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                 ),
               ],
               const SizedBox(height: 10),
+              if (widget.requireOtp) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFB2DFDB)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'OTP Verification',
+                        style: TextStyle(
+                          color: Color(0xFF124B45),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'OTP ID: ${widget.otpId.isEmpty ? '--' : widget.otpId}',
+                        style: const TextStyle(
+                          color: Color(0xFF124B45),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'OTP sent to: ${widget.otpEmails.isEmpty ? '--' : widget.otpEmails.join(", ")}',
+                        style: const TextStyle(
+                          color: Color(0xFF124B45),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: List.generate(6, (index) {
+                          return SizedBox(
+                            width: 34,
+                            child: TextField(
+                              controller: _otpControllers[index],
+                              focusNode: _otpFocusNodes[index],
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF124B45),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                height: 1.0,
+                              ),
+                              maxLength: 1,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(1),
+                              ],
+                              decoration: InputDecoration(
+                                counterText: '',
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                  horizontal: 2,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFD7EAE3),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFD7EAE3),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF0F8F82),
+                                    width: 1.3,
+                                  ),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                if (value.isNotEmpty &&
+                                    index < _otpFocusNodes.length - 1) {
+                                  _otpFocusNodes[index + 1].requestFocus();
+                                } else if (value.isEmpty && index > 0) {
+                                  _otpFocusNodes[index - 1].requestFocus();
+                                }
+                                if (_otpError != null) {
+                                  setState(() {
+                                    _otpError = null;
+                                  });
+                                }
+                              },
+                            ),
+                          );
+                        }),
+                      ),
+                      if (_otpError != null && _otpError!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _otpError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -7157,27 +8930,16 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _attachedScreenshot != null
-              ? null
-              : () async {
-                  final shouldCancel = await _showCancelConfirmation();
-                  if (!mounted || !shouldCancel) {
-                    return;
-                  }
-                  await _showQrPaymentCancelledErrorModal();
-                  if (!mounted) {
-                    return;
-                  }
-                  Navigator.of(context).pop(null);
-                },
+          onPressed: () {
+            if (!mounted) {
+              return;
+            }
+            Navigator.of(context).pop(null);
+          },
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _attachedScreenshot == null
-              ? null
-              : () => Navigator.of(
-                  context,
-                ).pop(<String>[_attachedScreenshot!.filePayload]),
+          onPressed: _attachedScreenshot == null ? null : _handleDone,
           child: const Text('Done'),
         ),
       ],

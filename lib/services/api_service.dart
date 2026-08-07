@@ -11,9 +11,9 @@ import 'session_storage_stub.dart'
     as session_storage;
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:8080';
-  // static const String _baseUrl =
-  //     'https://securadnft-api-380953428736.asia-south1.run.app';
+  // static const String _baseUrl = 'http://localhost:8080';
+  static const String _baseUrl =
+      'https://securadnft-api-380953428736.asia-south1.run.app';
 
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
@@ -51,6 +51,10 @@ class ApiService {
       'apartmentId': 'APRT001',
       'flatNo': flatNo,
     };
+  }
+
+  static Map<String, dynamic> buildPublicGenericHeader(String flatNo) {
+    return _buildPublicGenericHeader(flatNo);
   }
 
   static void clearSession() {
@@ -2335,6 +2339,186 @@ class ApiService {
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'genericHeader': _buildPublicGenericHeader(trimmedFlatId),
+          'flatId': trimmedFlatId,
+        }),
+      );
+
+      if (response.statusCode == 404 || response.body.isEmpty) {
+        continue;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> creditNoteAvailablePublic({
+    required String flatId,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/creditNoteAvailablePublic'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'genericHeader': _buildPublicGenericHeader(trimmedFlatId),
+        'flatId': trimmedFlatId,
+      }),
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> createOtpPublic({
+    required String flatId,
+    bool sendMobile = false,
+    bool sendMail = true,
+    Map<String, dynamic>? genericHeader,
+    String? userId,
+    List<String>? userIds,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final requestHeader = (genericHeader != null && genericHeader.isNotEmpty)
+        ? Map<String, dynamic>.from(genericHeader)
+        : _buildPublicGenericHeader(trimmedFlatId);
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': requestHeader,
+      'flatId': trimmedFlatId,
+      'sendMobile': sendMobile,
+      'sendMail': sendMail,
+    };
+
+    final trimmedUserId = userId?.trim();
+    if (trimmedUserId != null && trimmedUserId.isNotEmpty) {
+      requestBody['userId'] = trimmedUserId;
+    }
+
+    final normalizedUserIds = <String>[];
+    if (userIds != null) {
+      for (final entry in userIds) {
+        final cleaned = entry.trim();
+        if (cleaned.isNotEmpty) {
+          normalizedUserIds.add(cleaned);
+        }
+      }
+    }
+    if (normalizedUserIds.isNotEmpty) {
+      requestBody['userIds'] = normalizedUserIds;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/createOTP'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> validateOtpPublic({
+    required String otp,
+    required String otpId,
+    String? flatId,
+    Map<String, dynamic>? genericHeader,
+  }) async {
+    final trimmedFlatId = flatId?.trim() ?? '';
+    final trimmedOtp = otp.trim();
+    final trimmedOtpId = otpId.trim();
+    if (trimmedOtp.isEmpty || trimmedOtpId.isEmpty) {
+      return null;
+    }
+
+    final requestHeader = (genericHeader != null && genericHeader.isNotEmpty)
+        ? Map<String, dynamic>.from(genericHeader)
+        : (trimmedFlatId.isNotEmpty
+              ? _buildPublicGenericHeader(trimmedFlatId)
+              : null);
+
+    if (requestHeader == null) {
+      return null;
+    }
+
+    final requestBody = <String, dynamic>{
+      'genericHeader': requestHeader,
+      'otp': trimmedOtp,
+      'otpId': trimmedOtpId,
+    };
+    if (trimmedFlatId.isNotEmpty) {
+      requestBody['flatId'] = trimmedFlatId;
+    }
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/publicapis/validateOTP'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.statusCode == 404 || response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> viewCreditNoteDetailsPublic({
+    required String flatId,
+    Map<String, dynamic>? genericHeader,
+  }) async {
+    final trimmedFlatId = flatId.trim();
+    if (trimmedFlatId.isEmpty) {
+      return null;
+    }
+
+    final requestHeader = (genericHeader != null && genericHeader.isNotEmpty)
+        ? Map<String, dynamic>.from(genericHeader)
+        : _buildPublicGenericHeader(trimmedFlatId);
+
+    const paths = [
+      '/publicapis/viewCreditNoteDetailsPublic',
+      '/creditnote/viewCreditNoteDetailsPublic',
+    ];
+
+    for (final path in paths) {
+      final response = await http.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'genericHeader': requestHeader,
           'flatId': trimmedFlatId,
         }),
       );

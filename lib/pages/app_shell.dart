@@ -2016,30 +2016,42 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     return '₹ $text';
   }
 
-  String _firstTenderText() {
+  List<Map<String, String>> _tenderEntries() {
     final rawTender = widget.transaction['trnsTender'];
     if (rawTender is! List || rawTender.isEmpty) {
-      return '--';
+      return const <Map<String, String>>[];
     }
 
-    final first = rawTender.first;
-    if (first is Map) {
-      final map = Map<String, dynamic>.from(first);
-      final preferredKeys = ['tenderName'];
-      for (final key in preferredKeys) {
-        final candidate = map[key]?.toString().trim() ?? '';
-        if (candidate.isNotEmpty && candidate.toLowerCase() != 'null') {
-          return _toTitleWords(candidate);
-        }
+    final entries = <Map<String, String>>[];
+    for (final item in rawTender) {
+      if (item is! Map) {
+        continue;
       }
+      final tender = Map<String, dynamic>.from(item);
+      final tenderName = tender['tenderName']?.toString().trim() ?? '';
+      final amountPaid = tender['amountPaid']?.toString().trim() ?? '';
+      if (tenderName.isEmpty && amountPaid.isEmpty) {
+        continue;
+      }
+      entries.add({
+        'tenderName': tenderName.isEmpty ? '--' : _toTitleWords(tenderName),
+        'amountPaid': amountPaid.isEmpty ? '--' : _formatAmount(amountPaid),
+      });
+    }
+
+    return entries;
+  }
+
+  String _joinedTenderText() {
+    final tenderEntries = _tenderEntries();
+    if (tenderEntries.isEmpty) {
       return '--';
     }
 
-    final text = first.toString().trim();
-    if (text.isEmpty || text.toLowerCase() == 'null') {
-      return '--';
-    }
-    return _toTitleWords(text);
+    return tenderEntries
+        .map((entry) => entry['tenderName'] ?? '--')
+        .where((value) => value.trim().isNotEmpty && value != '--')
+        .join(', ');
   }
 
   String _displayLabelForKey(String key, Map<String, String> labels) {
@@ -2121,7 +2133,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
             'value': value,
           });
           if (key == 'trnsAmt') {
-            final tenderValue = _firstTenderText();
+            final tenderValue = _joinedTenderText();
             if (tenderValue != '--') {
               entries.add({'label': 'Tender', 'value': tenderValue});
             }
@@ -2151,6 +2163,18 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   }
 
   List<Map<String, String>> _bankInstrumentTenderDetails() {
+    final tenderEntries = _tenderEntries();
+    if (tenderEntries.isNotEmpty) {
+      return tenderEntries
+          .map(
+            (entry) => {
+              'Tender Name': entry['tenderName'] ?? '--',
+              'Amount Paid': entry['amountPaid'] ?? '--',
+            },
+          )
+          .toList();
+    }
+
     dynamic raw = widget.transaction['bankInstrumentTenderDetails'];
     raw ??= widget.transaction['bankInstrumentTender'];
     raw ??= widget.transaction['trnsTender'];

@@ -81,6 +81,12 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     _PaymentChoice(label: 'Yearly', value: 'YEARLY'),
   ];
 
+  static const List<_PaymentChoice> _bufferTimeUnitOptions = [
+    _PaymentChoice(label: 'Days', value: 'DAYS'),
+    _PaymentChoice(label: 'Month', value: 'MONTH'),
+    _PaymentChoice(label: 'Quarter', value: 'QUARTER'),
+  ];
+
   static const List<_PaymentChoice> _paymentTypeOptions = [
     _PaymentChoice(label: 'Mandatory', value: 'MANDATORY'),
     _PaymentChoice(label: 'Optional', value: 'OPTIONAL'),
@@ -2095,7 +2101,12 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     if (draft.isFine) {
       requestBody['discFnCumlatonCycle'] = draft.calculationType == 'CUMULATIVE'
           ? draft.cumulationCycle
-          : null;
+          : '';
+      requestBody['discFinCycleDiscountList'] = const <Map<String, dynamic>>[];
+      requestBody['minimumPaymentAmount'] = '';
+      requestBody['bufferTime'] = draft.bufferTime ?? '';
+      requestBody['bufferTimeUnit'] = draft.bufferTimeUnit ?? '';
+      requestBody['partOfCycleAsFull'] = draft.partOfCycleAsFull;
     } else {
       requestBody['discFinCycleDiscountList'] = draft.cycleDiscounts
           .map(
@@ -2143,6 +2154,11 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
                 cumulationCycle: draft.cumulationCycle,
                 cycleDiscounts: draft.cycleDiscounts,
                 minimumPaymentAmount: draft.minimumPaymentAmount,
+                bufferTime: draft.isFine ? draft.bufferTime : null,
+                bufferTimeUnit: draft.isFine ? draft.bufferTimeUnit : null,
+                partOfCycleAsFull: draft.isFine
+                    ? draft.partOfCycleAsFull
+                    : false,
               )
             : null,
       );
@@ -4386,6 +4402,9 @@ class _DiscountFineDraft {
     this.cumulationCycle,
     this.cycleDiscounts = const [],
     this.minimumPaymentAmount,
+    this.bufferTime,
+    this.bufferTimeUnit,
+    this.partOfCycleAsFull = false,
   });
 
   final String kind;
@@ -4398,6 +4417,9 @@ class _DiscountFineDraft {
   final String? cumulationCycle;
   final List<_DiscFinCycleDiscount> cycleDiscounts;
   final String? minimumPaymentAmount;
+  final String? bufferTime;
+  final String? bufferTimeUnit;
+  final bool partOfCycleAsFull;
 
   bool get isFine => kind == 'FINE';
 }
@@ -4415,6 +4437,9 @@ class _AppliedDiscountFine {
     this.cumulationCycle,
     this.cycleDiscounts = const [],
     this.minimumPaymentAmount,
+    this.bufferTime,
+    this.bufferTimeUnit,
+    this.partOfCycleAsFull = false,
   });
 
   final String kind;
@@ -4428,6 +4453,9 @@ class _AppliedDiscountFine {
   final String? cumulationCycle;
   final List<_DiscFinCycleDiscount> cycleDiscounts;
   final String? minimumPaymentAmount;
+  final String? bufferTime;
+  final String? bufferTimeUnit;
+  final bool partOfCycleAsFull;
 
   _AppliedDiscountFine copyWith({
     List<_DiscFinCycleDiscount>? cycleDiscounts,
@@ -4445,6 +4473,9 @@ class _AppliedDiscountFine {
       cumulationCycle: cumulationCycle,
       cycleDiscounts: cycleDiscounts ?? this.cycleDiscounts,
       minimumPaymentAmount: minimumPaymentAmount ?? this.minimumPaymentAmount,
+      bufferTime: bufferTime,
+      bufferTimeUnit: bufferTimeUnit,
+      partOfCycleAsFull: partOfCycleAsFull,
     );
   }
 }
@@ -4473,6 +4504,9 @@ class _DiscountFineDetail {
     required this.discFnEndDt,
     required this.discFnCumlatonCycle,
     required this.discFnMode,
+    this.bufferTime,
+    this.bufferTimeUnit,
+    this.partOfCycleAsFull = false,
   });
 
   factory _DiscountFineDetail.fromApplied(_AppliedDiscountFine item) {
@@ -4487,6 +4521,9 @@ class _DiscountFineDetail {
       discFnEndDt: item.endDateText,
       discFnCumlatonCycle: item.cumulationCycle,
       discFnMode: item.mode,
+      bufferTime: item.bufferTime,
+      bufferTimeUnit: item.bufferTimeUnit,
+      partOfCycleAsFull: item.partOfCycleAsFull,
     );
   }
 
@@ -4542,6 +4579,13 @@ class _DiscountFineDetail {
           _normalizedValue(matched['discFnCumlatonCycle']) ??
           item.cumulationCycle,
       discFnMode: _normalizedValue(matched['discFnMode']) ?? item.mode,
+      bufferTime: _normalizedValue(matched['bufferTime']) ?? item.bufferTime,
+      bufferTimeUnit:
+          _normalizedValue(matched['bufferTimeUnit']) ?? item.bufferTimeUnit,
+      partOfCycleAsFull:
+          matched['partOfCycleAsFull'] == true ||
+          matched['partOfCycleAsFull']?.toString().toLowerCase() == 'true' ||
+          item.partOfCycleAsFull,
     );
   }
 
@@ -4555,6 +4599,9 @@ class _DiscountFineDetail {
   final String? discFnEndDt;
   final String? discFnCumlatonCycle;
   final String? discFnMode;
+  final String? bufferTime;
+  final String? bufferTimeUnit;
+  final bool partOfCycleAsFull;
 }
 
 class _DiscountFineDetailsDialog extends StatelessWidget {
@@ -4608,6 +4655,27 @@ class _DiscountFineDetailsDialog extends StatelessWidget {
 
     if (detail.discFnMode != null) {
       summaryRows.add(_SummaryRow(label: 'Mode', value: detail.discFnMode!));
+    }
+
+    if (isFine && detail.bufferTime != null) {
+      summaryRows.add(
+        _SummaryRow(label: 'Buffer Time', value: detail.bufferTime!),
+      );
+    }
+
+    if (isFine && detail.bufferTimeUnit != null) {
+      summaryRows.add(
+        _SummaryRow(label: 'Buffer Time Unit', value: detail.bufferTimeUnit!),
+      );
+    }
+
+    if (isFine) {
+      summaryRows.add(
+        _SummaryRow(
+          label: 'Part Of Cycle As Full',
+          value: detail.partOfCycleAsFull ? 'Yes' : 'No',
+        ),
+      );
     }
 
     return AlertDialog(
@@ -4692,12 +4760,15 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   final TextEditingController _valueController = TextEditingController();
   final TextEditingController _minimumPaymentAmountController =
       TextEditingController();
+  final TextEditingController _bufferTimeController = TextEditingController();
   final List<_CycleDiscountInput> _cycleDiscountInputs = [];
 
   late String _kind;
   String _mode = 'AMOUNT';
   String? _calculationType;
   String? _cumulationCycle;
+  String? _bufferTimeUnit;
+  bool _partOfCycleAsFull = false;
   bool _dueDateAsStartDate = false;
   DateTime? _startDate;
   DateTime? _endDate;
@@ -4750,6 +4821,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
     _endDateController.dispose();
     _valueController.dispose();
     _minimumPaymentAmountController.dispose();
+    _bufferTimeController.dispose();
     for (final row in _cycleDiscountInputs) {
       row.dispose();
     }
@@ -5069,6 +5141,11 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
         minimumPaymentAmount: _isFine
             ? null
             : _normalizeNumericValue(_minimumPaymentAmountController.text),
+        bufferTime: _isFine
+            ? _normalizeNumericValue(_bufferTimeController.text)
+            : null,
+        bufferTimeUnit: _isFine ? _bufferTimeUnit : null,
+        partOfCycleAsFull: _isFine ? _partOfCycleAsFull : false,
       ),
     );
 
@@ -5411,6 +5488,91 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                           return null;
                         },
                       ),
+                      if (_isFine) ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _bufferTimeController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'[0-9.]'),
+                                  ),
+                                ],
+                                decoration: _inputDecoration(
+                                  label: 'Buffer Time',
+                                ),
+                                validator: (value) {
+                                  if (!_isFine) {
+                                    return null;
+                                  }
+                                  final normalized = _normalizeNumericValue(
+                                    value ?? '',
+                                  );
+                                  return normalized.isEmpty
+                                      ? 'Enter buffer time'
+                                      : null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                initialValue: _bufferTimeUnit,
+                                decoration: _inputDecoration(label: 'Unit'),
+                                items: _CreatePaymentPageState
+                                    ._bufferTimeUnitOptions
+                                    .map(
+                                      (option) => DropdownMenuItem<String>(
+                                        value: option.value,
+                                        child: Text(option.label),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _bufferTimeUnit = value;
+                                  });
+                                },
+                                validator: (value) {
+                                  if (!_isFine) {
+                                    return null;
+                                  }
+                                  return value == null ? 'Select unit' : null;
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4FBF9),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFD6ECE7)),
+                          ),
+                          child: CheckboxListTile(
+                            value: _partOfCycleAsFull,
+                            activeColor: _CreatePaymentPageState._brandColor,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: const Text('Part Of Cycle As Full'),
+                            onChanged: (value) {
+                              setState(() {
+                                _partOfCycleAsFull = value ?? false;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -2417,10 +2417,15 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  bool _isEarlyBirdOfferActive() {
+    final deadline = DateTime(2026, 8, 16, 0, 0, 0);
+    return _countdownNow.isBefore(deadline);
+  }
+
   String _buildCountdownLabel() {
-    final deadline = DateTime(2026, 8, 15);
+    final deadline = DateTime(2026, 8, 16, 0, 0, 0);
     final diff = deadline.difference(_countdownNow);
-    if (diff.isNegative) return 'Offer Expired';
+    if (diff.isNegative || diff.inSeconds == 0) return 'Offer Expired';
     final days = diff.inDays;
     final hours = diff.inHours % 24;
     final mins = diff.inMinutes % 60;
@@ -2429,6 +2434,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   }
 
   Widget _buildDiscountBanner(List<String> cycles) {
+    if (!_isEarlyBirdOfferActive()) {
+      return const SizedBox.shrink();
+    }
+
     final mainLabel = 'Early Bird  Discount in ${cycles.join(', ')} Payment';
     return AnimatedBuilder(
       animation: _discountPulseAnimation,
@@ -2500,7 +2509,12 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
 
   String _toCamelCase(String text) {
     if (text.isEmpty) return text;
-    final words = text
+    // Backend sometimes sends the misspelled "QUATERLY" cycle value.
+    final corrected = text.replaceAll(
+      RegExp('quaterly', caseSensitive: false),
+      'quarterly',
+    );
+    final words = corrected
         .replaceAll('_', ' ')
         .split(' ')
         .map((word) => word.trim())
@@ -4193,7 +4207,6 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     final paymentType = due['paymentType']?.toString().trim() ?? '--';
     final discountCode = due['discountCode']?.toString().trim() ?? '';
     final discountedAmount = due['discountedAmount']?.toString().trim() ?? '';
-    final fineCode = due['fineCode']?.toString().trim() ?? '';
     final fineAmount = due['fineAmount']?.toString().trim() ?? '';
     final rowKey = _rowPaymentKey(due);
     final isSubmitting = _submittingRows[rowKey] ?? false;
@@ -4210,20 +4223,20 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         ? hasDiscountCode
               ? '${widget.formatAsCurrency(discountedAmount)} ($discountCode)'
               : widget.formatAsCurrency(discountedAmount)
-        : '--';
+        : widget.formatAsCurrency('0');
 
-    final fineText =
+    final hasFineAmount =
         fineAmount.isNotEmpty &&
-            fineAmount.toLowerCase() != 'null' &&
-            fineAmount != '0'
+        fineAmount.toLowerCase() != 'null' &&
+        fineAmount != '0';
+
+    final fineText = hasFineAmount
         ? widget.formatAsCurrency(fineAmount)
-        : fineCode.isNotEmpty && fineCode.toLowerCase() != 'null'
-        ? fineCode
-        : '--';
+        : widget.formatAsCurrency('0');
 
     final totalSavingsText = hasDiscountAmount
         ? widget.formatAsCurrency(discountedAmount)
-        : '--';
+        : widget.formatAsCurrency('0');
 
     final gstText =
         gstPercentage.isNotEmpty && gstPercentage.toLowerCase() != 'null'
@@ -4452,9 +4465,29 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       _selectedOverdueCycleByGroup[groupId] = selectedCycleKey;
     }
 
-    return overdueDues
+    final cycleDues = overdueDues
         .where((due) => _cycleKey(due) == selectedCycleKey)
         .toList(growable: false);
+
+    if (cycleDues.length <= 1) {
+      return cycleDues;
+    }
+
+    // Only the due with the earliest due date is shown for a given cycle.
+    Map<String, dynamic> earliest = cycleDues.first;
+    DateTime? earliestDate = _parseDueDate(
+      earliest['dueDate']?.toString().trim() ?? '',
+    );
+    for (final due in cycleDues.skip(1)) {
+      final dueDate = _parseDueDate(due['dueDate']?.toString().trim() ?? '');
+      if (earliestDate == null ||
+          (dueDate != null && dueDate.isBefore(earliestDate))) {
+        earliest = due;
+        earliestDate = dueDate;
+      }
+    }
+
+    return <Map<String, dynamic>>[earliest];
   }
 
   Widget _buildDueDetailCards({
@@ -4691,7 +4724,8 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                     const SizedBox(width: 6),
                     _buildOverdueBanner(),
                   ],
-                  if (discountCycles.isNotEmpty) ...[
+                  if (discountCycles.isNotEmpty &&
+                      _isEarlyBirdOfferActive()) ...[
                     const SizedBox(width: 6),
                     _buildDiscountBanner(discountCycles),
                   ],
@@ -4716,9 +4750,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   if (isNarrow && hasBadges) ...[
                     const SizedBox(height: 6),
                     if (hasOverdue) _buildOverdueBanner(),
-                    if (hasOverdue && discountCycles.isNotEmpty)
+                    if (hasOverdue &&
+                        discountCycles.isNotEmpty &&
+                        _isEarlyBirdOfferActive())
                       const SizedBox(height: 4),
-                    if (discountCycles.isNotEmpty)
+                    if (discountCycles.isNotEmpty && _isEarlyBirdOfferActive())
                       _buildDiscountBanner(discountCycles),
                   ],
                 ],

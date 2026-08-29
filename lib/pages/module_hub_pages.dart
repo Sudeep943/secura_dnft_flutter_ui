@@ -5065,7 +5065,6 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     return flatList;
   }
 
-  // ignore: unused_element
   Future<void> _openDuePaymentsDialog() async {
     if (_loadingDueDetails) {
       return;
@@ -5122,7 +5121,6 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     }
   }
 
-  // ignore: unused_element
   Future<void> _openUploadOtherDuePaymentsDialog() async {
     await showDialog<void>(
       context: context,
@@ -5131,7 +5129,6 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     );
   }
 
-  // ignore: unused_element
   Future<void> _openReconcileQrPaymentsDialog() async {
     await showDialog<void>(
       context: context,
@@ -5198,11 +5195,47 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
     }
 
     final items = <_ModuleHubItem>[
-      const _ModuleHubItem('Ledger Entry', Icons.credit_card_off),
-      const _ModuleHubItem('Create New Payment', Icons.payment),
-      const _ModuleHubItem('View/Update Payments', Icons.account_balance),
-      const _ModuleHubItem('Pay Dues', Icons.currency_rupee),
-      const _ModuleHubItem('Create Receipt', Icons.receipt_long_outlined),
+      _ModuleHubItem(
+        'Ledger Entry',
+        Icons.credit_card_off,
+        onTap: () {
+          setState(() {
+            _showCreateLedgerEntry = true;
+          });
+        },
+      ),
+      _ModuleHubItem(
+        'Create New Payment',
+        Icons.payment,
+        onTap: () {
+          setState(() {
+            _showCreatePayment = true;
+          });
+        },
+      ),
+      _ModuleHubItem(
+        'View/Update Payments',
+        Icons.account_balance,
+        onTap: () {
+          setState(() {
+            _showViewPayments = true;
+          });
+        },
+      ),
+      _ModuleHubItem(
+        'Pay Dues',
+        Icons.currency_rupee,
+        onTap: _openDuePaymentsDialog,
+      ),
+      _ModuleHubItem(
+        'Create Receipt',
+        Icons.receipt_long_outlined,
+        onTap: () {
+          setState(() {
+            _showCreateReceipt = true;
+          });
+        },
+      ),
       _ModuleHubItem(
         'View Transactions',
         Icons.receipt_outlined,
@@ -5212,15 +5245,21 @@ class _FinanceManagementPageState extends State<FinanceManagementPage> {
           });
         },
       ),
-      const _ModuleHubItem(
+      _ModuleHubItem(
         'Upload Other Due Payments',
         Icons.upload_file_rounded,
+        onTap: _openUploadOtherDuePaymentsDialog,
       ),
-      const _ModuleHubItem(
+      _ModuleHubItem(
         'Reconcile QR Payments',
         Icons.qr_code_scanner_rounded,
+        onTap: _openReconcileQrPaymentsDialog,
       ),
-      const _ModuleHubItem('Budget Management', Icons.assessment_rounded),
+      _ModuleHubItem(
+        'Budget Management',
+        Icons.assessment_rounded,
+        onTap: () => _showSnack('Budget Management page is coming soon.'),
+      ),
     ];
 
     return _ModuleHubPage(

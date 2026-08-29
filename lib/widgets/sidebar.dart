@@ -41,6 +41,7 @@ class _SideBarState extends State<SideBar> {
   }) {
     const enabledSections = {
       AppSection.dashboard,
+      AppSection.profileManagement,
       AppSection.adminSection,
       AppSection.finance,
     };

@@ -27,6 +27,29 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
   String? _hoveredDiscFinKey;
   final Set<String> _deTagInProgressKeys = <String>{};
   final Set<String> _expandedPaymentIds = <String>{};
+  String? _selectedPaymentNameFilter;
+
+  List<String> get _distinctPaymentNames {
+    final names = _paymentList
+        .map((payment) => payment['paymentName']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
+    names.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return names;
+  }
+
+  List<Map<String, dynamic>> get _filteredPaymentList {
+    final selected = _selectedPaymentNameFilter;
+    if (selected == null || selected.isEmpty) {
+      return _paymentList;
+    }
+    return _paymentList
+        .where(
+          (payment) => payment['paymentName']?.toString().trim() == selected,
+        )
+        .toList();
+  }
 
   @override
   void initState() {
@@ -228,11 +251,13 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
       return Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
-          onPressed: () => _openTagDiscFinDialog(
-            paymentId: paymentId,
-            payment: payment,
-            discFinType: discFinType,
-          ),
+          onPressed: () => discFinType == 'FINE'
+              ? _openAddFineDialog(paymentId: paymentId)
+              : _openTagDiscFinDialog(
+                  paymentId: paymentId,
+                  payment: payment,
+                  discFinType: discFinType,
+                ),
           icon: const Icon(Icons.add_rounded, size: 16),
           label: Text(discFinType == 'FINE' ? 'Add Fine' : 'Add Discount'),
           style: OutlinedButton.styleFrom(
@@ -424,6 +449,72 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
     );
 
     if (!mounted || applied == null) {
+      return;
+    }
+
+    setState(() {
+      _expandedPaymentIds.add(paymentId);
+    });
+    await _loadPayments();
+  }
+
+  Future<void> _openAddFineDialog({required String paymentId}) async {
+    final header = _buildHeader();
+    if (header == null) {
+      await _showErrorModal('Session expired. Please log in again.');
+      return;
+    }
+
+    final applied = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _AddFineDialog(
+        onSubmit: (draft) async {
+          final requestBody = <String, dynamic>{
+            'genericHeader': header,
+            'paymentId': paymentId,
+            'discfinRequestData': {
+              'discFnType': 'FINE',
+              'dueDateAsStartDateFlag': true,
+              'discFnStrtDt': '',
+              'discFnEndDt': '',
+              'discFnMode': draft.mode,
+              'discFnValue': draft.value,
+              'discFnCycleType': draft.cycleType,
+              'discFnCumlatonCycle': draft.cycleType == 'CUMULATIVE'
+                  ? draft.cumulationCycle
+                  : '',
+              'discFinCycleDiscountList': const <Map<String, dynamic>>[],
+              'minimumPaymentAmount': '',
+              'partOfCycleAsFull': draft.partOfCycleAsFull,
+              'bufferTime': draft.bufferTime,
+              'bufferTimeUnit': draft.bufferTimeUnit,
+            },
+          };
+
+          try {
+            final response = await ApiService.tagDiscFinFromPayment(
+              requestBody,
+            );
+            final messageCode =
+                response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+            final success = messageCode.contains('SUC');
+            final message =
+                response?['message']?.toString().trim() ??
+                (success ? 'Fine added successfully.' : 'Request failed.');
+
+            return _AddFineSubmitResult(isSuccess: success, message: message);
+          } catch (_) {
+            return const _AddFineSubmitResult(
+              isSuccess: false,
+              message: 'Unable to add the fine right now.',
+            );
+          }
+        },
+      ),
+    );
+
+    if (!mounted || applied != true) {
       return;
     }
 
@@ -1101,8 +1192,47 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
                 '${_paymentList.length} payment${_paymentList.length == 1 ? '' : 's'} found. Tap a card to expand details.',
                 style: const TextStyle(color: Colors.black54, height: 1.4),
               ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 320,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedPaymentNameFilter,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Search by Payment Name',
+                    prefixIcon: Icon(Icons.search, color: _brandColor),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  hint: const Text('All payments'),
+                  items: _distinctPaymentNames
+                      .map(
+                        (name) => DropdownMenuItem<String>(
+                          value: name,
+                          child: Text(name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedPaymentNameFilter = value;
+                    });
+                  },
+                ),
+              ),
               const SizedBox(height: 18),
-              ..._paymentList.map(_buildPaymentCard),
+              if (_filteredPaymentList.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'No payments match the selected filter.',
+                      style: TextStyle(color: Colors.black54, fontSize: 16),
+                    ),
+                  ),
+                )
+              else
+                ..._filteredPaymentList.map(_buildPaymentCard),
             ],
           ),
         ),
@@ -1322,6 +1452,411 @@ class _DiscFinDetailsDialogState extends State<_DiscFinDetailsDialog>
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddFineDraft {
+  const _AddFineDraft({
+    required this.bufferTime,
+    required this.bufferTimeUnit,
+    required this.value,
+    required this.mode,
+    required this.cycleType,
+    required this.cumulationCycle,
+    required this.partOfCycleAsFull,
+  });
+
+  final String bufferTime;
+  final String bufferTimeUnit;
+  final String value;
+  final String mode;
+  final String cycleType;
+  final String? cumulationCycle;
+  final bool partOfCycleAsFull;
+}
+
+class _AddFineSubmitResult {
+  const _AddFineSubmitResult({required this.isSuccess, required this.message});
+
+  final bool isSuccess;
+  final String message;
+}
+
+class _AddFineDialog extends StatefulWidget {
+  const _AddFineDialog({required this.onSubmit});
+
+  final Future<_AddFineSubmitResult> Function(_AddFineDraft draft) onSubmit;
+
+  @override
+  State<_AddFineDialog> createState() => _AddFineDialogState();
+}
+
+class _AddFineDialogState extends State<_AddFineDialog> {
+  static const Color _brandColor = _ViewUpdatePaymentsPageState._brandColor;
+
+  static const List<_DiscFinCycleOption> _bufferUnitOptions = [
+    _DiscFinCycleOption(cycle: 'DAYS', label: 'Days'),
+    _DiscFinCycleOption(cycle: 'MONTH', label: 'Month'),
+    _DiscFinCycleOption(cycle: 'QUARTER', label: 'Quarter'),
+  ];
+
+  static const List<_DiscFinCycleOption> _modeOptions = [
+    _DiscFinCycleOption(cycle: 'AMOUNT', label: 'Fixed Amount'),
+    _DiscFinCycleOption(cycle: 'PERCENTAGE', label: 'Percentage'),
+  ];
+
+  static const List<_DiscFinCycleOption> _cycleTypeOptions = [
+    _DiscFinCycleOption(cycle: 'SIMPLE', label: 'Simple'),
+    _DiscFinCycleOption(cycle: 'CUMULATIVE', label: 'Cumulative'),
+  ];
+
+  static const List<_DiscFinCycleOption> _cumulationCycleOptions = [
+    _DiscFinCycleOption(cycle: 'MONTHLY', label: 'Monthly'),
+    _DiscFinCycleOption(cycle: 'QUARTERLY', label: 'Quarterly'),
+  ];
+
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _bufferTimeController = TextEditingController();
+  final TextEditingController _valueController = TextEditingController();
+
+  String? _bufferTimeUnit;
+  String? _mode;
+  String? _cycleType;
+  String? _cumulationCycle;
+  bool _partOfCycleAsFull = false;
+  bool _submitting = false;
+  String? _errorMessage;
+
+  bool get _showCumulationCycle => _cycleType == 'CUMULATIVE';
+
+  @override
+  void dispose() {
+    _bufferTimeController.dispose();
+    _valueController.dispose();
+    super.dispose();
+  }
+
+  String _normalizeNumericValue(String value) {
+    final cleaned = value.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleaned.isEmpty) {
+      return '';
+    }
+
+    final firstDot = cleaned.indexOf('.');
+    if (firstDot < 0) {
+      return cleaned;
+    }
+
+    final integerPart = cleaned.substring(0, firstDot + 1);
+    final decimalPart = cleaned.substring(firstDot + 1).replaceAll('.', '');
+    return '$integerPart$decimalPart';
+  }
+
+  InputDecoration _inputDecoration({required String label}) {
+    return InputDecoration(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFD8E5E2)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: _brandColor, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFB3261E)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.4),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.onSubmit(
+      _AddFineDraft(
+        bufferTime: _normalizeNumericValue(_bufferTimeController.text),
+        bufferTimeUnit: _bufferTimeUnit ?? '',
+        value: _normalizeNumericValue(_valueController.text),
+        mode: _mode ?? '',
+        cycleType: _cycleType ?? '',
+        cumulationCycle: _showCumulationCycle ? _cumulationCycle : null,
+        partOfCycleAsFull: _partOfCycleAsFull,
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _submitting = false;
+    });
+
+    if (result.isSuccess) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    setState(() {
+      _errorMessage = result.message;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFFF9F6FB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      title: const Text('Add Fine'),
+      content: SizedBox(
+        width: 560,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  initialValue: 'Fine',
+                  enabled: false,
+                  decoration: _inputDecoration(label: 'DiscFin Type'),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _bufferTimeController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        decoration: _inputDecoration(label: 'Buffer Time'),
+                        validator: (value) {
+                          final normalized = _normalizeNumericValue(
+                            value ?? '',
+                          );
+                          return normalized.isEmpty
+                              ? 'Enter buffer time'
+                              : null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _bufferTimeUnit,
+                        decoration: _inputDecoration(label: 'Unit'),
+                        items: _bufferUnitOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.cycle,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _bufferTimeUnit = value;
+                          });
+                        },
+                        validator: (value) =>
+                            value == null ? 'Select unit' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _valueController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        decoration: _inputDecoration(label: 'Disc Fin Value'),
+                        validator: (value) {
+                          final normalized = _normalizeNumericValue(
+                            value ?? '',
+                          );
+                          final number = double.tryParse(normalized);
+                          if (normalized.isEmpty ||
+                              number == null ||
+                              number <= 0) {
+                            return 'Enter a valid value';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _mode,
+                        decoration: _inputDecoration(label: 'Mode'),
+                        items: _modeOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.cycle,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _mode = value;
+                          });
+                        },
+                        validator: (value) =>
+                            value == null ? 'Select mode' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _cycleType,
+                        decoration: _inputDecoration(label: 'Cycle Type'),
+                        items: _cycleTypeOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.cycle,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _cycleType = value;
+                            if (!_showCumulationCycle) {
+                              _cumulationCycle = null;
+                            }
+                          });
+                        },
+                        validator: (value) =>
+                            value == null ? 'Select cycle type' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _cumulationCycle,
+                        decoration: _inputDecoration(label: 'Cumulation Cycle'),
+                        items: _cumulationCycleOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.cycle,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _showCumulationCycle
+                            ? (value) {
+                                setState(() {
+                                  _cumulationCycle = value;
+                                });
+                              }
+                            : null,
+                        validator: (value) {
+                          if (!_showCumulationCycle) return null;
+                          return value == null
+                              ? 'Select cumulation cycle'
+                              : null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4FBF9),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFD6ECE7)),
+                  ),
+                  child: CheckboxListTile(
+                    value: _partOfCycleAsFull,
+                    activeColor: _brandColor,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Part Of Cycle As Full'),
+                    onChanged: (value) {
+                      setState(() {
+                        _partOfCycleAsFull = value ?? false;
+                      });
+                    },
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Color(0xFFB3261E)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(backgroundColor: _brandColor),
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Submit'),
         ),
       ],
     );

@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 
 import '../navigation/app_section.dart';
 import '../services/api_service.dart';
@@ -210,7 +212,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Set<AppSection> _visibleSections() {
-    final sections = <AppSection>{AppSection.dashboard};
+    final sections = <AppSection>{AppSection.dashboard, AppSection.finance};
 
     if (_hasParentAccess('accountManagmentAccess')) {
       sections.add(AppSection.profileManagement);
@@ -227,9 +229,6 @@ class _AppShellState extends State<AppShell> {
     }
     if (_hasParentAccess('meetingAndNoticeAccess')) {
       sections.add(AppSection.meetingAndNotice);
-    }
-    if (_hasParentAccess('financeAccess')) {
-      sections.add(AppSection.finance);
     }
     if (_hasParentAccess('ticketManagementAccess')) {
       sections.add(AppSection.ticketManagement);
@@ -566,11 +565,19 @@ class _WorklistDialogState extends State<_WorklistDialog>
   final Set<String> _pendingSelectedTypes = <String>{};
   final Set<String> _pendingSelectedFlatNos = <String>{};
   final Set<String> _pendingSelectedTenders = <String>{};
+  DateTime? _pendingSelectedTransactionFromDate;
+  DateTime? _pendingSelectedTransactionToDate;
   final Set<String> _completedSelectedTypes = <String>{};
   final Set<String> _completedSelectedFlatNos = <String>{};
   final Set<String> _completedSelectedTenders = <String>{};
+  DateTime? _completedSelectedTransactionFromDate;
+  DateTime? _completedSelectedTransactionToDate;
   bool _pendingSortFromDateAscending = false;
   bool _completedSortFromDateAscending = false;
+  String? _pendingFilterFallbackMessage;
+  String? _completedFilterFallbackMessage;
+  Timer? _pendingFilterFallbackTimer;
+  Timer? _completedFilterFallbackTimer;
   late final AnimationController _statusGlowController;
 
   @override
@@ -584,8 +591,40 @@ class _WorklistDialogState extends State<_WorklistDialog>
 
   @override
   void dispose() {
+    _pendingFilterFallbackTimer?.cancel();
+    _completedFilterFallbackTimer?.cancel();
     _statusGlowController.dispose();
     super.dispose();
+  }
+
+  void _showFilterFallbackMessage(_WorklistTabKind tab, String message) {
+    if (tab == _WorklistTabKind.pending) {
+      _pendingFilterFallbackTimer?.cancel();
+      _pendingFilterFallbackMessage = message;
+      _pendingFilterFallbackTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() => _pendingFilterFallbackMessage = null);
+        }
+      });
+    } else {
+      _completedFilterFallbackTimer?.cancel();
+      _completedFilterFallbackMessage = message;
+      _completedFilterFallbackTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() => _completedFilterFallbackMessage = null);
+        }
+      });
+    }
+  }
+
+  void _clearFilterFallbackMessage(_WorklistTabKind tab) {
+    if (tab == _WorklistTabKind.pending) {
+      _pendingFilterFallbackTimer?.cancel();
+      _pendingFilterFallbackMessage = null;
+    } else {
+      _completedFilterFallbackTimer?.cancel();
+      _completedFilterFallbackMessage = null;
+    }
   }
 
   String _formatDate(String? raw) {
@@ -852,19 +891,32 @@ class _WorklistDialogState extends State<_WorklistDialog>
                 icon: Icons.calendar_month_rounded,
                 text: 'From: ${_formatDate(item['creatTs']?.toString())}',
               ),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: canOpenReference
-                    ? () => _openTransactionDetails(item)
-                    : null,
-                child: Opacity(
-                  opacity: referenceId.isEmpty ? 0.55 : 1,
-                  child: _metaPill(
-                    icon: Icons.confirmation_number_outlined,
-                    text:
-                        'Reference: ${referenceId.isEmpty ? '--' : referenceId}',
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: canOpenReference
+                        ? () => _openTransactionDetails(item)
+                        : null,
+                    child: Opacity(
+                      opacity: referenceId.isEmpty ? 0.55 : 1,
+                      child: _metaPill(
+                        icon: Icons.confirmation_number_outlined,
+                        text:
+                            'Reference: ${referenceId.isEmpty ? '--' : referenceId}',
+                      ),
+                    ),
                   ),
-                ),
+                  if (isLoading) ...[
+                    const SizedBox(width: 8),
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -979,6 +1031,82 @@ class _WorklistDialogState extends State<_WorklistDialog>
     return normalized.replaceAll('_', ' ').toUpperCase();
   }
 
+  DateTime? _parseWorklistDate(dynamic rawValue) {
+    if (rawValue == null) {
+      return null;
+    }
+
+    final text = rawValue.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) {
+      return parsed;
+    }
+
+    return null;
+  }
+
+  DateTime? _transactionDateValue(Map<String, dynamic> item) {
+    final candidates = [
+      item['trnsDate'],
+      item['transactionDate'],
+      item['transaction_date'],
+      item['transDate'],
+      item['creatTs'],
+      item['createdAt'],
+    ];
+
+    for (final candidate in candidates) {
+      final parsed = _parseWorklistDate(candidate);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    final nestedTransaction = item['transaction'];
+    if (nestedTransaction is Map) {
+      return _transactionDateValue(
+        Map<String, dynamic>.from(nestedTransaction),
+      );
+    }
+
+    return null;
+  }
+
+  bool _matchesTransactionDate(
+    Map<String, dynamic> item,
+    DateTime? fromDate,
+    DateTime? toDate,
+  ) {
+    if (fromDate == null && toDate == null) {
+      return true;
+    }
+
+    final transactionDate = _transactionDateValue(item);
+    if (transactionDate == null) {
+      return false;
+    }
+
+    if (fromDate != null) {
+      final fromStart = DateTime(fromDate.year, fromDate.month, fromDate.day);
+      if (transactionDate.isBefore(fromStart)) {
+        return false;
+      }
+    }
+
+    if (toDate != null) {
+      final toEnd = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59);
+      if (transactionDate.isAfter(toEnd)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   Set<String> _tenderValues(Map<String, dynamic> item) {
     final values = <String>{};
 
@@ -1044,9 +1172,16 @@ class _WorklistDialogState extends State<_WorklistDialog>
   }
 
   int _activeFilterCount(_WorklistTabKind tab) {
+    final selectedFromDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionFromDate
+        : _completedSelectedTransactionFromDate;
+    final selectedToDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionToDate
+        : _completedSelectedTransactionToDate;
     return _selectedTypesForTab(tab).length +
         _selectedFlatNosForTab(tab).length +
-        _selectedTendersForTab(tab).length;
+        _selectedTendersForTab(tab).length +
+        (selectedFromDate == null && selectedToDate == null ? 0 : 1);
   }
 
   List<Map<String, dynamic>> _applyFilters(
@@ -1056,6 +1191,12 @@ class _WorklistDialogState extends State<_WorklistDialog>
     final selectedTypes = _selectedTypesForTab(tab);
     final selectedFlatNos = _selectedFlatNosForTab(tab);
     final selectedTenders = _selectedTendersForTab(tab);
+    final selectedFromDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionFromDate
+        : _completedSelectedTransactionFromDate;
+    final selectedToDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionToDate
+        : _completedSelectedTransactionToDate;
     return rows.where((item) {
       final typeMatches =
           selectedTypes.isEmpty || selectedTypes.contains(_typeValue(item));
@@ -1065,7 +1206,12 @@ class _WorklistDialogState extends State<_WorklistDialog>
       final itemTenders = _tenderValues(item);
       final tenderMatches =
           selectedTenders.isEmpty || itemTenders.any(selectedTenders.contains);
-      return typeMatches && flatMatches && tenderMatches;
+      final dateMatches = _matchesTransactionDate(
+        item,
+        selectedFromDate,
+        selectedToDate,
+      );
+      return typeMatches && flatMatches && tenderMatches && dateMatches;
     }).toList();
   }
 
@@ -1084,6 +1230,12 @@ class _WorklistDialogState extends State<_WorklistDialog>
     final tempTypes = Set<String>.from(_selectedTypesForTab(tab));
     final tempFlats = Set<String>.from(_selectedFlatNosForTab(tab));
     final tempTenders = Set<String>.from(_selectedTendersForTab(tab));
+    var tempTransactionFromDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionFromDate
+        : _completedSelectedTransactionFromDate;
+    var tempTransactionToDate = tab == _WorklistTabKind.pending
+        ? _pendingSelectedTransactionToDate
+        : _completedSelectedTransactionToDate;
     var flatSearchText = '';
 
     await showDialog<void>(
@@ -1386,6 +1538,178 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                         ],
                                 ),
                               ),
+                              const SizedBox(height: 10),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7FAFA),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFFDCEAE7),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Transaction From',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      InkWell(
+                                        onTap: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate:
+                                                tempTransactionFromDate ??
+                                                DateTime.now(),
+                                            firstDate: DateTime(2000),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          if (picked != null) {
+                                            setInnerState(() {
+                                              tempTransactionFromDate = picked;
+                                            });
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 12,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFDCEAE7),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.calendar_today_rounded,
+                                                size: 18,
+                                                color: Color(0xFF0F8F82),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  tempTransactionFromDate ==
+                                                          null
+                                                      ? 'Select from date'
+                                                      : '${tempTransactionFromDate!.day.toString().padLeft(2, '0')}-${tempTransactionFromDate!.month.toString().padLeft(2, '0')}-${tempTransactionFromDate!.year}',
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (tempTransactionFromDate !=
+                                                  null)
+                                                IconButton(
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  onPressed: () {
+                                                    setInnerState(() {
+                                                      tempTransactionFromDate =
+                                                          null;
+                                                    });
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.clear_rounded,
+                                                    size: 18,
+                                                  ),
+                                                  tooltip: 'Clear date',
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        'Transaction To',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      InkWell(
+                                        onTap: () async {
+                                          final picked = await showDatePicker(
+                                            context: context,
+                                            initialDate:
+                                                tempTransactionToDate ??
+                                                DateTime.now(),
+                                            firstDate: DateTime(2000),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          if (picked != null) {
+                                            setInnerState(() {
+                                              tempTransactionToDate = picked;
+                                            });
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 12,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFDCEAE7),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.calendar_today_rounded,
+                                                size: 18,
+                                                color: Color(0xFF0F8F82),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  tempTransactionToDate == null
+                                                      ? 'Select to date'
+                                                      : '${tempTransactionToDate!.day.toString().padLeft(2, '0')}-${tempTransactionToDate!.month.toString().padLeft(2, '0')}-${tempTransactionToDate!.year}',
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (tempTransactionToDate != null)
+                                                IconButton(
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  onPressed: () {
+                                                    setInnerState(() {
+                                                      tempTransactionToDate =
+                                                          null;
+                                                    });
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.clear_rounded,
+                                                    size: 18,
+                                                  ),
+                                                  tooltip: 'Clear date',
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                               if (isTransactionReviewSelected) ...[
                                 const SizedBox(height: 10),
                                 Container(
@@ -1473,6 +1797,14 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                 _selectedTypesForTab(tab).clear();
                                 _selectedFlatNosForTab(tab).clear();
                                 _selectedTendersForTab(tab).clear();
+                                if (tab == _WorklistTabKind.pending) {
+                                  _pendingSelectedTransactionFromDate = null;
+                                  _pendingSelectedTransactionToDate = null;
+                                } else {
+                                  _completedSelectedTransactionFromDate = null;
+                                  _completedSelectedTransactionToDate = null;
+                                }
+                                _clearFilterFallbackMessage(tab);
                               });
                               Navigator.of(dialogContext).pop();
                             },
@@ -1513,6 +1845,18 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                 } else {
                                   selectedTenders.clear();
                                 }
+                                if (tab == _WorklistTabKind.pending) {
+                                  _pendingSelectedTransactionFromDate =
+                                      tempTransactionFromDate;
+                                  _pendingSelectedTransactionToDate =
+                                      tempTransactionToDate;
+                                } else {
+                                  _completedSelectedTransactionFromDate =
+                                      tempTransactionFromDate;
+                                  _completedSelectedTransactionToDate =
+                                      tempTransactionToDate;
+                                }
+                                _clearFilterFallbackMessage(tab);
                               });
                               Navigator.of(dialogContext).pop();
                             },
@@ -1543,6 +1887,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
     required List<Map<String, dynamic>> sourceRows,
     required List<Map<String, dynamic>> rows,
     required String emptyMessage,
+    required String? filterFallbackMessage,
   }) {
     final sortedRows = _sortRowsByFromDate(rows, tab);
     final sortAscending = tab == _WorklistTabKind.pending
@@ -1597,57 +1942,77 @@ class _WorklistDialogState extends State<_WorklistDialog>
       );
     }
 
+    final toolbarControls = <Widget>[
+      _metaPill(
+        icon: Icons.format_list_bulleted_rounded,
+        text: '${rows.length} total items',
+      ),
+      OutlinedButton.icon(
+        onPressed: () => _openFilterDialog(tab, sourceRows),
+        icon: const Icon(Icons.filter_alt_rounded, size: 18),
+        label: Text(
+          _activeFilterCount(tab) == 0
+              ? 'Filter'
+              : 'Filter (${_activeFilterCount(tab)})',
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _brandColor,
+          side: const BorderSide(color: Color(0xFF9FD2CB)),
+        ),
+      ),
+      OutlinedButton.icon(
+        onPressed: () {
+          setState(() {
+            if (tab == _WorklistTabKind.pending) {
+              _pendingSortFromDateAscending = !_pendingSortFromDateAscending;
+            } else {
+              _completedSortFromDateAscending =
+                  !_completedSortFromDateAscending;
+            }
+          });
+        },
+        icon: Icon(
+          sortAscending
+              ? Icons.arrow_upward_rounded
+              : Icons.arrow_downward_rounded,
+          size: 18,
+        ),
+        label: Text(sortAscending ? 'From Date Asc' : 'From Date Desc'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _brandColor,
+          side: const BorderSide(color: Color(0xFF9FD2CB)),
+        ),
+      ),
+    ];
+
     return Column(
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _metaPill(
-                icon: Icons.format_list_bulleted_rounded,
-                text: '${rows.length} total items',
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _openFilterDialog(tab, sourceRows),
-                icon: const Icon(Icons.filter_alt_rounded, size: 18),
-                label: Text(
-                  _activeFilterCount(tab) == 0
-                      ? 'Filter'
-                      : 'Filter (${_activeFilterCount(tab)})',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _brandColor,
-                  side: const BorderSide(color: Color(0xFF9FD2CB)),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    if (tab == _WorklistTabKind.pending) {
-                      _pendingSortFromDateAscending =
-                          !_pendingSortFromDateAscending;
-                    } else {
-                      _completedSortFromDateAscending =
-                          !_completedSortFromDateAscending;
-                    }
-                  });
-                },
-                icon: Icon(
-                  sortAscending
-                      ? Icons.arrow_upward_rounded
-                      : Icons.arrow_downward_rounded,
-                  size: 18,
-                ),
-                label: Text(sortAscending ? 'From Date Asc' : 'From Date Desc'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _brandColor,
-                  side: const BorderSide(color: Color(0xFF9FD2CB)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Wrap(spacing: 8, runSpacing: 8, children: toolbarControls),
+            ),
+            if (filterFallbackMessage != null) ...[
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    filterFallbackMessage,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
+          ],
         ),
         const SizedBox(height: 12),
         Expanded(
@@ -1723,6 +2088,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
       useRootNavigator: true,
       builder: (_) => _TransactionDetailDialog(
         transaction: transaction,
+        transactionId: referenceId,
         worklistId: worklistId,
         canTakeAction: canTakeAction,
         onActionCompleted: _refreshWorklists,
@@ -1732,13 +2098,65 @@ class _WorklistDialogState extends State<_WorklistDialog>
 
   @override
   Widget build(BuildContext context) {
+    bool _hasFiltersApplied(_WorklistTabKind tab) {
+      final types = _selectedTypesForTab(tab);
+      final flats = _selectedFlatNosForTab(tab);
+      final tenders = _selectedTendersForTab(tab);
+      final fromDate = tab == _WorklistTabKind.pending
+          ? _pendingSelectedTransactionFromDate
+          : _completedSelectedTransactionFromDate;
+      final toDate = tab == _WorklistTabKind.pending
+          ? _pendingSelectedTransactionToDate
+          : _completedSelectedTransactionToDate;
+      return types.isNotEmpty ||
+          flats.isNotEmpty ||
+          tenders.isNotEmpty ||
+          fromDate != null ||
+          toDate != null;
+    }
+
+    void _clearFilters(_WorklistTabKind tab) {
+      if (tab == _WorklistTabKind.pending) {
+        _pendingSelectedTypes.clear();
+        _pendingSelectedFlatNos.clear();
+        _pendingSelectedTenders.clear();
+        _pendingSelectedTransactionFromDate = null;
+        _pendingSelectedTransactionToDate = null;
+      } else {
+        _completedSelectedTypes.clear();
+        _completedSelectedFlatNos.clear();
+        _completedSelectedTenders.clear();
+        _completedSelectedTransactionFromDate = null;
+        _completedSelectedTransactionToDate = null;
+      }
+    }
+
     final pendingSource = _pendingWorklists;
     final completedSource = _completedWorklists;
-    final pending = _applyFilters(pendingSource, _WorklistTabKind.pending);
-    final completed = _applyFilters(
-      completedSource,
-      _WorklistTabKind.completed,
-    );
+    var pending = _applyFilters(pendingSource, _WorklistTabKind.pending);
+    var completed = _applyFilters(completedSource, _WorklistTabKind.completed);
+
+    var pendingEmptyMessage = 'No pending worklists found';
+    var completedEmptyMessage = 'No completed worklists found';
+
+    if (pending.isEmpty && _hasFiltersApplied(_WorklistTabKind.pending)) {
+      _clearFilters(_WorklistTabKind.pending);
+      pending = _applyFilters(pendingSource, _WorklistTabKind.pending);
+      pendingEmptyMessage =
+          'No Worklist Available For Applied Filter Showing All Worklist';
+      _showFilterFallbackMessage(_WorklistTabKind.pending, pendingEmptyMessage);
+    }
+
+    if (completed.isEmpty && _hasFiltersApplied(_WorklistTabKind.completed)) {
+      _clearFilters(_WorklistTabKind.completed);
+      completed = _applyFilters(completedSource, _WorklistTabKind.completed);
+      completedEmptyMessage =
+          'No Worklist Available For Applied Filter Showing All Worklist';
+      _showFilterFallbackMessage(
+        _WorklistTabKind.completed,
+        completedEmptyMessage,
+      );
+    }
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1844,13 +2262,15 @@ class _WorklistDialogState extends State<_WorklistDialog>
                         tab: _WorklistTabKind.pending,
                         sourceRows: pendingSource,
                         rows: pending,
-                        emptyMessage: 'No pending worklists found',
+                        emptyMessage: pendingEmptyMessage,
+                        filterFallbackMessage: _pendingFilterFallbackMessage,
                       ),
                       _buildWorklistTabBody(
                         tab: _WorklistTabKind.completed,
                         sourceRows: completedSource,
                         rows: completed,
-                        emptyMessage: 'No completed worklists found',
+                        emptyMessage: completedEmptyMessage,
+                        filterFallbackMessage: _completedFilterFallbackMessage,
                       ),
                     ],
                   ),
@@ -1867,12 +2287,14 @@ class _WorklistDialogState extends State<_WorklistDialog>
 class _TransactionDetailDialog extends StatefulWidget {
   const _TransactionDetailDialog({
     required this.transaction,
+    required this.transactionId,
     required this.worklistId,
     required this.canTakeAction,
     required this.onActionCompleted,
   });
 
   final Map<String, dynamic> transaction;
+  final String transactionId;
   final String worklistId;
   final bool canTakeAction;
   final Future<void> Function() onActionCompleted;
@@ -2063,7 +2485,97 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     return key.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
   }
 
+  bool _isPaymentNameKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized == 'paymentname' ||
+        normalized == 'pymntname' ||
+        normalized == 'pymntnm';
+  }
+
+  bool _isTransactionIdKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized == 'transactionid' ||
+        normalized == 'trnscid' ||
+        normalized == 'trnsid';
+  }
+
+  bool _isBankAccountKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized == 'trnsbnkaccnt' ||
+        normalized == 'bankaccount' ||
+        normalized == 'bankaccnt';
+  }
+
+  bool _isCreatorUserIdKey(String key) {
+    final normalized = _normalizeKey(key);
+    return (normalized.contains('userid') || normalized.contains('usrid')) &&
+        (normalized.startsWith('creat') || normalized.startsWith('create'));
+  }
+
+  String _creatorUserId() {
+    for (final entry in widget.transaction.entries) {
+      if (_isCreatorUserIdKey(entry.key)) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
+          return value;
+        }
+      }
+    }
+    return '';
+  }
+
+  bool _isOwnerNameKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized.startsWith('owner') && normalized.contains('name');
+  }
+
+  bool _isFlatIdKey(String key) {
+    return _normalizeKey(key) == 'flatid';
+  }
+
+  bool _isCauseKey(String key) {
+    return _normalizeKey(key) == 'cause';
+  }
+
+  int _detailPriority(String key) {
+    if (_isPaymentNameKey(key)) return 0;
+    if (_isFlatIdKey(key)) return 1;
+    if (_isOwnerNameKey(key)) return 2;
+    if (_isCauseKey(key)) return 3;
+    if (_isTransactionIdKey(key)) return 4;
+    return 5;
+  }
+
+  List<String> _formatOwnerNames(dynamic value) {
+    if (value is List) {
+      return value
+          .expand((entry) => _formatOwnerNames(entry))
+          .where((name) => name.isNotEmpty)
+          .toList();
+    }
+
+    if (value is Map) {
+      final name =
+          value['name'] ??
+          value['ownerName'] ??
+          value['fullName'] ??
+          value['profileName'];
+      return name == null ? const <String>[] : _formatOwnerNames(name);
+    }
+
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return const <String>[];
+    }
+    return [_toTitleWords(text)];
+  }
+
   String _displayValueForKey(String key, dynamic value) {
+    if (_isOwnerNameKey(key)) {
+      final ownerNames = _formatOwnerNames(value);
+      return ownerNames.isEmpty ? '--' : ownerNames.join('\n');
+    }
+
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty || text.toLowerCase() == 'null') return '--';
 
@@ -2098,6 +2610,10 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       return _formatAmount(text);
     }
 
+    if (_isBankAccountKey(key)) {
+      return text;
+    }
+
     if (_looksLikeIdentifier(key)) {
       return text;
     }
@@ -2108,8 +2624,14 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   List<Map<String, String>> _details() {
     final entries = <Map<String, String>>[];
     final keyLabels = <String, String>{
+      'paymentName': 'Payment Name',
+      'pymntName': 'Payment Name',
+      'pymntNm': 'Payment Name',
       'trnscId': 'Transaction ID',
+      'transactionId': 'Transaction ID',
       'flatId': 'Flat ID',
+      'ownerName': 'Owner Name',
+      'ownerNames': 'Owner Name',
       'trnsDate': 'Transaction Date Time',
       'trnsType': 'Type',
       'trnsAmt': 'Amount',
@@ -2121,41 +2643,58 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       'trnsBy': 'Done By',
     };
 
-    for (final key in keyLabels.keys) {
-      if (widget.transaction.containsKey(key)) {
-        if (_hiddenDetailKeys.contains(_normalizeKey(key))) {
-          continue;
-        }
-        final value = _displayValueForKey(key, widget.transaction[key]);
-        if (value != '--') {
-          entries.add({
-            'label': _displayLabelForKey(key, keyLabels),
-            'value': value,
-          });
-          if (key == 'trnsAmt') {
-            final tenderValue = _joinedTenderText();
-            if (tenderValue != '--') {
-              entries.add({'label': 'Tender', 'value': tenderValue});
-            }
-          }
-        }
-      }
+    final transactionData = Map<String, dynamic>.from(widget.transaction);
+    final responseTransactionId = transactionData.entries
+        .where((entry) => _isTransactionIdKey(entry.key))
+        .map((entry) => entry.value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty && value.toLowerCase() != 'null',
+          orElse: () => '',
+        );
+    transactionData.removeWhere((key, _) => _isTransactionIdKey(key));
+    final transactionId = responseTransactionId.isNotEmpty
+        ? responseTransactionId
+        : widget.transactionId.trim();
+    if (transactionId.isNotEmpty) {
+      transactionData['transactionId'] = transactionId;
     }
 
-    for (final entry in widget.transaction.entries) {
+    final transactionEntries = transactionData.entries.toList()
+      ..sort((left, right) {
+        final priorityCompare = _detailPriority(
+          left.key,
+        ).compareTo(_detailPriority(right.key));
+        if (priorityCompare != 0) return priorityCompare;
+        return 0;
+      });
+
+    for (final entry in transactionEntries) {
+      final key = entry.key;
       final normalizedKey = _normalizeKey(entry.key);
-      if (keyLabels.containsKey(entry.key) ||
-          entry.key == 'trnsFiles' ||
-          entry.key == 'trnsTender') {
+      if (entry.key == 'trnsFiles' || entry.key == 'trnsTender') {
         continue;
       }
       if (_hiddenDetailKeys.contains(normalizedKey) ||
-          normalizedKey.contains('createdby')) {
+          normalizedKey.contains('createdby') ||
+          _isCreatorUserIdKey(entry.key)) {
+        continue;
+      }
+      if (normalizedKey == 'trnsby' &&
+          entry.value?.toString().trim() == _creatorUserId()) {
         continue;
       }
       final value = _displayValueForKey(entry.key, entry.value);
       if (value != '--') {
-        entries.add({'label': _toTitleWords(entry.key), 'value': value});
+        entries.add({
+          'label': keyLabels[key] ?? _toTitleWords(key),
+          'value': value,
+        });
+        if (key == 'trnsAmt') {
+          final tenderValue = _joinedTenderText();
+          if (tenderValue != '--') {
+            entries.add({'label': 'Tender', 'value': tenderValue});
+          }
+        }
       }
     }
 

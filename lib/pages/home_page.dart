@@ -2269,6 +2269,7 @@ class _DueGroupData {
     required this.paymentId,
     required this.paymentName,
     required this.bankId,
+    required this.paymentCause,
     required this.dues,
   });
 
@@ -2276,6 +2277,7 @@ class _DueGroupData {
   final String paymentId;
   final String paymentName;
   final String bankId;
+  final String paymentCause;
   final List<Map<String, dynamic>> dues;
 }
 
@@ -2339,6 +2341,14 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
   /// Returns true if ANY due in this group is past-due.
   bool _groupHasOverdue(_DueGroupData group) {
     return group.dues.any(_isPastDue);
+  }
+
+  bool _isOptionalDue(Map<String, dynamic> due) {
+    return due['paymentType']?.toString().trim().toUpperCase() == 'OPTIONAL';
+  }
+
+  bool _groupHasOptionalDue(_DueGroupData group) {
+    return group.dues.any(_isOptionalDue);
   }
 
   bool _hasAnyOverdueAcrossGroups(List<_DueGroupData> groups) {
@@ -2607,6 +2617,27 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return '';
   }
 
+  String _paymentCauseFromGroupKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map) {
+        final paymentCause = decoded['paymentCause']?.toString().trim() ?? '';
+        if (paymentCause.isNotEmpty && paymentCause.toLowerCase() != 'null') {
+          return paymentCause;
+        }
+      }
+    } catch (_) {
+      // Not a JSON key, use the due-level cause below.
+    }
+
+    return '';
+  }
+
   List<Map<String, dynamic>> _normalizePaymentMaps(dynamic rawValue) {
     final list = <Map<String, dynamic>>[];
 
@@ -2671,6 +2702,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         final paymentName = _paymentNameFromGroupKey(rawKey);
         final paymentId = _paymentIdFromGroupKey(rawKey);
         final bankId = _bankIdFromGroupKey(rawKey);
+        final paymentCause = _paymentCauseFromGroupKey(rawKey);
         final groupId = paymentId.isNotEmpty
             ? paymentId
             : '$paymentName-${rawKey.hashCode}';
@@ -2681,6 +2713,9 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             paymentId: paymentId,
             paymentName: paymentName,
             bankId: bankId,
+            paymentCause: paymentCause.isNotEmpty
+                ? paymentCause
+                : dues.first['cause']?.toString().trim() ?? 'Other',
             dues: dues,
           ),
         );
@@ -2718,6 +2753,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           paymentId: groupId,
           paymentName: paymentNames[groupId] ?? '--',
           bankId: '',
+          paymentCause:
+              dues.first['cause']?.toString().trim().isNotEmpty == true
+              ? dues.first['cause'].toString().trim()
+              : 'Other',
           dues: _sortDuesByCycleSequence(dues),
         ),
       );
@@ -4190,6 +4229,23 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  String _netPayableDisplayText(Map<String, dynamic> due, String totalAmount) {
+    final rawAmount = totalAmount
+        .replaceAll('₹', '')
+        .replaceAll(',', '')
+        .trim();
+    final parsedAmount = double.tryParse(rawAmount);
+    final normalizedAmount =
+        parsedAmount != null && parsedAmount == parsedAmount.truncateToDouble()
+        ? parsedAmount.toInt().toString()
+        : totalAmount;
+    final formattedAmount = widget.formatAsCurrency(normalizedAmount);
+    final paymentCapita = due['paymentCapita']?.toString().trim().toUpperCase();
+    return paymentCapita == 'PER_HEAD'
+        ? '$formattedAmount Per Head'
+        : formattedAmount;
+  }
+
   Widget _buildSelectedDueSummary(
     Map<String, dynamic> due, {
     required String bankId,
@@ -4237,6 +4293,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     final totalSavingsText = hasDiscountAmount
         ? widget.formatAsCurrency(discountedAmount)
         : widget.formatAsCurrency('0');
+    final netPayableText = _netPayableDisplayText(due, totalAmount);
 
     final gstText =
         gstPercentage.isNotEmpty && gstPercentage.toLowerCase() != 'null'
@@ -4273,7 +4330,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             fineText: fineText,
             totalSavings: totalSavingsText,
             paymentType: _toCamelCase(paymentType),
-            netPayable: widget.formatAsCurrency(totalAmount),
+            netPayable: netPayableText,
           ),
           const SizedBox(height: 12),
           Align(
@@ -4434,6 +4491,32 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
 
     final sortedKeys = buckets.keys.toList()
       ..sort((a, b) {
+        DateTime? earliestDueDate(String key) {
+          DateTime? earliest;
+          for (final due in buckets[key]!) {
+            final dueDate = _parseDueDate(
+              due['dueDate']?.toString().trim() ?? '',
+            );
+            if (dueDate != null &&
+                (earliest == null || dueDate.isBefore(earliest))) {
+              earliest = dueDate;
+            }
+          }
+          return earliest;
+        }
+
+        final dateA = earliestDueDate(a);
+        final dateB = earliestDueDate(b);
+        if (dateA != null && dateB != null) {
+          final dateComparison = dateA.compareTo(dateB);
+          if (dateComparison != 0) {
+            return dateComparison;
+          }
+        } else if (dateA != null) {
+          return -1;
+        } else if (dateB != null) {
+          return 1;
+        }
         final rankA = _cycleSortRank({'collectionCycle': a});
         final rankB = _cycleSortRank({'collectionCycle': b});
         if (rankA != rankB) return rankA.compareTo(rankB);
@@ -4696,6 +4779,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       child: IgnorePointer(
         ignoring: !isEnabled,
         child: ExpansionTile(
+          key: PageStorageKey<String>('payment-group-$groupId'),
           initiallyExpanded: isEnabled && initiallyExpanded,
           onExpansionChanged: isEnabled ? (_) => setState(() {}) : null,
           enableFeedback: isEnabled,
@@ -4760,6 +4844,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                 ],
               );
             },
+          ),
+          trailing: const Icon(
+            Icons.expand_more_rounded,
+            color: Color(0xFF0F8F82),
           ),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
           children: [
@@ -5060,13 +5148,148 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                 _buildSelectedDueSummary(
                   selectedDue,
                   bankId: group.bankId,
-                  disableProceed: lockActiveDueProceed,
+                  disableProceed:
+                      lockActiveDueProceed && !_isOptionalDue(selectedDue),
                 ),
             ],
           ],
         ),
       ),
     );
+  }
+
+  ({Color color, IconData icon}) _paymentCauseAppearance(
+    String paymentCause,
+    int index,
+  ) {
+    final normalizedCause = paymentCause.toUpperCase();
+    if (normalizedCause.contains('MAINTENANCE')) {
+      return (color: const Color(0xFF0F8F82), icon: Icons.home_repair_service);
+    }
+    if (normalizedCause.contains('FESTIVAL')) {
+      return (color: const Color(0xFFC06B16), icon: Icons.celebration_rounded);
+    }
+    if (normalizedCause.contains('PENALTY')) {
+      return (color: const Color(0xFFB3261E), icon: Icons.gavel_rounded);
+    }
+
+    const colors = <Color>[
+      Color(0xFF325FA2),
+      Color(0xFF7A5A19),
+      Color(0xFF6A4C93),
+    ];
+    return (
+      color: colors[index % colors.length],
+      icon: Icons.account_balance_wallet_rounded,
+    );
+  }
+
+  List<Widget> _buildPaymentCauseSections(
+    List<_DueGroupData> groupedPayments, {
+    required bool initiallyExpanded,
+  }) {
+    final groupsByCause = <String, List<_DueGroupData>>{};
+    for (final group in groupedPayments) {
+      final cause = group.paymentCause.trim().isEmpty
+          ? 'Other'
+          : group.paymentCause.trim();
+      groupsByCause.putIfAbsent(cause, () => <_DueGroupData>[]).add(group);
+    }
+
+    return groupsByCause.entries.indexed
+        .expand((entry) {
+          final cause = entry.$2.key;
+          final groups = entry.$2.value;
+          final appearance = _paymentCauseAppearance(cause, entry.$1);
+          final earliestDueDate = groups
+              .map(_earliestDueDateForGroup)
+              .whereType<DateTime>()
+              .fold<DateTime?>(null, (previousValue, candidate) {
+                if (previousValue == null ||
+                    candidate.isBefore(previousValue)) {
+                  return candidate;
+                }
+                return previousValue;
+              });
+          final enabledGroupIds = groups
+              .where((group) {
+                final groupDate = _earliestDueDateForGroup(group);
+                if (groupDate == null || earliestDueDate == null) {
+                  return groups.length == 1;
+                }
+                return groupDate.year == earliestDueDate.year &&
+                    groupDate.month == earliestDueDate.month &&
+                    groupDate.day == earliestDueDate.day;
+              })
+              .map((group) => group.groupId)
+              .toSet();
+          final hasOverdueInCause = groups.any(_groupHasOverdue);
+          return <Widget>[
+            ExpansionTile(
+              key: PageStorageKey<String>('payment-cause-$cause'),
+              initiallyExpanded: initiallyExpanded,
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              iconColor: appearance.color,
+              collapsedIconColor: appearance.color,
+              title: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: appearance.color.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: appearance.color.withOpacity(0.32)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: appearance.color,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        appearance.icon,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _toCamelCase(cause),
+                        style: TextStyle(
+                          color: appearance.color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              children: [
+                const SizedBox(height: 10),
+                ...groups.asMap().entries.map(
+                  (groupEntry) => _buildGroupPanel(
+                    groupEntry.value,
+                    groupEntry.key,
+                    initiallyExpanded: false,
+                    lockActiveDueProceed: hasOverdueInCause,
+                    isEnabled:
+                        _groupHasOptionalDue(groupEntry.value) ||
+                        enabledGroupIds.contains(groupEntry.value.groupId),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ];
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -5078,29 +5301,14 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         : (ApiService.publicPayFlatNo ??
               ApiService.getLoggedInFlatNo() ??
               '--');
-    final hasAnyOverdue = _hasAnyOverdueAcrossGroups(groupedPayments);
-    final shouldAutoExpandSingleGroup = groupedPayments.length == 1;
-    final earliestDueDate = groupedPayments
-        .map(_earliestDueDateForGroup)
-        .whereType<DateTime>()
-        .fold<DateTime?>(null, (previousValue, candidate) {
-          if (previousValue == null || candidate.isBefore(previousValue)) {
-            return candidate;
-          }
-          return previousValue;
-        });
-    final enabledGroupIds = groupedPayments
-        .where((group) {
-          final groupDate = _earliestDueDateForGroup(group);
-          if (groupDate == null || earliestDueDate == null) {
-            return groupedPayments.length == 1;
-          }
-          return groupDate.year == earliestDueDate.year &&
-              groupDate.month == earliestDueDate.month &&
-              groupDate.day == earliestDueDate.day;
-        })
-        .map((group) => group.groupId)
+    final paymentCauses = groupedPayments
+        .map(
+          (group) => group.paymentCause.trim().isEmpty
+              ? 'Other'
+              : group.paymentCause.trim(),
+        )
         .toSet();
+    final shouldAutoExpandSingleCause = paymentCauses.length == 1;
     final maxDialogHeight = MediaQuery.of(context).size.height * 0.92;
     final maxDialogWidth = MediaQuery.of(context).size.width * 0.96;
 
@@ -5218,17 +5426,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                             )
                           : Column(
                               children: [
-                                ...groupedPayments.asMap().entries.map(
-                                  (entry) => _buildGroupPanel(
-                                    entry.value,
-                                    entry.key,
-                                    initiallyExpanded:
-                                        shouldAutoExpandSingleGroup,
-                                    lockActiveDueProceed: hasAnyOverdue,
-                                    isEnabled: enabledGroupIds.contains(
-                                      entry.value.groupId,
-                                    ),
-                                  ),
+                                ..._buildPaymentCauseSections(
+                                  groupedPayments,
+                                  initiallyExpanded:
+                                      shouldAutoExpandSingleCause,
                                 ),
                               ],
                             ),

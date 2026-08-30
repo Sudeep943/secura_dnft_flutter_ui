@@ -2090,7 +2090,7 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     final requestBody = <String, dynamic>{
       'genericHeader': header,
       'discFnType': draft.kind,
-      'dueDateAsStartDateFlag': draft.isFine ? draft.dueDateAsStartDate : false,
+      'dueDateAsStartDateFlag': false,
       'discFnStrtDt': _formatUtcBoundaryDate(draft.startDate, endOfDay: false),
       'discFnEndDt': _formatUtcBoundaryDate(draft.endDate, endOfDay: false),
       'discFnMode': draft.mode,
@@ -2101,6 +2101,9 @@ class _CreatePaymentPageState extends State<CreatePaymentPage> {
     if (draft.isFine) {
       requestBody['discFnCumlatonCycle'] = draft.calculationType == 'CUMULATIVE'
           ? draft.cumulationCycle
+          : '';
+      requestBody['simpleFineCycle'] = draft.calculationType == 'SIMPLE'
+          ? draft.simpleFineCycle
           : '';
       requestBody['discFinCycleDiscountList'] = const <Map<String, dynamic>>[];
       requestBody['minimumPaymentAmount'] = '';
@@ -4400,6 +4403,7 @@ class _DiscountFineDraft {
     required this.value,
     this.calculationType,
     this.cumulationCycle,
+    this.simpleFineCycle,
     this.cycleDiscounts = const [],
     this.minimumPaymentAmount,
     this.bufferTime,
@@ -4415,6 +4419,7 @@ class _DiscountFineDraft {
   final String value;
   final String? calculationType;
   final String? cumulationCycle;
+  final String? simpleFineCycle;
   final List<_DiscFinCycleDiscount> cycleDiscounts;
   final String? minimumPaymentAmount;
   final String? bufferTime;
@@ -4767,6 +4772,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   String _mode = 'AMOUNT';
   String? _calculationType;
   String? _cumulationCycle;
+  String? _simpleFineCycle;
   String? _bufferTimeUnit;
   bool _partOfCycleAsFull = false;
   bool _dueDateAsStartDate = false;
@@ -4779,7 +4785,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   bool get _isFine => _kind == 'FINE';
   bool get _showCycleType => _isFine;
   bool get _showCumulationCycle => _isFine && _calculationType == 'CUMULATIVE';
-  bool get _isStartDateInputEnabled => !(_isFine && _dueDateAsStartDate);
+  bool get _showSimpleFineCycle => _isFine && _calculationType == 'SIMPLE';
   bool get _isDiscount => _kind == 'DISCOUNT';
   bool get _showDiscountModeRadio =>
       _isDiscount &&
@@ -4977,10 +4983,6 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
   }
 
   Future<void> _pickStartDate() async {
-    if (!_isStartDateInputEnabled) {
-      return;
-    }
-
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
@@ -5130,13 +5132,14 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
     final result = await widget.onSubmit(
       _DiscountFineDraft(
         kind: _kind,
-        dueDateAsStartDate: _dueDateAsStartDate,
+        dueDateAsStartDate: false,
         startDate: startDate,
         endDate: endDate,
         mode: _mode,
         value: _normalizeNumericValue(_valueController.text),
         calculationType: _isFine ? _calculationType : null,
         cumulationCycle: _isFine ? _cumulationCycle : null,
+        simpleFineCycle: _isFine ? _simpleFineCycle : null,
         cycleDiscounts: _isFine ? const [] : _buildCycleDiscountDraftRows(),
         minimumPaymentAmount: _isFine
             ? null
@@ -5248,40 +5251,12 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                                     _dueDateAsStartDate = false;
                                     _calculationType = null;
                                     _cumulationCycle = null;
+                                    _simpleFineCycle = null;
                                   }
                                 });
                               },
                         validator: (value) =>
                             value == null ? 'Select type' : null,
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4FBF9),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFD6ECE7)),
-                        ),
-                        child: CheckboxListTile(
-                          value: _dueDateAsStartDate,
-                          enabled: _isFine,
-                          activeColor: _CreatePaymentPageState._brandColor,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                          ),
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('Is Due Date As Start Date'),
-                          onChanged: _isFine
-                              ? (value) {
-                                  setState(() {
-                                    _dueDateAsStartDate = value ?? false;
-                                    if (_dueDateAsStartDate) {
-                                      _startDate = null;
-                                      _startDateController.clear();
-                                    }
-                                  });
-                                }
-                              : null,
-                        ),
                       ),
                       const SizedBox(height: 14),
                       Row(
@@ -5290,7 +5265,6 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                           Expanded(
                             child: TextFormField(
                               controller: _startDateController,
-                              enabled: _isStartDateInputEnabled,
                               readOnly: true,
                               decoration: _inputDecoration(
                                 label: 'Start Date',
@@ -5298,9 +5272,7 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                                   Icons.calendar_today_rounded,
                                 ),
                               ),
-                              onTap: _isStartDateInputEnabled
-                                  ? _pickStartDate
-                                  : null,
+                              onTap: _pickStartDate,
                               validator: (_) => _startDate == null
                                   ? 'Start date is required'
                                   : null,
@@ -5422,9 +5394,8 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                                 onChanged: (value) {
                                   setState(() {
                                     _calculationType = value;
-                                    if (_calculationType != 'CUMULATIVE') {
-                                      _cumulationCycle = null;
-                                    }
+                                    _cumulationCycle = null;
+                                    _simpleFineCycle = null;
                                   });
                                 },
                               ),
@@ -5432,12 +5403,16 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                           ],
                         ],
                       ),
-                      if (_showCumulationCycle) ...[
+                      if (_showCumulationCycle || _showSimpleFineCycle) ...[
                         const SizedBox(height: 14),
                         DropdownButtonFormField<String>(
-                          initialValue: _cumulationCycle,
+                          initialValue: _showCumulationCycle
+                              ? _cumulationCycle
+                              : _simpleFineCycle,
                           decoration: _inputDecoration(
-                            label: 'Cummilation Cycle',
+                            label: _showCumulationCycle
+                                ? 'Cumulation Cycle'
+                                : 'Fine Cycle',
                           ),
                           items: _CreatePaymentPageState
                               ._discountFineCycleOptions
@@ -5450,11 +5425,16 @@ class _DiscountFineDialogState extends State<_DiscountFineDialog> {
                               .toList(),
                           onChanged: (value) {
                             setState(() {
-                              _cumulationCycle = value;
+                              if (_showCumulationCycle) {
+                                _cumulationCycle = value;
+                              } else {
+                                _simpleFineCycle = value;
+                              }
                             });
                           },
                           validator: (value) {
-                            if (!_showCumulationCycle) {
+                            if (!_showCumulationCycle &&
+                                !_showSimpleFineCycle) {
                               return null;
                             }
                             return value == null ? 'Select cycle' : null;

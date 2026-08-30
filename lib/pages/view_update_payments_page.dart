@@ -484,6 +484,9 @@ class _ViewUpdatePaymentsPageState extends State<ViewUpdatePaymentsPage> {
               'discFnCumlatonCycle': draft.cycleType == 'CUMULATIVE'
                   ? draft.cumulationCycle
                   : '',
+              'simpleFineCycle': draft.cycleType == 'SIMPLE'
+                  ? draft.simpleFineCycle
+                  : '',
               'discFinCycleDiscountList': const <Map<String, dynamic>>[],
               'minimumPaymentAmount': '',
               'partOfCycleAsFull': draft.partOfCycleAsFull,
@@ -1466,6 +1469,7 @@ class _AddFineDraft {
     required this.mode,
     required this.cycleType,
     required this.cumulationCycle,
+    required this.simpleFineCycle,
     required this.partOfCycleAsFull,
   });
 
@@ -1475,6 +1479,7 @@ class _AddFineDraft {
   final String mode;
   final String cycleType;
   final String? cumulationCycle;
+  final String? simpleFineCycle;
   final bool partOfCycleAsFull;
 }
 
@@ -1526,11 +1531,13 @@ class _AddFineDialogState extends State<_AddFineDialog> {
   String? _mode;
   String? _cycleType;
   String? _cumulationCycle;
+  String? _simpleFineCycle;
   bool _partOfCycleAsFull = false;
   bool _submitting = false;
   String? _errorMessage;
 
   bool get _showCumulationCycle => _cycleType == 'CUMULATIVE';
+  bool get _showSimpleFineCycle => _cycleType == 'SIMPLE';
 
   @override
   void dispose() {
@@ -1604,6 +1611,7 @@ class _AddFineDialogState extends State<_AddFineDialog> {
         mode: _mode ?? '',
         cycleType: _cycleType ?? '',
         cumulationCycle: _showCumulationCycle ? _cumulationCycle : null,
+        simpleFineCycle: _showSimpleFineCycle ? _simpleFineCycle : null,
         partOfCycleAsFull: _partOfCycleAsFull,
       ),
     );
@@ -1766,43 +1774,48 @@ class _AddFineDialogState extends State<_AddFineDialog> {
                         onChanged: (value) {
                           setState(() {
                             _cycleType = value;
-                            if (!_showCumulationCycle) {
-                              _cumulationCycle = null;
-                            }
+                            _cumulationCycle = null;
+                            _simpleFineCycle = null;
                           });
                         },
                         validator: (value) =>
                             value == null ? 'Select cycle type' : null,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _cumulationCycle,
-                        decoration: _inputDecoration(label: 'Cumulation Cycle'),
-                        items: _cumulationCycleOptions
-                            .map(
-                              (option) => DropdownMenuItem<String>(
-                                value: option.cycle,
-                                child: Text(option.label),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _showCumulationCycle
-                            ? (value) {
-                                setState(() {
-                                  _cumulationCycle = value;
-                                });
+                    if (_showCumulationCycle || _showSimpleFineCycle) ...[
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _showCumulationCycle
+                              ? _cumulationCycle
+                              : _simpleFineCycle,
+                          decoration: _inputDecoration(
+                            label: _showCumulationCycle
+                                ? 'Cumulation Cycle'
+                                : 'Fine Cycle',
+                          ),
+                          items: _cumulationCycleOptions
+                              .map(
+                                (option) => DropdownMenuItem<String>(
+                                  value: option.cycle,
+                                  child: Text(option.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              if (_showCumulationCycle) {
+                                _cumulationCycle = value;
+                              } else {
+                                _simpleFineCycle = value;
                               }
-                            : null,
-                        validator: (value) {
-                          if (!_showCumulationCycle) return null;
-                          return value == null
-                              ? 'Select cumulation cycle'
-                              : null;
-                        },
+                            });
+                          },
+                          validator: (value) =>
+                              value == null ? 'Select fine cycle' : null,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),

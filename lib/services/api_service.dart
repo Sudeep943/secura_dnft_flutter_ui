@@ -3106,6 +3106,30 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> updateReference({
+    required String transactionId,
+    required String thirdPartyTrnsRef,
+  }) async {
+    final genericHeader = _buildGenericHeader();
+    if (genericHeader == null) return null;
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/transactionAndReports/updateReference',
+      requestBody: {
+        'genericHeader': genericHeader,
+        'transactionId': transactionId,
+        'thirdPartyTrnsRef': thirdPartyTrnsRef,
+      },
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> rejectTransactionWorkListPublic({
     required String transactionId,
   }) async {

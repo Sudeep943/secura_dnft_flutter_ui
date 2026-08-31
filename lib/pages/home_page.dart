@@ -4779,7 +4779,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
       child: IgnorePointer(
         ignoring: !isEnabled,
         child: ExpansionTile(
-          key: PageStorageKey<String>('payment-group-$groupId'),
+          key: ValueKey<String>('payment-group-$groupId'),
           initiallyExpanded: isEnabled && initiallyExpanded,
           onExpansionChanged: isEnabled ? (_) => setState(() {}) : null,
           enableFeedback: isEnabled,
@@ -5189,16 +5189,20 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     required bool initiallyExpanded,
   }) {
     final groupsByCause = <String, List<_DueGroupData>>{};
+    final causeDisplayLabels = <String, String>{};
     for (final group in groupedPayments) {
-      final cause = group.paymentCause.trim().isEmpty
+      final rawCause = group.paymentCause.trim().isEmpty
           ? 'Other'
           : group.paymentCause.trim();
-      groupsByCause.putIfAbsent(cause, () => <_DueGroupData>[]).add(group);
+      final causeKey = rawCause.toUpperCase();
+      groupsByCause.putIfAbsent(causeKey, () => <_DueGroupData>[]).add(group);
+      causeDisplayLabels.putIfAbsent(causeKey, () => rawCause);
     }
 
     return groupsByCause.entries.indexed
         .expand((entry) {
-          final cause = entry.$2.key;
+          final causeKey = entry.$2.key;
+          final cause = causeDisplayLabels[causeKey] ?? causeKey;
           final groups = entry.$2.value;
           final appearance = _paymentCauseAppearance(cause, entry.$1);
           final earliestDueDate = groups
@@ -5226,7 +5230,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           final hasOverdueInCause = groups.any(_groupHasOverdue);
           return <Widget>[
             ExpansionTile(
-              key: PageStorageKey<String>('payment-cause-$cause'),
+              key: ValueKey<String>('payment-cause-$cause'),
               initiallyExpanded: initiallyExpanded,
               tilePadding: EdgeInsets.zero,
               childrenPadding: EdgeInsets.zero,

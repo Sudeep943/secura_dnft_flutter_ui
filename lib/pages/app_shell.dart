@@ -2327,6 +2327,58 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
 
   int _imageIndex = 0;
   String? _loadingAction;
+  bool _isEditingReferenceId = false;
+  bool _isSavingReferenceId = false;
+  bool _showReferenceSavedMessage = false;
+  Timer? _referenceSavedMessageTimer;
+  late final TextEditingController _referenceIdController;
+
+  @override
+  void initState() {
+    super.initState();
+    _referenceIdController = TextEditingController(text: _thirdPartyTrnsRef);
+  }
+
+  @override
+  void dispose() {
+    _referenceSavedMessageTimer?.cancel();
+    _referenceIdController.dispose();
+    super.dispose();
+  }
+
+  bool _isHeadCountKey(String key) {
+    return _normalizeKey(key).contains('head');
+  }
+
+  bool _isThirdPartyTrnsRefKey(String key) {
+    return _normalizeKey(key) == 'thirdpartytrnsref';
+  }
+
+  bool _isExternalTransactionReferenceKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized.contains('external') &&
+        (normalized.contains('reference') || normalized.contains('trnsref'));
+  }
+
+  String get _thirdPartyTrnsRef {
+    for (final entry in widget.transaction.entries) {
+      if (_isThirdPartyTrnsRefKey(entry.key)) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+    for (final entry in widget.transaction.entries) {
+      if (_isExternalTransactionReferenceKey(entry.key)) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+    return '';
+  }
 
   List<String> get _trnsFiles {
     final raw = widget.transaction['trnsFiles'];
@@ -2683,6 +2735,16 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
           entry.value?.toString().trim() == _creatorUserId()) {
         continue;
       }
+      if (_isThirdPartyTrnsRefKey(entry.key) ||
+          _isExternalTransactionReferenceKey(entry.key)) {
+        continue;
+      }
+      if (_isHeadCountKey(entry.key)) {
+        final headCount = double.tryParse(entry.value?.toString().trim() ?? '');
+        if (headCount == null || headCount <= 0) {
+          continue;
+        }
+      }
       final value = _displayValueForKey(entry.key, entry.value);
       if (value != '--') {
         entries.add({
@@ -2943,6 +3005,196 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     );
   }
 
+  void _startEditingReferenceId() {
+    setState(() {
+      _referenceIdController.text = _thirdPartyTrnsRef;
+      _isEditingReferenceId = true;
+    });
+  }
+
+  Future<void> _refreshTransactionDetails() async {
+    final header = ApiService.userHeader;
+    if (header == null) {
+      return;
+    }
+
+    final response = await ApiService.getTransactions({
+      'genericHeader': Map<String, dynamic>.from(header),
+      'transactionId': widget.transactionId.trim(),
+    });
+
+    if (!mounted) {
+      return;
+    }
+
+    final rawList = response?['transactionList'];
+    if (rawList is! List || rawList.isEmpty || rawList.first is! Map) {
+      return;
+    }
+
+    final refreshed = Map<String, dynamic>.from(rawList.first as Map);
+    setState(() {
+      widget.transaction
+        ..clear()
+        ..addAll(refreshed);
+      _referenceIdController.text = _thirdPartyTrnsRef;
+    });
+  }
+
+  Future<void> _saveReferenceId() async {
+    if (_isSavingReferenceId) {
+      return;
+    }
+
+    final transactionId = widget.transactionId.trim();
+    final newReferenceValue = _referenceIdController.text.trim();
+
+    setState(() {
+      _isSavingReferenceId = true;
+    });
+
+    final response = await ApiService.updateReference(
+      transactionId: transactionId,
+      thirdPartyTrnsRef: newReferenceValue,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final messageCode =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    final isSuccess = messageCode.contains('SUCC');
+
+    if (isSuccess) {
+      await _refreshTransactionDetails();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSavingReferenceId = false;
+      if (isSuccess) {
+        _isEditingReferenceId = false;
+      }
+    });
+
+    if (!isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            response?['message']?.toString().trim() ??
+                'Unable to save transaction reference number.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    _referenceSavedMessageTimer?.cancel();
+    setState(() {
+      _showReferenceSavedMessage = true;
+    });
+    _referenceSavedMessageTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showReferenceSavedMessage = false;
+        });
+      }
+    });
+  }
+
+  Widget _buildReferenceIdSection() {
+    final hasReferenceId = _thirdPartyTrnsRef.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFA),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE1ECE9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Transaction Reference Id',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF134E47),
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isSavingReferenceId
+                    ? null
+                    : (_isEditingReferenceId
+                          ? _saveReferenceId
+                          : _startEditingReferenceId),
+                icon: _isSavingReferenceId
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        _isEditingReferenceId
+                            ? Icons.save_rounded
+                            : (hasReferenceId
+                                  ? Icons.edit_rounded
+                                  : Icons.add_rounded),
+                        size: 16,
+                      ),
+                label: Text(
+                  _isEditingReferenceId
+                      ? 'Save'
+                      : (hasReferenceId ? 'Edit' : 'Add'),
+                ),
+                style: TextButton.styleFrom(foregroundColor: _brandColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _isEditingReferenceId
+              ? TextField(
+                  controller: _referenceIdController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                )
+              : Text(
+                  hasReferenceId ? _thirdPartyTrnsRef : 'No Data Available',
+                  style: const TextStyle(
+                    color: Color(0xFF2A4A47),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+          AnimatedOpacity(
+            opacity: _showReferenceSavedMessage ? 1 : 0,
+            duration: const Duration(milliseconds: 500),
+            child: const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Transaction Reference Number Saved Successfully',
+                style: TextStyle(
+                  color: Color(0xFF6ABF69),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final files = _trnsFiles;
@@ -3079,20 +3331,20 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                         ),
                       ),
                     ),
-                    if (files.isNotEmpty) ...[
-                      const SizedBox(width: 14),
-                      Expanded(
-                        flex: 4,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFE1ECE9)),
-                          ),
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 4,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE1ECE9)),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (files.isNotEmpty) ...[
                               Row(
                                 children: [
                                   const Icon(
@@ -3195,10 +3447,11 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                                 ),
                               ),
                             ],
-                          ),
+                            _buildReferenceIdSection(),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),

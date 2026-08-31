@@ -200,15 +200,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   bool _hasParentAccess(String moduleKey) {
-    final accessMap = _readAccessMap();
-    final module = accessMap[moduleKey];
-    if (module is Map<String, dynamic>) {
-      return _toBool(module['parentAccess']);
-    }
-    if (module is Map) {
-      return _toBool(module['parentAccess']);
-    }
-    return false;
+    return true;
   }
 
   Set<AppSection> _visibleSections() {

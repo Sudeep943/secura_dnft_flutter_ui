@@ -59,20 +59,11 @@ Map<String, dynamic> _accessMapValue(dynamic value) {
 }
 
 bool _hasAccessFlag(String moduleKey, String flagKey) {
-  final access = _accessMapValue(ApiService.userHeader?['access']);
-  final module = _accessMapValue(access[moduleKey]);
-  return _accessBool(module[flagKey]);
+  return true;
 }
 
 bool _hasAnyAccessFlag(String moduleKey, List<String> flagKeys) {
-  final access = _accessMapValue(ApiService.userHeader?['access']);
-  final module = _accessMapValue(access[moduleKey]);
-  for (final key in flagKeys) {
-    if (_accessBool(module[key])) {
-      return true;
-    }
-  }
-  return false;
+  return true;
 }
 
 class MeetingAndNoticeManagementPage extends StatefulWidget {

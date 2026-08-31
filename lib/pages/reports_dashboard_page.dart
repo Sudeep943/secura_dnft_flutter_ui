@@ -240,6 +240,17 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   bool _flatSortAscending = true;
   Set<String> _selectedPaymentIdFilters = <String>{};
 
+  // Payment Collection Report state
+  bool _isPaymentCollectionOptionsLoading = false;
+  bool _isPaymentCollectionLoading = false;
+  String? _paymentCollectionError;
+  String _paymentCollectionSearchMode = 'ID';
+  List<Map<String, dynamic>> _paymentCollectionPaymentList = const [];
+  String? _selectedPaymentCollectionValue;
+  List<Map<String, dynamic>> _paymentCollectionDetails = const [];
+  String _paymentCollectionTotal = '0';
+  String _paymentCollectionSelectedName = '';
+
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
     final value = header?['apartmentName']?.toString().trim() ?? '';
@@ -249,12 +260,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index != _activeTabIndex) {
         _activeTabIndex = _tabController.index;
         if (_activeTabIndex == 1) {
           _loadBalanceSheet();
+        }
+        if (_activeTabIndex == 6) {
+          _loadPaymentCollectionOptions();
         }
       }
       if (mounted) {
@@ -462,6 +476,114 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     }
 
     return KeyEventResult.ignored;
+  }
+
+  List<String> _paymentCollectionDistinctIds() {
+    final ids = _paymentCollectionPaymentList
+        .map((p) => p['paymentId']?.toString().trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    ids.sort();
+    return ids;
+  }
+
+  List<String> _paymentCollectionDistinctNames() {
+    final names = _paymentCollectionPaymentList
+        .map((p) => p['paymentName']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
+    names.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return names;
+  }
+
+  Future<void> _loadPaymentCollectionOptions() async {
+    if (_isPaymentCollectionOptionsLoading ||
+        _paymentCollectionPaymentList.isNotEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isPaymentCollectionOptionsLoading = true;
+    });
+
+    final header = ApiService.userHeader;
+    if (header == null || header.isEmpty) {
+      setState(() {
+        _isPaymentCollectionOptionsLoading = false;
+        _paymentCollectionError = 'Session expired. Please log in again.';
+      });
+      return;
+    }
+
+    final response = await ApiService.getPayment({
+      'genericHeader': Map<String, dynamic>.from(header),
+      'paymentId': '',
+    });
+    if (!mounted) return;
+
+    final rawList = response?['paymentList'];
+    final list = rawList is List
+        ? rawList
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    setState(() {
+      _isPaymentCollectionOptionsLoading = false;
+      _paymentCollectionPaymentList = list;
+    });
+  }
+
+  Future<void> _fetchPaymentCollectionDetails() async {
+    final selected = _selectedPaymentCollectionValue?.trim() ?? '';
+    if (selected.isEmpty || _isPaymentCollectionLoading) {
+      return;
+    }
+
+    setState(() {
+      _isPaymentCollectionLoading = true;
+      _paymentCollectionError = null;
+    });
+
+    final searchById = _paymentCollectionSearchMode == 'ID';
+    final response = await ApiService.getPaymentDetailsData(
+      paymentId: searchById ? selected : '',
+      paymentName: searchById ? '' : selected,
+    );
+    if (!mounted) return;
+
+    final messageCode =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    if (!messageCode.startsWith('SUCC')) {
+      setState(() {
+        _isPaymentCollectionLoading = false;
+        _paymentCollectionError =
+            response?['message']?.toString().trim() ??
+            'Unable to fetch payment collection details.';
+        _paymentCollectionDetails = const [];
+      });
+      return;
+    }
+
+    final rawDetails = response?['completedPaymentDetails'];
+    final details = rawDetails is List
+        ? rawDetails
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : <Map<String, dynamic>>[];
+
+    setState(() {
+      _isPaymentCollectionLoading = false;
+      _paymentCollectionDetails = details;
+      _paymentCollectionTotal = response?['totalCollection']?.toString() ?? '0';
+      _paymentCollectionSelectedName = details.isNotEmpty
+          ? (details.first['paymentName']?.toString().trim() ?? selected)
+          : selected;
+    });
   }
 
   List<String> _paymentIdFilterOptions([List<Map<String, dynamic>>? source]) {
@@ -2227,6 +2349,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                 _buildPaymentCollectionTab(),
                 _buildDefaulterTab(),
                 _buildPenaltiesTab(),
+                _buildPaymentCollectionReportTab(),
               ],
             ),
           ),
@@ -2243,6 +2366,11 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       _ReportOptionItem('Payment Wise Collection', Icons.payments_rounded, 3),
       _ReportOptionItem('Defaulter Report', Icons.warning_amber_rounded, 4),
       _ReportOptionItem('Penalties Report', Icons.gavel_rounded, 5),
+      _ReportOptionItem(
+        'Payment Collection Report',
+        Icons.receipt_long_rounded,
+        6,
+      ),
     ];
 
     final content = isMobile
@@ -3701,6 +3829,260 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       rows: _penaltiesRows.sublist(1),
       sectionRows: const {},
       statusCol: 4,
+    );
+  }
+
+  // ── Tab: Payment Collection Report ─────────────────────────────────────────
+
+  String _formatPaymentCollectionDate(String? raw) {
+    final trimmed = raw?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return '--';
+    }
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed == null) {
+      return trimmed;
+    }
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
+  }
+
+  Widget _buildPaymentCollectionReportTab() {
+    final hasDetails = _paymentCollectionDetails.isNotEmpty;
+    final headers = [
+      'Transaction ID',
+      'Flat ID',
+      'Tender',
+      'Transaction Date',
+      'Cycle',
+      'Due Amount',
+      'Discount',
+      'Penalty',
+      'Round Up',
+      'Transaction Amount',
+      'Third Party Txn No',
+    ];
+    final rows = _paymentCollectionDetails.map((item) {
+      final rawTenders = item['tenderList'];
+      final tenderText = rawTenders is List
+          ? rawTenders.map((t) => t.toString()).join('\n')
+          : (rawTenders?.toString().trim().isNotEmpty ?? false)
+          ? rawTenders.toString()
+          : '--';
+      return [
+        item['transactionId']?.toString() ?? '--',
+        item['flatId']?.toString() ?? '--',
+        tenderText,
+        _formatPaymentCollectionDate(item['transactionDate']?.toString()),
+        item['cycleOfPayment']?.toString() ?? '--',
+        _fmtAmt(item['dueAmount']),
+        _fmtAmt(item['discount']),
+        _fmtAmt(item['penalty']),
+        _fmtAmt(item['roundUpAmount']),
+        _fmtAmt(item['transactionAmount']),
+        item['thirdPartyTransactionNumber']?.toString() ?? '--',
+      ];
+    }).toList();
+
+    return _ReportSheetScaffold(
+      title: 'Payment Collection Report',
+      subtitle: 'Search a payment by ID or name to view collection details',
+      icon: Icons.receipt_long_rounded,
+      summaryCards: const [],
+      headers: headers,
+      rows: rows,
+      sectionRows: const {},
+      statusCol: -1,
+      showTable: hasDetails,
+      topSection: _buildPaymentCollectionSearchSection(hasDetails),
+    );
+  }
+
+  Widget _buildInlineSummaryCard({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentCollectionSearchSection(bool hasDetails) {
+    final distinctOptions = _paymentCollectionSearchMode == 'ID'
+        ? _paymentCollectionDistinctIds()
+        : _paymentCollectionDistinctNames();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE0F0EE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Search By',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: _brandTextColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Radio<String>(
+                value: 'ID',
+                groupValue: _paymentCollectionSearchMode,
+                activeColor: _brandColor,
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _paymentCollectionSearchMode = value;
+                    _selectedPaymentCollectionValue = null;
+                  });
+                },
+              ),
+              const Text('Payment ID'),
+              const SizedBox(width: 20),
+              Radio<String>(
+                value: 'NAME',
+                groupValue: _paymentCollectionSearchMode,
+                activeColor: _brandColor,
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _paymentCollectionSearchMode = value;
+                    _selectedPaymentCollectionValue = null;
+                  });
+                },
+              ),
+              const Text('Payment Name'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedPaymentCollectionValue,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: _paymentCollectionSearchMode == 'ID'
+                        ? 'Select Payment ID'
+                        : 'Select Payment Name',
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: distinctOptions
+                      .map(
+                        (value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedPaymentCollectionValue = value;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed:
+                    (_selectedPaymentCollectionValue?.trim().isNotEmpty ??
+                        false)
+                    ? _fetchPaymentCollectionDetails
+                    : null,
+                style: FilledButton.styleFrom(backgroundColor: _brandColor),
+                child: _isPaymentCollectionLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Get Details'),
+              ),
+            ],
+          ),
+          if (_paymentCollectionError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _paymentCollectionError!,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ],
+          if (hasDetails) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildInlineSummaryCard(
+                    label: 'Payment Name',
+                    value: _paymentCollectionSelectedName.isEmpty
+                        ? '--'
+                        : _paymentCollectionSelectedName,
+                    color: _brandColor,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildInlineSummaryCard(
+                    label: 'Total Collection',
+                    value: _fmtAmt(_paymentCollectionTotal),
+                    color: const Color(0xFF0F8F82),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 

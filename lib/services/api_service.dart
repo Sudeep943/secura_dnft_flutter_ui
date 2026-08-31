@@ -11,9 +11,9 @@ import 'session_storage_stub.dart'
     as session_storage;
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:8080';
-  // static const String _baseUrl =
-  //     'https://securadnft-api-380953428736.asia-south1.run.app';
+ // static const String _baseUrl = 'http://localhost:8080';
+  static const String _baseUrl =
+      'https://securadnft-api-380953428736.asia-south1.run.app';
 
   static const String _authEncryptionKeyBase64 =
       'U2VjdXJhTG9naW5LZXlBRVMyNTZWYWx1ZTEyMzQ1Njc=';
@@ -3182,6 +3182,33 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode(requestBody),
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  static Future<Map<String, dynamic>?> getPaymentDetailsData({
+    required String paymentName,
+    required String paymentId,
+  }) async {
+    if (token == null) return null;
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/transactionAndReports/getPaymentDetailsData'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'genericHeader': Map<String, dynamic>.from(userHeader ?? {}),
+        'paymentName': paymentName,
+        'paymentId': paymentId,
+      }),
     );
 
     if (response.body.isEmpty) return null;

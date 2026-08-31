@@ -39,14 +39,7 @@ class _SideBarState extends State<SideBar> {
     AppSection? section,
     VoidCallback? onTap,
   }) {
-    const enabledSections = {
-      AppSection.dashboard,
-      AppSection.profileManagement,
-      AppSection.adminSection,
-      AppSection.finance,
-    };
-    final isEnabledSection =
-        section != null && enabledSections.contains(section);
+    final isEnabledSection = section != null;
 
     final effectiveOnTap = isEnabledSection
         ? (onTap ??

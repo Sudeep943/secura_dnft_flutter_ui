@@ -2517,6 +2517,41 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  Widget _buildOptionalPaymentBanner() {
+    return AnimatedBuilder(
+      animation: _discountPulseAnimation,
+      builder: (context, _) {
+        final glow = _discountPulseAnimation.value;
+        return Opacity(
+          opacity: glow,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1C6),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE3C96F)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFE3C96F).withOpacity(glow * 0.65),
+                  blurRadius: 8 * glow,
+                  spreadRadius: glow,
+                ),
+              ],
+            ),
+            child: const Text(
+              'Optional Payment',
+              style: TextStyle(
+                color: Color(0xFF6A5723),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   String _toCamelCase(String text) {
     if (text.isEmpty) return text;
     // Backend sometimes sends the misspelled "QUATERLY" cycle value.
@@ -4323,6 +4358,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             dueStartDate: dueStartDate,
             dueEndDate: dueEndDate,
             dueDate: dueDate,
+            collectionCycle: due['collectionCycle']?.toString().trim() ?? '',
             amount: widget.formatAsCurrency(amount),
             discountText: discountText,
             gstText: gstText,
@@ -4577,6 +4613,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     required String dueStartDate,
     required String dueEndDate,
     required String dueDate,
+    required String collectionCycle,
     required String amount,
     required String discountText,
     required String gstText,
@@ -4586,9 +4623,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     required String paymentType,
     required String netPayable,
   }) {
+    final isOnceCycle = collectionCycle.toUpperCase() == 'ONCE';
     final rows = [
-      ('Cycle Start', dueStartDate),
-      ('Cycle End', dueEndDate),
+      (isOnceCycle ? 'Payment Start' : 'Cycle Start', dueStartDate),
+      (isOnceCycle ? 'Payment End' : 'Cycle End', dueEndDate),
       ('Due Date', dueDate),
       ('Amount', amount),
       ('Discount', discountText),
@@ -4799,11 +4837,29 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                 ),
               );
               if (isNarrow) {
-                return nameText;
+                return Row(
+                  children: [
+                    Flexible(child: nameText),
+                    if (_groupHasOptionalDue(group)) ...[
+                      const SizedBox(width: 6),
+                      _buildOptionalPaymentBanner(),
+                    ],
+                  ],
+                );
               }
               return Row(
                 children: [
-                  Expanded(child: nameText),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(child: nameText),
+                        if (_groupHasOptionalDue(group)) ...[
+                          const SizedBox(width: 6),
+                          _buildOptionalPaymentBanner(),
+                        ],
+                      ],
+                    ),
+                  ),
                   if (hasOverdue) ...[
                     const SizedBox(width: 6),
                     _buildOverdueBanner(),
@@ -6778,6 +6834,11 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   Future<void> _confirmSelection() async {
+    if (_isPerHeadCapita && _personCount <= 0) {
+      _setValidationMessage('Please enter the number of persons.');
+      return;
+    }
+
     if (_isPerHeadCapita && _loadingPerHeadAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -7356,7 +7417,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                   controller: _personCountController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: 'Number Of Persons',
+                    labelText: 'Number Of Persons *',
                     helperText: 'Total amount is fetched based on person count',
                     filled: true,
                     fillColor: Colors.white,
@@ -7631,7 +7692,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           ),
           onPressed:
               (_receiptFileError != null && _receiptFileError!.isNotEmpty) ||
-                  _isCreatingOtp
+                  _isCreatingOtp ||
+                  (_isPerHeadCapita && _personCount <= 0)
               ? null
               : () async => _confirmSelection(),
           child: _isCreatingOtp
@@ -8086,13 +8148,79 @@ class _TransactionDetailModalState extends State<_TransactionDetailModal> {
     if (_actionLoading != null || widget.worklistId.isEmpty) return;
     setState(() => _actionLoading = action);
 
-    await ApiService.actionTransactionReviewWorkList(
+    final response = await ApiService.actionTransactionReviewWorkList(
       worklistId: widget.worklistId,
       action: action,
     );
 
     if (!mounted) return;
     setState(() => _actionLoading = null);
+
+    final messageCode =
+        response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    if (action == _actionApprove && messageCode == 'ERR_MESSAGE_53') {
+      final shouldReject = await showDialog<bool>(
+        context: ctx,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: const Color(0xFFF7FCFA),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _brandColor),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Transaction Cannot Be Approved',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            '${response?['message']?.toString().trim() ?? 'Worklist cannot be approved.'}\n\n'
+            'Confirm If You Want To Reject',
+            style: const TextStyle(color: Color(0xFF2A4A47), height: 1.4),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Color(0xFF124B45),
+                side: BorderSide(color: Color(0xFFD7EAE3)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _brandColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      );
+      if (shouldReject == true && mounted) {
+        await _handleAction(ctx, _actionReject);
+      }
+      return;
+    }
 
     Navigator.of(ctx).pop(); // close detail modal, return to worklist
     await widget.onActionDone();

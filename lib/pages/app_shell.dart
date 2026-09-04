@@ -2946,6 +2946,70 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
 
     final messageCode =
         response?['messageCode']?.toString().trim().toUpperCase() ?? '';
+    if (action == _approveAction && messageCode == 'ERR_MESSAGE_53') {
+      final shouldReject = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: const Color(0xFFF7FCFA),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD7EAE3)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: _brandColor),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Transaction Cannot Be Approved',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            '${response?['message']?.toString().trim() ?? 'Worklist cannot be approved.'}\n\n'
+            'Confirm If You Want To Reject',
+            style: const TextStyle(color: Color(0xFF2A4A47), height: 1.4),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Color(0xFF124B45),
+                side: BorderSide(color: Color(0xFFD7EAE3)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _brandColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      );
+      if (shouldReject == true && mounted) {
+        await _handleAction(_rejectAction);
+      }
+      return;
+    }
+
     final isSuccess = messageCode.contains('SUCC');
     if (!isSuccess) {
       final message =

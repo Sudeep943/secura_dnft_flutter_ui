@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -249,7 +250,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   String? _selectedPaymentCollectionValue;
   List<Map<String, dynamic>> _paymentCollectionDetails = const [];
   String _paymentCollectionTotal = '0';
+  String _paymentCollectionTotalNoOfPerson = '0';
   String _paymentCollectionSelectedName = '';
+  Map<String, dynamic>? _paymentCollectionPaymentDetail;
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -498,6 +501,131 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return names;
   }
 
+  String _formatPaymentCollectionOptionDate(dynamic raw) {
+    final value = raw?.toString().trim() ?? '';
+    if (value.isEmpty || value.toLowerCase() == 'null') {
+      return '--';
+    }
+
+    DateTime? parsed = DateTime.tryParse(value);
+    if (parsed == null) {
+      final match = RegExp(
+        r'^(\d{1,2})[-/ ]([A-Za-z]{3,})[-/ ](\d{4})$',
+      ).firstMatch(value);
+      if (match != null) {
+        const monthNumbers = {
+          'jan': 1,
+          'feb': 2,
+          'mar': 3,
+          'apr': 4,
+          'may': 5,
+          'jun': 6,
+          'jul': 7,
+          'aug': 8,
+          'sep': 9,
+          'oct': 10,
+          'nov': 11,
+          'dec': 12,
+        };
+        final month =
+            monthNumbers[match.group(2)!.substring(0, 3).toLowerCase()];
+        if (month != null) {
+          parsed = DateTime.tryParse(
+            '${match.group(3)}-${month.toString().padLeft(2, '0')}-${match.group(1)!.padLeft(2, '0')}',
+          );
+        }
+      }
+    }
+
+    if (parsed == null) {
+      return value;
+    }
+
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${parsed.day}-${monthNames[parsed.month - 1]}-${parsed.year}';
+  }
+
+  Widget _buildPaymentCollectionNameOption(String paymentName) {
+    final matchingPayments = _paymentCollectionPaymentList
+        .where(
+          (payment) => payment['paymentName']?.toString().trim() == paymentName,
+        )
+        .toList(growable: false);
+    final paymentIds = matchingPayments
+        .map((payment) => payment['paymentId']?.toString().trim() ?? '')
+        .where((paymentId) => paymentId.isNotEmpty)
+        .toSet();
+
+    if (paymentIds.length > 1) {
+      return _buildPaymentCollectionDropdownSection(
+        paymentName: paymentName,
+        detail: 'Multi Ids Available',
+      );
+    }
+
+    final payment = matchingPayments.isEmpty ? null : matchingPayments.first;
+    final collectionStartDate = _formatPaymentCollectionOptionDate(
+      payment?['collectionStartDate'],
+    );
+    final createdDate = _formatPaymentCollectionOptionDate(payment?['creatTs']);
+    return _buildPaymentCollectionDropdownSection(
+      paymentName: paymentName,
+      detail: 'Collection Start: $collectionStartDate\nCreated: $createdDate',
+    );
+  }
+
+  Widget _buildPaymentCollectionDropdownSection({
+    required String paymentName,
+    required String detail,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF8F5),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFD7EAE3), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            paymentName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _brandTextColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            detail,
+            style: const TextStyle(
+              color: Color(0xFF3D6B63),
+              fontSize: 10,
+              height: 1.15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadPaymentCollectionOptions() async {
     if (_isPaymentCollectionOptionsLoading ||
         _paymentCollectionPaymentList.isNotEmpty) {
@@ -564,6 +692,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
             response?['message']?.toString().trim() ??
             'Unable to fetch payment collection details.';
         _paymentCollectionDetails = const [];
+        _paymentCollectionTotalNoOfPerson = '0';
+        _paymentCollectionPaymentDetail = null;
       });
       return;
     }
@@ -580,9 +710,18 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       _isPaymentCollectionLoading = false;
       _paymentCollectionDetails = details;
       _paymentCollectionTotal = response?['totalCollection']?.toString() ?? '0';
+      _paymentCollectionTotalNoOfPerson =
+          response?['totalNoOfPerson']?.toString() ?? '0';
+      final rawPaymentDetail = response?['paymentDetail'];
+      _paymentCollectionPaymentDetail = rawPaymentDetail is Map
+          ? Map<String, dynamic>.from(rawPaymentDetail)
+          : null;
       _paymentCollectionSelectedName = details.isNotEmpty
           ? (details.first['paymentName']?.toString().trim() ?? selected)
-          : selected;
+          : (_paymentCollectionPaymentDetail?['paymentName']
+                    ?.toString()
+                    .trim() ??
+                selected);
     });
   }
 
@@ -2363,7 +2502,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       _ReportOptionItem('Report Dashboard', Icons.dashboard_rounded, 0),
       _ReportOptionItem('Balance Sheet', Icons.account_balance_rounded, 1),
       _ReportOptionItem('Tax Sheet', Icons.receipt_long_rounded, 2),
-      _ReportOptionItem('Payment Wise Collection', Icons.payments_rounded, 3),
+      _ReportOptionItem('Flat Wise Collection', Icons.payments_rounded, 3),
       _ReportOptionItem('Defaulter Report', Icons.warning_amber_rounded, 4),
       _ReportOptionItem('Penalties Report', Icons.gavel_rounded, 5),
       _ReportOptionItem(
@@ -3225,7 +3364,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   Widget _buildPaymentCollectionTab() {
     return _ReportSheetScaffold(
-      title: 'Payment Wise Collection Report',
+      title: 'Flat Wise Collection Report',
       subtitle: 'April 2026 – All units',
       icon: Icons.payments_rounded,
       summaryCards: [
@@ -3860,15 +3999,229 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
   }
 
+  bool get _paymentCollectionUsesPerHeadAmount {
+    final totalHeads = num.tryParse(
+      _paymentCollectionTotalNoOfPerson.replaceAll(',', '').trim(),
+    );
+    return totalHeads != null && totalHeads > 0;
+  }
+
+  String get _paymentCollectionTotalHeadsLabel {
+    final totalHeads = num.tryParse(
+      _paymentCollectionTotalNoOfPerson.replaceAll(',', '').trim(),
+    );
+    if (totalHeads == null) {
+      return _paymentCollectionTotalNoOfPerson;
+    }
+    return totalHeads % 1 == 0
+        ? totalHeads.toInt().toString()
+        : totalHeads.toString();
+  }
+
+  List<String> _paymentCollectionDetailList(String key) {
+    final rawValue = _paymentCollectionPaymentDetail?[key];
+    if (rawValue is List) {
+      return rawValue
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty && value.toLowerCase() != 'null')
+          .toList(growable: false);
+    }
+
+    final text = rawValue?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return const [];
+    }
+
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is List) {
+        return decoded
+            .map((value) => value.toString().trim())
+            .where((value) => value.isNotEmpty && value.toLowerCase() != 'null')
+            .toList(growable: false);
+      }
+    } catch (_) {
+      // Keep displaying non-JSON backend values as a single item.
+    }
+
+    return [text];
+  }
+
+  String _paymentCollectionDetailValue(String key) {
+    final value =
+        _paymentCollectionPaymentDetail?[key]?.toString().trim() ?? '';
+    return value.isEmpty || value.toLowerCase() == 'null' ? '--' : value;
+  }
+
+  Widget _buildPaymentCollectionDetailCard({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentCollectionPaymentDetailSection() {
+    final detail = _paymentCollectionPaymentDetail;
+    if (detail == null) {
+      return const SizedBox.shrink();
+    }
+
+    final allowedModes = _paymentCollectionDetailList('allowedPaymentModes');
+    final allowedModesLabel = allowedModes
+        .map((mode) => mode.replaceAll('_', ' '))
+        .join(', ');
+    final collectionCycles = _paymentCollectionDetailList(
+      'paymentCollectionCycle',
+    );
+    final paymentCapita = _paymentCollectionDetailValue('paymentCapita');
+    final paymentAmount = _fmtAmt(detail['paymentAmount']);
+    final paymentCapitaLabel = paymentCapita == '--'
+        ? ''
+        : paymentCapita.replaceAll('_', ' ');
+    final paymentAmountValue = paymentCapitaLabel.isEmpty
+        ? paymentAmount
+        : '$paymentAmount ($paymentCapitaLabel)';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Payment Information',
+            style: TextStyle(
+              color: _brandTextColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildPaymentCollectionDetailCard(
+                label: 'Payment Name',
+                value: _paymentCollectionSelectedName.isEmpty
+                    ? _paymentCollectionDetailValue('paymentName')
+                    : _paymentCollectionSelectedName,
+                color: const Color(0xFF0F8F82),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Total Collection',
+                value: _fmtAmt(_paymentCollectionTotal),
+                color: const Color(0xFF2E9B59),
+              ),
+              if (_paymentCollectionUsesPerHeadAmount)
+                _buildPaymentCollectionDetailCard(
+                  label: 'Total Heads',
+                  value: _paymentCollectionTotalHeadsLabel,
+                  color: const Color(0xFFFFB300),
+                ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Created On',
+                value: _formatPaymentCollectionOptionDate(detail['creatTs']),
+                color: const Color(0xFF6B63C7),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Collection Start Date',
+                value: _formatPaymentCollectionOptionDate(
+                  detail['collectionStartDate'],
+                ),
+                color: const Color(0xFF2F80ED),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Collection End Date',
+                value: _formatPaymentCollectionOptionDate(
+                  detail['collectionEndDate'],
+                ),
+                color: const Color(0xFFD05A72),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Allowed Payment Modes',
+                value: allowedModes.isEmpty ? '--' : allowedModesLabel,
+                color: const Color(0xFF2F80ED),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Unit Amount',
+                value: paymentAmountValue,
+                color: const Color(0xFF2F80ED),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Payment Collection Cycle',
+                value: collectionCycles.isEmpty
+                    ? '--'
+                    : collectionCycles.join(', '),
+                color: const Color(0xFF8E5CC7),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Payment Type',
+                value: _paymentCollectionDetailValue('paymentType'),
+                color: const Color(0xFFE08A00),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Status',
+                value: _paymentCollectionDetailValue('status'),
+                color: const Color(0xFF5B8CDA),
+              ),
+              _buildPaymentCollectionDetailCard(
+                label: 'Bank Account ID',
+                value: _paymentCollectionDetailValue('bankAccountId'),
+                color: const Color(0xFFD05A72),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPaymentCollectionReportTab() {
     final hasDetails = _paymentCollectionDetails.isNotEmpty;
+    final usesPerHeadAmount = _paymentCollectionUsesPerHeadAmount;
     final headers = [
       'Transaction ID',
       'Flat ID',
       'Tender',
       'Transaction Date',
       'Cycle',
-      'Due Amount',
+      usesPerHeadAmount ? 'Per Head Amount' : 'Due Amount',
+      if (usesPerHeadAmount) 'Total Head',
       'Discount',
       'Penalty',
       'Round Up',
@@ -3889,6 +4242,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         _formatPaymentCollectionDate(item['transactionDate']?.toString()),
         item['cycleOfPayment']?.toString() ?? '--',
         _fmtAmt(item['dueAmount']),
+        if (usesPerHeadAmount) item['noOfHead']?.toString() ?? '--',
         _fmtAmt(item['discount']),
         _fmtAmt(item['penalty']),
         _fmtAmt(item['roundUpAmount']),
@@ -3952,9 +4306,16 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF7FCFA),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE0F0EE)),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+        boxShadow: [
+          BoxShadow(
+            color: _brandTextColor.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4012,13 +4373,39 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                         ? 'Select Payment ID'
                         : 'Select Payment Name',
                     isDense: true,
-                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                    labelStyle: const TextStyle(color: _brandTextColor),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: _brandColor.withOpacity(0.35),
+                      ),
+                    ),
+                    focusedBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: _brandColor, width: 1.5),
+                    ),
                   ),
+                  dropdownColor: const Color(0xFFF7FCFA),
+                  icon: const Icon(Icons.expand_more, color: _brandColor),
+                  selectedItemBuilder: (context) => distinctOptions
+                      .map(
+                        (value) => Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            value,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: _brandTextColor),
+                          ),
+                        ),
+                      )
+                      .toList(),
                   items: distinctOptions
                       .map(
                         (value) => DropdownMenuItem<String>(
                           value: value,
-                          child: Text(value),
+                          child: _paymentCollectionSearchMode == 'NAME'
+                              ? _buildPaymentCollectionNameOption(value)
+                              : Text(value, overflow: TextOverflow.ellipsis),
                         ),
                       )
                       .toList(),
@@ -4057,29 +4444,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
               style: const TextStyle(color: Colors.red, fontSize: 12),
             ),
           ],
-          if (hasDetails) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInlineSummaryCard(
-                    label: 'Payment Name',
-                    value: _paymentCollectionSelectedName.isEmpty
-                        ? '--'
-                        : _paymentCollectionSelectedName,
-                    color: _brandColor,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildInlineSummaryCard(
-                    label: 'Total Collection',
-                    value: _fmtAmt(_paymentCollectionTotal),
-                    color: const Color(0xFF0F8F82),
-                  ),
-                ),
-              ],
-            ),
+          if (_paymentCollectionPaymentDetail != null) ...[
+            _buildPaymentCollectionPaymentDetailSection(),
           ],
         ],
       ),

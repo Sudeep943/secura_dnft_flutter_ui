@@ -4424,50 +4424,55 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
               style: const pw.TextStyle(fontSize: 9),
             ),
             pw.SizedBox(height: 10),
-            pw.Text(
-              'Payment Information',
-              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: infoRows
-                  .map(
-                    (info) => pw.Container(
-                      width: 245,
-                      padding: const pw.EdgeInsets.all(8),
-                      decoration: pw.BoxDecoration(
-                        color: const PdfColor.fromInt(0xFFEFF8F5),
-                        border: pw.Border.all(
-                          color: const PdfColor.fromInt(0xFFD7EAE3),
+            if (infoRows.isNotEmpty) ...[
+              pw.Text(
+                'Payment Information',
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: infoRows
+                    .map(
+                      (info) => pw.Container(
+                        width: 245,
+                        padding: const pw.EdgeInsets.all(8),
+                        decoration: pw.BoxDecoration(
+                          color: const PdfColor.fromInt(0xFFEFF8F5),
+                          border: pw.Border.all(
+                            color: const PdfColor.fromInt(0xFFD7EAE3),
+                          ),
+                          borderRadius: pw.BorderRadius.circular(6),
                         ),
-                        borderRadius: pw.BorderRadius.circular(6),
-                      ),
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            info[0],
-                            style: const pw.TextStyle(
-                              fontSize: 7,
-                              color: PdfColor.fromInt(0xFF3D6B63),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              info[0],
+                              style: const pw.TextStyle(
+                                fontSize: 7,
+                                color: PdfColor.fromInt(0xFF3D6B63),
+                              ),
                             ),
-                          ),
-                          pw.SizedBox(height: 3),
-                          pw.Text(
-                            info[1],
-                            style: pw.TextStyle(
-                              fontSize: 9,
-                              fontWeight: pw.FontWeight.bold,
+                            pw.SizedBox(height: 3),
+                            pw.Text(
+                              info[1],
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  )
-                  .toList(),
-            ),
-            pw.SizedBox(height: 14),
+                    )
+                    .toList(),
+              ),
+              pw.SizedBox(height: 14),
+            ],
             pw.Text(
               'Collection Transactions',
               style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
@@ -4534,12 +4539,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           .setText('Apartment Name: $_paymentCollectionApartmentName');
       row++;
       row++;
-      sheet.getRangeByIndex(row++, 1).setText('Payment Information');
-      for (final info in _paymentCollectionInformationRows()) {
-        sheet.getRangeByIndex(row, 1).setText(info[0]);
-        sheet.getRangeByIndex(row++, 2).setText(info[1]);
+      final infoRows = _paymentCollectionInformationRows();
+      if (infoRows.isNotEmpty) {
+        sheet.getRangeByIndex(row++, 1).setText('Payment Information');
+        for (final info in infoRows) {
+          sheet.getRangeByIndex(row, 1).setText(info[0]);
+          sheet.getRangeByIndex(row++, 2).setText(info[1]);
+        }
+        row++;
       }
-      row++;
       final headers = _paymentCollectionExportHeaders();
       final headerRow = row;
       for (var column = 0; column < headers.length; column++) {

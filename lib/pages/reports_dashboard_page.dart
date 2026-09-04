@@ -253,6 +253,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   String _paymentCollectionTotalNoOfPerson = '0';
   String _paymentCollectionSelectedName = '';
   Map<String, dynamic>? _paymentCollectionPaymentDetail;
+  String _paymentCollectionApartmentName = 'Apartment';
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -716,6 +717,13 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       _paymentCollectionPaymentDetail = rawPaymentDetail is Map
           ? Map<String, dynamic>.from(rawPaymentDetail)
           : null;
+      final responseHeader = response?['genericHeader'];
+      final responseApartmentName = responseHeader is Map
+          ? responseHeader['apartmentName']?.toString().trim() ?? ''
+          : '';
+      _paymentCollectionApartmentName = responseApartmentName.isNotEmpty
+          ? responseApartmentName
+          : _balanceSheetApartmentName;
       _paymentCollectionSelectedName = details.isNotEmpty
           ? (details.first['paymentName']?.toString().trim() ?? selected)
           : (_paymentCollectionPaymentDetail?['paymentName']
@@ -4260,9 +4268,329 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       rows: rows,
       sectionRows: const {},
       statusCol: -1,
+      onExport: _handlePaymentCollectionExport,
       showTable: hasDetails,
       topSection: _buildPaymentCollectionSearchSection(hasDetails),
     );
+  }
+
+  Future<void> _handlePaymentCollectionExport() async {
+    if (_paymentCollectionPaymentDetail == null &&
+        _paymentCollectionDetails.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No payment collection details to export.'),
+        ),
+      );
+      return;
+    }
+
+    final choice = await showDialog<_PaymentCollectionExportType>(
+      context: context,
+      builder: (dialogContext) => _PaymentCollectionExportDialog(
+        onPdfSelected: () =>
+            Navigator.of(dialogContext).pop(_PaymentCollectionExportType.pdf),
+        onExcelSelected: () =>
+            Navigator.of(dialogContext).pop(_PaymentCollectionExportType.excel),
+      ),
+    );
+
+    if (choice == _PaymentCollectionExportType.pdf) {
+      await _downloadPaymentCollectionAsPdf();
+    } else if (choice == _PaymentCollectionExportType.excel) {
+      await _downloadPaymentCollectionAsExcel();
+    }
+  }
+
+  List<String> _paymentCollectionExportHeaders() {
+    final headers = <String>[
+      'Transaction ID',
+      'Flat ID',
+      'Tender',
+      'Transaction Date',
+      'Cycle',
+      _paymentCollectionUsesPerHeadAmount ? 'Per Head Amount' : 'Due Amount',
+    ];
+    if (_paymentCollectionUsesPerHeadAmount) headers.add('Total Head');
+    headers.addAll([
+      'Discount',
+      'Penalty',
+      'Round Up',
+      'Transaction Amount',
+      'Third Party Txn No',
+    ]);
+    return headers;
+  }
+
+  List<List<String>> _paymentCollectionExportRows() {
+    return _paymentCollectionDetails
+        .map((item) {
+          final rawTenders = item['tenderList'];
+          final tenderText = rawTenders is List
+              ? rawTenders.map((t) => t.toString()).join('\n')
+              : rawTenders?.toString() ?? '--';
+          final row = <String>[
+            item['transactionId']?.toString() ?? '--',
+            item['flatId']?.toString() ?? '--',
+            tenderText,
+            _formatPaymentCollectionDate(item['transactionDate']?.toString()),
+            item['cycleOfPayment']?.toString() ?? '--',
+            _fmtAmt(item['dueAmount']),
+          ];
+          if (_paymentCollectionUsesPerHeadAmount) {
+            row.add(item['noOfHead']?.toString() ?? '--');
+          }
+          row.addAll([
+            _fmtAmt(item['discount']),
+            _fmtAmt(item['penalty']),
+            _fmtAmt(item['roundUpAmount']),
+            _fmtAmt(item['transactionAmount']),
+            item['thirdPartyTransactionNumber']?.toString() ?? '--',
+          ]);
+          return row;
+        })
+        .toList(growable: false);
+  }
+
+  List<List<String>> _paymentCollectionInformationRows() {
+    final detail = _paymentCollectionPaymentDetail;
+    if (detail == null) return const [];
+    final allowedModes = _paymentCollectionDetailList(
+      'allowedPaymentModes',
+    ).map((mode) => mode.replaceAll('_', ' ')).join(', ');
+    final cycles = _paymentCollectionDetailList(
+      'paymentCollectionCycle',
+    ).join(', ');
+    final capita = _paymentCollectionDetailValue('paymentCapita');
+    final amount = _fmtAmt(detail['paymentAmount']);
+    return [
+      ['Payment Name', _paymentCollectionSelectedName],
+      ['Total Collection', _fmtAmt(_paymentCollectionTotal)],
+      if (_paymentCollectionUsesPerHeadAmount)
+        ['Total Heads', _paymentCollectionTotalHeadsLabel],
+      ['Created On', _formatPaymentCollectionOptionDate(detail['creatTs'])],
+      [
+        'Collection Start Date',
+        _formatPaymentCollectionOptionDate(detail['collectionStartDate']),
+      ],
+      [
+        'Collection End Date',
+        _formatPaymentCollectionOptionDate(detail['collectionEndDate']),
+      ],
+      ['Allowed Payment Modes', allowedModes.isEmpty ? '--' : allowedModes],
+      ['Unit Amount', '$amount (${capita.replaceAll('_', ' ')})'],
+      ['Payment Collection Cycle', cycles.isEmpty ? '--' : cycles],
+      ['Payment Type', _paymentCollectionDetailValue('paymentType')],
+      ['Status', _paymentCollectionDetailValue('status')],
+      ['Bank Account ID', _paymentCollectionDetailValue('bankAccountId')],
+    ];
+  }
+
+  Future<void> _downloadPaymentCollectionAsPdf() async {
+    try {
+      final pdfBaseFont = await PdfGoogleFonts.notoSansRegular();
+      final pdfBoldFont = await PdfGoogleFonts.notoSansBold();
+      final document = pw.Document(
+        theme: pw.ThemeData.withFont(base: pdfBaseFont, bold: pdfBoldFont),
+      );
+      pw.MemoryImage? logoImage;
+      final logoBytes = await _loadSecuraLogoBytes();
+      if (logoBytes != null) logoImage = pw.MemoryImage(logoBytes);
+      final infoRows = _paymentCollectionInformationRows();
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
+          header: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(width: 74, height: 74, child: pw.Image(logoImage!)),
+            ],
+          ),
+          build: (context) => [
+            pw.Text(
+              'Payment Collection Report',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              'Generated on: ${DateTime.now()}',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              'Apartment Name: $_paymentCollectionApartmentName',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text(
+              'Payment Information',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: infoRows
+                  .map(
+                    (info) => pw.Container(
+                      width: 245,
+                      padding: const pw.EdgeInsets.all(8),
+                      decoration: pw.BoxDecoration(
+                        color: const PdfColor.fromInt(0xFFEFF8F5),
+                        border: pw.Border.all(
+                          color: const PdfColor.fromInt(0xFFD7EAE3),
+                        ),
+                        borderRadius: pw.BorderRadius.circular(6),
+                      ),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            info[0],
+                            style: const pw.TextStyle(
+                              fontSize: 7,
+                              color: PdfColor.fromInt(0xFF3D6B63),
+                            ),
+                          ),
+                          pw.SizedBox(height: 3),
+                          pw.Text(
+                            info[1],
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Collection Transactions',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Table.fromTextArray(
+              headers: _paymentCollectionExportHeaders(),
+              data: _paymentCollectionExportRows(),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFE8F7F5),
+              ),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 8,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 7),
+            ),
+          ],
+        ),
+      );
+      final saved = await _saveBytesToFile(
+        fileName:
+            'payment_collection_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        bytes: Uint8List.fromList(await document.save()),
+        dialogTitle: 'Download Payment Collection PDF',
+        allowedExtensions: const ['pdf'],
+      );
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              saved
+                  ? 'PDF downloaded successfully.'
+                  : 'Download was cancelled.',
+            ),
+          ),
+        );
+    } catch (error) {
+      debugPrint('Payment collection PDF export failed: $error');
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to generate PDF right now.')),
+        );
+    }
+  }
+
+  Future<void> _downloadPaymentCollectionAsExcel() async {
+    final workbook = xlsio.Workbook();
+    try {
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Payment Collection';
+      final logoBytes = await _loadSecuraLogoBytes();
+      if (logoBytes != null) {
+        final picture = sheet.pictures.addStream(1, 1, logoBytes);
+        picture.width = 96;
+        picture.height = 96;
+      }
+      var row = 1;
+      sheet.getRangeByIndex(row++, 4).setText('Payment Collection Report');
+      sheet
+          .getRangeByIndex(row++, 4)
+          .setText('Generated on: ${DateTime.now()}');
+      sheet
+          .getRangeByIndex(row++, 4)
+          .setText('Apartment Name: $_paymentCollectionApartmentName');
+      row++;
+      row++;
+      sheet.getRangeByIndex(row++, 1).setText('Payment Information');
+      for (final info in _paymentCollectionInformationRows()) {
+        sheet.getRangeByIndex(row, 1).setText(info[0]);
+        sheet.getRangeByIndex(row++, 2).setText(info[1]);
+      }
+      row++;
+      final headers = _paymentCollectionExportHeaders();
+      final headerRow = row;
+      for (var column = 0; column < headers.length; column++) {
+        sheet.getRangeByIndex(row, column + 1).setText(headers[column]);
+      }
+      sheet.getRangeByIndex(headerRow, 1, headerRow, headers.length).cellStyle
+        ..backColor = '#E8F7F5'
+        ..bold = true;
+      row++;
+      for (final values in _paymentCollectionExportRows()) {
+        for (var column = 0; column < values.length; column++) {
+          sheet.getRangeByIndex(row, column + 1).setText(values[column]);
+        }
+        row++;
+      }
+      sheet
+          .getRangeByIndex(headerRow, 1, row - 1, headers.length)
+          .cellStyle
+          .borders
+          .all
+        ..lineStyle = xlsio.LineStyle.thin
+        ..color = '#B7D8D2';
+      for (var column = 1; column <= headers.length; column++) {
+        sheet.getRangeByIndex(1, column).columnWidth = column == 3 ? 28 : 18;
+      }
+      final saved = await _saveBytesToFile(
+        fileName:
+            'payment_collection_${DateTime.now().millisecondsSinceEpoch}.xlsx',
+        bytes: Uint8List.fromList(workbook.saveSync()),
+        dialogTitle: 'Download Payment Collection Excel',
+        allowedExtensions: const ['xlsx'],
+      );
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              saved
+                  ? 'Excel downloaded successfully.'
+                  : 'Download was cancelled.',
+            ),
+          ),
+        );
+    } catch (error) {
+      debugPrint('Payment collection Excel export failed: $error');
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to generate Excel right now.')),
+        );
+    } finally {
+      workbook.dispose();
+    }
   }
 
   Widget _buildInlineSummaryCard({
@@ -4713,6 +5041,115 @@ class _BalanceSheetExportDialog extends StatelessWidget {
   }
 }
 
+class _PaymentCollectionExportDialog extends StatelessWidget {
+  const _PaymentCollectionExportDialog({
+    required this.onPdfSelected,
+    required this.onExcelSelected,
+  });
+
+  final VoidCallback onPdfSelected;
+  final VoidCallback onExcelSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7FCFA),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFD7EAE3)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(12, 71, 64, 0.18),
+              blurRadius: 28,
+              offset: Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: _ReportsDashboardPageState._brandColor.withOpacity(
+                        0.12,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: _ReportsDashboardPageState._brandColor,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Download Payment Collection',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: _ReportsDashboardPageState._brandTextColor,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Choose the format for payment information and collection data.',
+                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _ExportOptionTile(
+                icon: Icons.table_chart_rounded,
+                title: 'Excel Workbook',
+                subtitle: 'Best for editing, filtering, and analysis',
+                accentColor: const Color(0xFF0F8F82),
+                onTap: onExcelSelected,
+              ),
+              const SizedBox(height: 12),
+              _ExportOptionTile(
+                icon: Icons.picture_as_pdf_rounded,
+                title: 'PDF Report',
+                subtitle: 'Best for sharing, printing, and records',
+                accentColor: const Color(0xFFE57373),
+                onTap: onPdfSelected,
+              ),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _ReportsDashboardPageState._brandTextColor,
+                  ),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DefaulterExportDialog extends StatelessWidget {
   const _DefaulterExportDialog({
     required this.onPdfSelected,
@@ -4823,6 +5260,8 @@ class _DefaulterExportDialog extends StatelessWidget {
 }
 
 enum _BalanceSheetExportType { pdf, excel }
+
+enum _PaymentCollectionExportType { pdf, excel }
 
 enum _DefaulterExportType { pdf, excel }
 

@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../pages/login_page.dart';
+import 'dn_fairytale_event_page.dart';
 import 'dn_fairytale_paycam_page.dart';
 
 class DnFairytaleLandingPage extends StatefulWidget {
@@ -20,9 +22,12 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
   static const Color _brandGold = Color(0xFFC7A76C);
 
   final PageController _heroController = PageController();
+  final PageController _eventController = PageController();
   Timer? _slideTimer;
+  Timer? _eventSlideTimer;
   late final AnimationController _logoBorderController;
   int _heroIndex = 0;
+  int _eventIndex = 0;
 
   final List<String> _heroImages = const [
     'DNFarytaleIamges/image1.jpg',
@@ -52,13 +57,28 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
         curve: Curves.easeInOut,
       );
     });
+
+    _eventSlideTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!_eventController.hasClients) {
+        return;
+      }
+
+      final next = (_eventIndex + 1) % 2;
+      _eventController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   @override
   void dispose() {
     _slideTimer?.cancel();
+    _eventSlideTimer?.cancel();
     _logoBorderController.dispose();
     _heroController.dispose();
+    _eventController.dispose();
     super.dispose();
   }
 
@@ -72,6 +92,12 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const DnFairytalePayCamPage()));
+  }
+
+  void _openEventPage() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const DnFairytaleEventPage()));
   }
 
   Widget _buildSectionTitle(String eyebrow, String title, String subtitle) {
@@ -115,6 +141,13 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
         ),
       ],
     );
+  }
+
+  Future<void> _openPerformanceForm() async {
+    final uri = Uri.parse(
+      'https://docs.google.com/forms/d/e/1FAIpQLScKLhfy0_U8JiiZQFpyxKzHp_iwmZe-ZbiEjVEOaaAvL87nfA/viewform?pli=1',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Widget _featureTile(IconData icon, String title, String body) {
@@ -323,7 +356,13 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
                                 const SizedBox(height: 20),
                                 SizedBox(
                                   width: double.infinity,
-                                  child: _buildCamSection(),
+                                  child: Column(
+                                    children: [
+                                      _buildCamSection(),
+                                      const SizedBox(height: 20),
+                                      _buildUpcomingEventsSection(),
+                                    ],
+                                  ),
                                 ),
                               ],
                             )
@@ -332,7 +371,15 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
                               children: [
                                 Expanded(child: _buildAboutSection()),
                                 const SizedBox(width: 24),
-                                Expanded(child: _buildCamSection()),
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      _buildCamSection(),
+                                      const SizedBox(height: 20),
+                                      _buildUpcomingEventsSection(),
+                                    ],
+                                  ),
+                                ),
                               ],
                             );
                     },
@@ -695,6 +742,207 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpcomingEventsSection() {
+    final events = [
+      (
+        title: 'Ganesh Puja',
+        image: 'DNFarytaleIamges/Ganesh_puja_2026.png',
+        date: '14th Sep 2026',
+        body:
+            'Join the community for an auspicious Ganesh Puja with prayers, togetherness, and a shared festive lunch for every resident.',
+        meal: 'Lunch arranged on a pay-per-head basis.',
+      ),
+      (
+        title: 'Nua Khai',
+        image: 'DNFarytaleIamges/Nuakhai.jpg',
+        date: '18th Sep 2026',
+        body:
+            'Celebrate Nua Khai with the DN Fairytale community as we welcome the new harvest with gratitude, tradition, and shared joy.',
+        meal: 'Dinner arranged on a per-head collection basis.',
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF3),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE8DCC8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionTitle(
+            'Community Calendar',
+            'Upcoming Events',
+            'Join by clicking below and be part of the celebrations at DN Fairytale.',
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 250,
+            child: PageView.builder(
+              controller: _eventController,
+              onPageChanged: (index) {
+                _eventIndex = index;
+              },
+              itemCount: events.length,
+              itemBuilder: (context, index) {
+                final event = events[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Container(
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE6D9C4)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color.fromRGBO(80, 59, 28, 0.08),
+                          blurRadius: 14,
+                          offset: Offset(0, 7),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: Container(
+                            height: double.infinity,
+                            color: const Color(0xFFF7EFE2),
+                            padding: const EdgeInsets.all(10),
+                            child: Image.asset(
+                              event.image,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.center,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(
+                                  Icons.image_not_supported_outlined,
+                                  color: Color(0xFF8B7A62),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 6,
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  event.title,
+                                  style: const TextStyle(
+                                    color: Color(0xFF152738),
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  event.date,
+                                  style: const TextStyle(
+                                    color: _brandTeal,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  event.body,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF526275),
+                                    height: 1.35,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  event.meal,
+                                  style: const TextStyle(
+                                    color: Color(0xFF66502A),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Banquet Hall, 3rd Floor',
+                                  style: TextStyle(
+                                    color: Color(0xFF526275),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (event.title == 'Nua Khai') ...[
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Interested people can enroll for performances as per their eligibility.',
+                                    style: TextStyle(
+                                      color: Color(0xFF66502A),
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _openEventPage,
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Pay Now'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _brandTeal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _openPerformanceForm,
+                    icon: const Icon(Icons.theater_comedy_outlined),
+                    label: const Text('Enroll For Performance'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _brandTeal,
+                      side: const BorderSide(color: _brandTeal),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -1,13 +1,28 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../pages/home_page.dart';
 import '../pages/login_page.dart';
 import '../services/api_service.dart';
 
 class DnFairytalePayCamPage extends StatefulWidget {
-  const DnFairytalePayCamPage({super.key});
+  const DnFairytalePayCamPage({
+    super.key,
+    this.pageTitle = 'Pay CAM',
+    this.pageSubtitle = 'Select your flat ID to continue.',
+    this.heroTitle = 'Welcome to\nDN Fairytale',
+    this.heroSubtitle = 'A community that feels like home.',
+    this.eventMode = false,
+  });
+
+  final String pageTitle;
+  final String pageSubtitle;
+  final String heroTitle;
+  final String heroSubtitle;
+  final bool eventMode;
 
   @override
   State<DnFairytalePayCamPage> createState() => _DnFairytalePayCamPageState();
@@ -24,11 +39,39 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   bool _loadingFlats = false;
   String? _flatLoadError;
   bool _loadingDueDetails = false;
+  final PageController _eventController = PageController();
+  Timer? _eventSlideTimer;
+  int _eventIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _loadPublicFlats();
+    if (widget.eventMode) {
+      _eventSlideTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (!_eventController.hasClients) return;
+        final next = (_eventIndex + 1) % 2;
+        _eventController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOut,
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _eventSlideTimer?.cancel();
+    _eventController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openPerformanceForm() async {
+    final uri = Uri.parse(
+      'https://docs.google.com/forms/d/e/1FAIpQLScKLhfy0_U8JiiZQFpyxKzHp_iwmZe-ZbiEjVEOaaAvL87nfA/viewform?pli=1',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _loadPublicFlats() async {
@@ -623,10 +666,16 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                 child: compact
                     ? ListView(
                         children: [
-                          SizedBox(
-                            height: mobile ? 240 : 300,
-                            child: _leftImagePanel(compact: true),
-                          ),
+                          if (widget.eventMode)
+                            SizedBox(
+                              height: mobile ? 680 : 720,
+                              child: _leftEventPanel(compact: true),
+                            )
+                          else
+                            SizedBox(
+                              height: mobile ? 240 : 300,
+                              child: _leftImagePanel(compact: true),
+                            ),
                           SizedBox(height: mobile ? 10 : 12),
                           _rightFormPanel(compact: true),
                         ],
@@ -635,7 +684,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                         children: [
                           Expanded(
                             flex: 5,
-                            child: _leftImagePanel(compact: false),
+                            child: widget.eventMode
+                                ? _leftEventPanel(compact: false)
+                                : _leftImagePanel(compact: false),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -738,7 +789,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Welcome to\nDN Fairytale',
+                    widget.heroTitle,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: compact ? 30 : 44,
@@ -748,7 +799,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   ),
                   SizedBox(height: compact ? 6 : 10),
                   Text(
-                    'A community that feels like home.',
+                    widget.heroSubtitle,
                     style: TextStyle(
                       color: const Color(0xFFEFF6F3),
                       fontSize: compact ? 15 : 22,
@@ -760,6 +811,129 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _leftEventPanel({required bool compact}) {
+    final events = [
+      (
+        title: 'Ganesh Puja',
+        image: 'DNFarytaleIamges/Ganesh_puja_2026.png',
+        date: '14th Sep 2026',
+        detail: 'Pay-per-head lunch\nBanquet Hall, 3rd Floor',
+      ),
+      (
+        title: 'Nua Khai',
+        image: 'DNFarytaleIamges/Nuakhai.jpg',
+        date: '18th Sep 2026',
+        detail: 'Per-head dinner collection\nBanquet Hall, 3rd Floor',
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: compact ? 5 : 6,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: PageView.builder(
+              controller: _eventController,
+              itemCount: events.length,
+              onPageChanged: (index) => _eventIndex = index,
+              itemBuilder: (context, index) {
+                final event = events[index];
+                return Container(
+                  color: const Color(0xFFF7EFE2),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(event.image, fit: BoxFit.contain),
+                      Align(
+                        alignment: Alignment.bottomLeft,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xCC153D36), Color(0x00153D36)],
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                event.title,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                '${event.date}  •  ${event.detail.replaceAll('\n', '  •  ')}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          flex: compact ? 4 : 3,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD8E8E3)),
+            ),
+            child: const SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'How To Pay',
+                    style: TextStyle(
+                      color: _title,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    '1. Select your Flat ID, then click Proceed and confirm your owner details.\n\n'
+                    '2. Select and expand the event you want to join. Payment details will appear under Festival Funds.\n\n'
+                    '3. Choose a tender (Offline Bank Transfer or QR Payment), enter the number of persons to enroll, and review the total amount on screen.\n\n'
+                    '4. Complete the payment and keep the transaction screenshot with the UTR/Transaction No. ready.\n\n'
+                    '5. Upload the screenshot and press Proceed.\n\n'
+                    '6. Keep the Transaction ID that appears on screen once the process is complete.\n\n'
+                    '7. For assistance, contact the Help Desk: 977760816.',
+                    style: TextStyle(
+                      color: Color(0xFF526A63),
+                      fontSize: 13,
+                      height: 1.42,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -782,7 +956,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Pay CAM',
+            widget.pageTitle,
             style: TextStyle(
               fontSize: compact ? 30 : 38,
               fontWeight: FontWeight.w700,
@@ -792,7 +966,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Select your flat ID to continue.',
+            widget.pageSubtitle,
             style: TextStyle(
               color: const Color(0xFF687D76),
               fontSize: compact ? 14 : 15,
@@ -890,7 +1064,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   : _openDueDetailsDialog,
               icon: const Icon(Icons.payments_outlined),
               label: Text(
-                _loadingDueDetails ? 'Loading...' : 'View Due Details',
+                _loadingDueDetails
+                    ? 'Loading...'
+                    : (widget.eventMode ? 'Proceed' : 'View Due Details'),
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: _brand,
@@ -906,9 +1082,17 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _openResidentLogin,
-              icon: const Icon(Icons.person_outline_rounded),
-              label: const Text('Login'),
+              onPressed: widget.eventMode
+                  ? _openPerformanceForm
+                  : _openResidentLogin,
+              icon: Icon(
+                widget.eventMode
+                    ? Icons.theater_comedy_outlined
+                    : Icons.person_outline_rounded,
+              ),
+              label: Text(
+                widget.eventMode ? 'Enroll For Performance' : 'Login',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _brandDark,
                 side: const BorderSide(color: Color(0xFF0F8F82)),

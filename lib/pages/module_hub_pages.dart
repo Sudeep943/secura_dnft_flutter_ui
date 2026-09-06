@@ -3570,21 +3570,22 @@ class _AdminSectionPageState extends State<AdminSectionPage> {
     }
 
     final items = <_ModuleHubItem>[
-      if (_hasAccessFlag('adminAccess', 'roleManagmentparentAccess'))
-        const _ModuleHubItem('Role Management', Icons.lock_person_outlined),
-      if (_hasAccessFlag('adminAccess', 'staffeManagmentparentAccess'))
-        const _ModuleHubItem('Staff Management', Icons.groups_outlined),
-      if (_hasAccessFlag('adminAccess', 'flateManagmentparentAccess'))
-        _ModuleHubItem(
-          'Flat Management',
-          Icons.door_front_door_outlined,
-          onTap: () => openAppShellSection(context, AppSection.flatManagement),
-        ),
-      if (_hasAccessFlag('adminAccess', 'societyDetailsManagmentparentAccess'))
-        const _ModuleHubItem(
-          'Update Society Details',
-          Icons.apartment_outlined,
-        ),
+      _ModuleHubItem(
+        'Role Management',
+        Icons.lock_person_outlined,
+        onTap: () => openAppShellSection(context, AppSection.roleAndAccess),
+      ),
+      _ModuleHubItem(
+        'Staff Management',
+        Icons.groups_outlined,
+        onTap: () => openAppShellSection(context, AppSection.staffManagement),
+      ),
+      _ModuleHubItem(
+        'Flat Management',
+        Icons.door_front_door_outlined,
+        onTap: () => openAppShellSection(context, AppSection.flatManagement),
+      ),
+      _ModuleHubItem('Update Society Details', Icons.apartment_outlined),
     ];
 
     return _ModuleHubPage(

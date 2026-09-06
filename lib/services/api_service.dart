@@ -2142,6 +2142,24 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> getTransactionsByPage(
+    Map<String, dynamic> requestBody,
+  ) async {
+    if (token == null) return null;
+
+    final response = await _postWithOptionalAuthorization(
+      path: '/transactionAndReports/getTransctionByPage',
+      requestBody: requestBody,
+    );
+
+    if (response.body.isEmpty) return null;
+
+    final data = jsonDecode(response.body);
+    if (data is! Map) return null;
+
+    return Map<String, dynamic>.from(data);
+  }
+
   static Future<Map<String, dynamic>?> getBalanceSheet() async {
     final genericHeader = _buildLoginResponseHeader();
     if (genericHeader == null || genericHeader.isEmpty) {

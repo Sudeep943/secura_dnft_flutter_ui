@@ -4061,6 +4061,34 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return value.isEmpty || value.toLowerCase() == 'null' ? '--' : value;
   }
 
+  dynamic _paymentCollectionPaymentAmount(Map<String, dynamic> detail) {
+    final rawAmount = detail['paymentAmount'];
+    if (rawAmount is Map) {
+      return rawAmount['paymentAmount'] ??
+          rawAmount['amount'] ??
+          rawAmount['value'];
+    }
+    return rawAmount;
+  }
+
+  String _formatPaymentCollectionUnitAmount(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty || text == '-') {
+      return '-';
+    }
+
+    final normalized = text.replaceAll(RegExp(r'[^0-9.-]'), '');
+    final amount = double.tryParse(normalized);
+    if (amount == null || amount.isNaN || amount.isInfinite) {
+      return text;
+    }
+
+    final formatted = amount
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'\.?0+$'), '');
+    return '₹$formatted';
+  }
+
   Widget _buildPaymentCollectionDetailCard({
     required String label,
     required String value,
@@ -4110,7 +4138,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'paymentCollectionCycle',
     );
     final paymentCapita = _paymentCollectionDetailValue('paymentCapita');
-    final paymentAmount = _fmtAmt(detail['paymentAmount']);
+    final paymentAmount = _formatPaymentCollectionUnitAmount(
+      _paymentCollectionPaymentAmount(detail),
+    );
     final paymentCapitaLabel = paymentCapita == '--'
         ? ''
         : paymentCapita.replaceAll('_', ' ');
@@ -4362,7 +4392,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'paymentCollectionCycle',
     ).join(', ');
     final capita = _paymentCollectionDetailValue('paymentCapita');
-    final amount = _fmtAmt(detail['paymentAmount']);
+    final amount = _formatPaymentCollectionUnitAmount(
+      _paymentCollectionPaymentAmount(detail),
+    );
     return [
       ['Payment Name', _paymentCollectionSelectedName],
       ['Total Collection', _fmtAmt(_paymentCollectionTotal)],

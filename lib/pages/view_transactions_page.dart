@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -45,6 +46,8 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   Timer? _searchDebounce;
   double _loadingProgress = 0.0;
   Timer? _progressTimer;
+  bool _horizontalScrollbarActive = false;
+  Timer? _horizontalScrollbarHighlightTimer;
 
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -70,6 +73,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
   void dispose() {
     _searchDebounce?.cancel();
     _progressTimer?.cancel();
+    _horizontalScrollbarHighlightTimer?.cancel();
     _searchController.dispose();
     _tableHorizontalController.dispose();
     _tableVerticalController.dispose();
@@ -116,6 +120,32 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     }
 
     return KeyEventResult.ignored;
+  }
+
+  void _handleTablePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        !HardwareKeyboard.instance.isControlPressed ||
+        !_tableHorizontalController.hasClients) {
+      return;
+    }
+
+    final position = _tableHorizontalController.position;
+    final target = (_tableHorizontalController.offset + event.scrollDelta.dy)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    _tableHorizontalController.jumpTo(target);
+    _highlightHorizontalScrollbar();
+  }
+
+  void _highlightHorizontalScrollbar() {
+    if (!mounted) return;
+    setState(() => _horizontalScrollbarActive = true);
+    _horizontalScrollbarHighlightTimer?.cancel();
+    _horizontalScrollbarHighlightTimer = Timer(
+      const Duration(milliseconds: 700),
+      () {
+        if (mounted) setState(() => _horizontalScrollbarActive = false);
+      },
+    );
   }
 
   bool _isSuccessResponse(Map<String, dynamic>? response) {
@@ -195,7 +225,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
     };
 
     try {
-      final response = await ApiService.getTransactions(requestBody);
+      final response = await ApiService.getTransactionsByPage(requestBody);
       if (!mounted) return;
 
       _progressTimer?.cancel();
@@ -1400,7 +1430,45 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
-              title: const Text('Filters'),
+              backgroundColor: const Color(0xFFF7FCFA),
+              surfaceTintColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+              contentPadding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Color(0xFFD7EAE3)),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _brandColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.filter_alt_outlined,
+                      color: _brandColor,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Filters',
+                    style: TextStyle(
+                      color: _brandTextColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
               content: SizedBox(
                 width: 680,
                 child: SingleChildScrollView(
@@ -1550,6 +1618,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
+                  style: TextButton.styleFrom(foregroundColor: _brandTextColor),
                   child: const Text('Cancel'),
                 ),
                 TextButton(
@@ -1567,6 +1636,7 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  style: TextButton.styleFrom(foregroundColor: _brandTextColor),
                   child: const Text('Reset'),
                 ),
                 FilledButton(
@@ -1584,6 +1654,13 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _brandColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                   child: const Text('Apply'),
                 ),
               ],
@@ -1911,379 +1988,400 @@ class _ViewTransactionsPageState extends State<ViewTransactionsPage> {
 
   Widget _buildTable(List<Map<String, dynamic>> filteredRows) {
     final rows = _pageRows(filteredRows);
-    if (rows.isEmpty) {
-      return const Center(
-        child: Text('No transactions found for current selection.'),
-      );
-    }
 
-    return Focus(
-      focusNode: _tableHorizontalFocusNode,
-      autofocus: true,
-      onKeyEvent: _handleHorizontalTableKey,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE0F0EE)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Scrollbar(
-            controller: _tableHorizontalController,
-            thumbVisibility: true,
-            trackVisibility: true,
-            thickness: 12,
-            radius: const Radius.circular(8),
-            notificationPredicate: (notification) =>
-                notification.metrics.axis == Axis.horizontal,
-            child: SingleChildScrollView(
-              controller: _tableHorizontalController,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 3000,
-                child: Scrollbar(
-                  controller: _tableVerticalController,
-                  thumbVisibility: true,
-                  trackVisibility: true,
-                  notificationPredicate: (notification) =>
-                      notification.metrics.axis == Axis.vertical,
-                  child: SingleChildScrollView(
-                    controller: _tableVerticalController,
-                    child: DataTable(
-                      headingRowColor: WidgetStateProperty.all(
-                        const Color(0xFFE8F7F5),
-                      ),
-                      headingTextStyle: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: _brandTextColor,
-                      ),
-                      dataTextStyle: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black87,
-                      ),
-                      dividerThickness: 0.6,
-                      dataRowMinHeight: 68,
-                      dataRowMaxHeight: 80,
-                      columnSpacing: 22,
-                      horizontalMargin: 14,
-                      columns: [
-                        DataColumn(
-                          label: SizedBox(
-                            width: 140,
-                            child: const Text(
-                              'Transaction ID',
-                              textAlign: TextAlign.center,
-                            ),
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerSignal: _handleTablePointerSignal,
+      child: Focus(
+        focusNode: _tableHorizontalFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleHorizontalTableKey,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE0F0EE)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: ScrollbarTheme(
+              data: ScrollbarThemeData(
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) =>
+                      _horizontalScrollbarActive ||
+                          states.contains(WidgetState.dragged)
+                      ? _brandColor
+                      : const Color(0xFF7AAFA7),
+                ),
+                trackColor: WidgetStateProperty.all(const Color(0xFFE2F0ED)),
+                trackBorderColor: WidgetStateProperty.all(
+                  const Color(0xFFCFE3DE),
+                ),
+              ),
+              child: Scrollbar(
+                controller: _tableHorizontalController,
+                thumbVisibility: true,
+                trackVisibility: true,
+                thickness: 12,
+                radius: const Radius.circular(8),
+                notificationPredicate: (notification) =>
+                    notification.metrics.axis == Axis.horizontal,
+                child: SingleChildScrollView(
+                  controller: _tableHorizontalController,
+                  scrollDirection: Axis.horizontal,
+                  dragStartBehavior: DragStartBehavior.start,
+                  physics: const ClampingScrollPhysics(),
+                  child: SizedBox(
+                    width: 3000,
+                    child: Scrollbar(
+                      controller: _tableVerticalController,
+                      thumbVisibility: true,
+                      trackVisibility: true,
+                      notificationPredicate: (notification) =>
+                          notification.metrics.axis == Axis.vertical,
+                      child: SingleChildScrollView(
+                        controller: _tableVerticalController,
+                        child: DataTable(
+                          headingRowColor: WidgetStateProperty.all(
+                            const Color(0xFFE8F7F5),
                           ),
-                        ),
-                        DataColumn(
-                          label: _buildSortableHeader(
-                            'Transaction Date',
-                            _TxnSortField.transactionDate,
-                            190,
+                          headingTextStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: _brandTextColor,
                           ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 220,
-                            child: const Text(
-                              'Done By',
-                              textAlign: TextAlign.center,
-                            ),
+                          dataTextStyle: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black87,
                           ),
-                        ),
-                        DataColumn(
-                          label: _buildSortableHeader(
-                            'Flat',
-                            _TxnSortField.flat,
-                            120,
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 210,
-                            child: const Text(
-                              'Tenders',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 130,
-                            child: const Text(
-                              'Type',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 220,
-                            child: const Text(
-                              'Bank Account',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 100,
-                            child: const Text(
-                              'Amount',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 170,
-                            child: const Text(
-                              'Payment ID',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 140,
-                            child: const Text(
-                              'Status',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 170,
-                            child: const Text(
-                              'Credit/Debit Head',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 200,
-                            child: const Text(
-                              'Tender Details',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: SizedBox(
-                            width: 200,
-                            child: const Text(
-                              'Receipt',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                      rows: rows.asMap().entries.map((entry) {
-                        final rowIndex = entry.key;
-                        final txn = entry.value;
-                        final receiptNo =
-                            (txn['receiptNumber']?.toString().trim() ?? '');
-                        return DataRow(
-                          color: WidgetStateProperty.all(
-                            rowIndex.isEven
-                                ? const Color(0xFFFAFAFA)
-                                : Colors.white,
-                          ),
-                          cells: [
-                            DataCell(
-                              SizedBox(
+                          dividerThickness: 0.6,
+                          dataRowMinHeight: 68,
+                          dataRowMaxHeight: 80,
+                          columnSpacing: 22,
+                          horizontalMargin: 14,
+                          columns: [
+                            DataColumn(
+                              label: SizedBox(
                                 width: 140,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['trnscId']?.toString() ?? '--',
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 190,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    _fmtDate(txn),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Container(
-                                width: 220,
-                                height: double.infinity,
-                                alignment: Alignment.center,
-                                child: SelectableText(
-                                  (txn['trnsBy']?.toString() ?? '--')
-                                      .toUpperCase(),
-                                  maxLines: 3,
+                                child: const Text(
+                                  'Transaction ID',
                                   textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
-                                width: 120,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['flatId']?.toString() ?? '--',
-                                    maxLines: 2,
-                                    textAlign: TextAlign.center,
-                                  ),
+                            DataColumn(
+                              label: _buildSortableHeader(
+                                'Transaction Date',
+                                _TxnSortField.transactionDate,
+                                190,
+                              ),
+                            ),
+                            DataColumn(
+                              label: SizedBox(
+                                width: 220,
+                                child: const Text(
+                                  'Done By',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: _buildSortableHeader(
+                                'Flat',
+                                _TxnSortField.flat,
+                                120,
+                              ),
+                            ),
+                            DataColumn(
+                              label: SizedBox(
                                 width: 210,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: _buildTenderCell(txn),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 130,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['trnsType']?.toString() ?? '--',
-                                    maxLines: 2,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Container(
-                                width: 220,
-                                height: double.infinity,
-                                alignment: Alignment.center,
-                                child: SelectableText(
-                                  txn['trnsBnkAccnt']?.toString() ?? '--',
-                                  maxLines: 3,
+                                child: const Text(
+                                  'Tenders',
                                   textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['trnsAmt']?.toString() ?? '0',
-                                    textAlign: TextAlign.center,
-                                  ),
+                            DataColumn(
+                              label: SizedBox(
+                                width: 130,
+                                child: const Text(
+                                  'Type',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: SizedBox(
+                                width: 220,
+                                child: const Text(
+                                  'Bank Account',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                            DataColumn(
+                              label: SizedBox(
+                                width: 100,
+                                child: const Text(
+                                  'Amount',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                            DataColumn(
+                              label: SizedBox(
                                 width: 170,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: _PaymentIdHoverCell(
-                                    paymentId:
-                                        txn['pymntId']?.toString() ?? '--',
-                                    fetchDetails: _fetchPaymentHoverDetails,
-                                  ),
+                                child: const Text(
+                                  'Payment ID',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: SizedBox(
                                 width: 140,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['trnsStatus']?.toString() ?? '--',
-                                    maxLines: 2,
-                                    textAlign: TextAlign.center,
-                                  ),
+                                child: const Text(
+                                  'Status',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: SizedBox(
                                 width: 170,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: SelectableText(
-                                    txn['cause']?.toString() ?? '--',
-                                    maxLines: 3,
-                                    textAlign: TextAlign.center,
-                                  ),
+                                child: const Text(
+                                  'Credit/Debit Head',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: SizedBox(
                                 width: 200,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: OutlinedButton(
-                                    onPressed: () => _showTenderMetaData(txn),
-                                    child: const Text('View Tender Meta Data'),
-                                  ),
+                                child: const Text(
+                                  'Tender Details',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                            DataCell(
-                              SizedBox(
+                            DataColumn(
+                              label: SizedBox(
                                 width: 200,
-                                height: double.infinity,
-                                child: Container(
-                                  alignment: Alignment.center,
-                                  child: receiptNo.isEmpty
-                                      ? const SelectableText(
-                                          '--',
-                                          textAlign: TextAlign.center,
-                                        )
-                                      : FilledButton(
-                                          onPressed: () =>
-                                              _downloadReceipt(txn),
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: _brandColor,
-                                          ),
-                                          child: const Text('Download Receipt'),
-                                        ),
+                                child: const Text(
+                                  'Receipt',
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
                           ],
-                        );
-                      }).toList(),
+                          rows: rows.asMap().entries.map((entry) {
+                            final rowIndex = entry.key;
+                            final txn = entry.value;
+                            final receiptNo =
+                                (txn['receiptNumber']?.toString().trim() ?? '');
+                            return DataRow(
+                              color: WidgetStateProperty.all(
+                                rowIndex.isEven
+                                    ? const Color(0xFFFAFAFA)
+                                    : Colors.white,
+                              ),
+                              cells: [
+                                DataCell(
+                                  SizedBox(
+                                    width: 140,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['trnscId']?.toString() ?? '--',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 190,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        _fmtDate(txn),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  Container(
+                                    width: 220,
+                                    height: double.infinity,
+                                    alignment: Alignment.center,
+                                    child: SelectableText(
+                                      (txn['trnsBy']?.toString() ?? '--')
+                                          .toUpperCase(),
+                                      maxLines: 3,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 120,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['flatId']?.toString() ?? '--',
+                                        maxLines: 2,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 210,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: _buildTenderCell(txn),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 130,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['trnsType']?.toString() ?? '--',
+                                        maxLines: 2,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  Container(
+                                    width: 220,
+                                    height: double.infinity,
+                                    alignment: Alignment.center,
+                                    child: SelectableText(
+                                      txn['trnsBnkAccnt']?.toString() ?? '--',
+                                      maxLines: 3,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['trnsAmt']?.toString() ?? '0',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 170,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: _PaymentIdHoverCell(
+                                        paymentId:
+                                            txn['pymntId']?.toString() ?? '--',
+                                        fetchDetails: _fetchPaymentHoverDetails,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 140,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['trnsStatus']?.toString() ?? '--',
+                                        maxLines: 2,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 170,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: SelectableText(
+                                        txn['cause']?.toString() ?? '--',
+                                        maxLines: 3,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 200,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: OutlinedButton(
+                                        onPressed: () =>
+                                            _showTenderMetaData(txn),
+                                        child: const Text(
+                                          'View Tender Meta Data',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 200,
+                                    height: double.infinity,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      child: receiptNo.isEmpty
+                                          ? const SelectableText(
+                                              '--',
+                                              textAlign: TextAlign.center,
+                                            )
+                                          : FilledButton(
+                                              onPressed: () =>
+                                                  _downloadReceipt(txn),
+                                              style: FilledButton.styleFrom(
+                                                backgroundColor: _brandColor,
+                                              ),
+                                              child: const Text(
+                                                'Download Receipt',
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     ),
                   ),
                 ),

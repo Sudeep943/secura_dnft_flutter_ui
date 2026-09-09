@@ -2074,6 +2074,10 @@ class _WorklistDialogState extends State<_WorklistDialog>
     }
 
     final transaction = Map<String, dynamic>.from(rawList.first as Map);
+    final rawExternalDetails = response?['externalTransactionNoDetails'];
+    final externalTransactionNoDetails = rawExternalDetails is Map
+        ? Map<String, dynamic>.from(rawExternalDetails)
+        : null;
 
     await showDialog<void>(
       context: context,
@@ -2083,6 +2087,7 @@ class _WorklistDialogState extends State<_WorklistDialog>
         transactionId: referenceId,
         worklistId: worklistId,
         canTakeAction: canTakeAction,
+        externalTransactionNoDetails: externalTransactionNoDetails,
         onActionCompleted: _refreshWorklists,
       ),
     );
@@ -2282,6 +2287,7 @@ class _TransactionDetailDialog extends StatefulWidget {
     required this.transactionId,
     required this.worklistId,
     required this.canTakeAction,
+    this.externalTransactionNoDetails,
     required this.onActionCompleted,
   });
 
@@ -2289,6 +2295,7 @@ class _TransactionDetailDialog extends StatefulWidget {
   final String transactionId;
   final String worklistId;
   final bool canTakeAction;
+  final Map<String, dynamic>? externalTransactionNoDetails;
   final Future<void> Function() onActionCompleted;
 
   @override
@@ -2296,7 +2303,8 @@ class _TransactionDetailDialog extends StatefulWidget {
       _TransactionDetailDialogState();
 }
 
-class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
+class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
+    with SingleTickerProviderStateMixin {
   static const Color _brandColor = Color(0xFF0F8F82);
   static const String _approveAction = 'APPROVE';
   static const String _rejectAction = 'REJECT';
@@ -2324,18 +2332,30 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   bool _showReferenceSavedMessage = false;
   Timer? _referenceSavedMessageTimer;
   late final TextEditingController _referenceIdController;
+  late Map<String, dynamic>? _externalTransactionNoDetails;
+  late final AnimationController _duplicateWarningController;
 
   @override
   void initState() {
     super.initState();
     _referenceIdController = TextEditingController(text: _thirdPartyTrnsRef);
+    _externalTransactionNoDetails = widget.externalTransactionNoDetails;
+    _duplicateWarningController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _referenceSavedMessageTimer?.cancel();
     _referenceIdController.dispose();
+    _duplicateWarningController.dispose();
     super.dispose();
+  }
+
+  bool get _isDuplicateBankTransactionId {
+    return _externalTransactionNoDetails?['usedInMultipleTransction'] == true;
   }
 
   bool _isHeadCountKey(String key) {
@@ -3089,11 +3109,15 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     }
 
     final refreshed = Map<String, dynamic>.from(rawList.first as Map);
+    final rawExternalDetails = response?['externalTransactionNoDetails'];
     setState(() {
       widget.transaction
         ..clear()
         ..addAll(refreshed);
       _referenceIdController.text = _thirdPartyTrnsRef;
+      _externalTransactionNoDetails = rawExternalDetails is Map
+          ? Map<String, dynamic>.from(rawExternalDetails)
+          : null;
     });
   }
 
@@ -3225,13 +3249,27 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                     border: OutlineInputBorder(),
                   ),
                 )
-              : Text(
+              : SelectableText(
                   hasReferenceId ? _thirdPartyTrnsRef : 'No Data Available',
                   style: const TextStyle(
                     color: Color(0xFF2A4A47),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+          if (_isDuplicateBankTransactionId)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FadeTransition(
+                opacity: _duplicateWarningController,
+                child: const Text(
+                  'Duplicate Bank Transaction Id. Verify Before Approving',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
           AnimatedOpacity(
             opacity: _showReferenceSavedMessage ? 1 : 0,
             duration: const Duration(milliseconds: 500),

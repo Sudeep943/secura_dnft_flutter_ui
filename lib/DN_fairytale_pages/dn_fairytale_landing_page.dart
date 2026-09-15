@@ -751,17 +751,9 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
   Widget _buildUpcomingEventsSection() {
     final events = [
       (
-        title: 'Ganesh Puja',
-        image: 'DNFarytaleIamges/Ganesh_puja_2026.png',
-        date: '14th Sep 2026',
-        body:
-            'Join the community for an auspicious Ganesh Puja with prayers, togetherness, and a shared festive lunch for every resident.',
-        meal: 'Lunch arranged on a pay-per-head basis.',
-      ),
-      (
         title: 'Nua Khai',
         image: 'DNFarytaleIamges/Nuakhai.jpg',
-        date: '18th Sep 2026',
+        date: '25th Sep 2026',
         body:
             'Celebrate Nua Khai with the DN Fairytale community as we welcome the new harvest with gratitude, tradition, and shared joy.',
         meal: 'Dinner arranged on a per-head collection basis.',

@@ -817,15 +817,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   Widget _leftEventPanel({required bool compact}) {
     final events = [
       (
-        title: 'Ganesh Puja',
-        image: 'DNFarytaleIamges/Ganesh_puja_2026.png',
-        date: '14th Sep 2026',
-        detail: 'Pay-per-head lunch\nBanquet Hall, 3rd Floor',
-      ),
-      (
         title: 'Nua Khai',
         image: 'DNFarytaleIamges/Nuakhai.jpg',
-        date: '18th Sep 2026',
+        date: '25th Sep 2026',
         detail: 'Per-head dinner collection\nBanquet Hall, 3rd Floor',
       ),
     ];

@@ -254,6 +254,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
   String _paymentCollectionSelectedName = '';
   Map<String, dynamic>? _paymentCollectionPaymentDetail;
   String _paymentCollectionApartmentName = 'Apartment';
+  String? _paymentCollectionSortKey;
+  bool _paymentCollectionSortAscending = true;
 
   String get _balanceSheetApartmentName {
     final header = ApiService.userHeader;
@@ -4061,6 +4063,48 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return value.isEmpty || value.toLowerCase() == 'null' ? '--' : value;
   }
 
+  List<Map<String, dynamic>> get _sortedPaymentCollectionDetails {
+    final list = List<Map<String, dynamic>>.from(_paymentCollectionDetails);
+    final key = _paymentCollectionSortKey;
+    if (key == null) {
+      return list;
+    }
+    int compare(Map<String, dynamic> a, Map<String, dynamic> b) {
+      if (key == 'transactionDate') {
+        final dateA = DateTime.tryParse(
+          a['transactionDate']?.toString().trim() ?? '',
+        );
+        final dateB = DateTime.tryParse(
+          b['transactionDate']?.toString().trim() ?? '',
+        );
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return -1;
+        if (dateB == null) return 1;
+        return dateA.compareTo(dateB);
+      }
+      final valueA = a[key]?.toString().trim().toLowerCase() ?? '';
+      final valueB = b[key]?.toString().trim().toLowerCase() ?? '';
+      return valueA.compareTo(valueB);
+    }
+
+    list.sort(compare);
+    if (!_paymentCollectionSortAscending) {
+      return list.reversed.toList();
+    }
+    return list;
+  }
+
+  void _togglePaymentCollectionSort(String key) {
+    setState(() {
+      if (_paymentCollectionSortKey == key) {
+        _paymentCollectionSortAscending = !_paymentCollectionSortAscending;
+      } else {
+        _paymentCollectionSortKey = key;
+        _paymentCollectionSortAscending = true;
+      }
+    });
+  }
+
   dynamic _paymentCollectionPaymentAmount(Map<String, dynamic> detail) {
     final rawAmount = detail['paymentAmount'];
     if (rawAmount is Map) {
@@ -4253,6 +4297,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     final hasDetails = _paymentCollectionDetails.isNotEmpty;
     final usesPerHeadAmount = _paymentCollectionUsesPerHeadAmount;
     final headers = [
+      'Sl No',
       'Transaction ID',
       'Flat ID',
       'Tender',
@@ -4265,8 +4310,28 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'Round Up',
       'Transaction Amount',
       'Third Party Txn No',
+      'Invoice No',
     ];
-    final rows = _paymentCollectionDetails.map((item) {
+    final sortKeys = <String?>[
+      null,
+      null,
+      'flatId',
+      null,
+      'transactionDate',
+      null,
+      null,
+      if (usesPerHeadAmount) null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    final sortedDetails = _sortedPaymentCollectionDetails;
+    final rows = sortedDetails.asMap().entries.map((entry) {
+      final index = entry.key;
+      final item = entry.value;
       final rawTenders = item['tenderList'];
       final tenderText = rawTenders is List
           ? rawTenders.map((t) => t.toString()).join('\n')
@@ -4274,6 +4339,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           ? rawTenders.toString()
           : '--';
       return [
+        (index + 1).toString(),
         item['transactionId']?.toString() ?? '--',
         item['flatId']?.toString() ?? '--',
         tenderText,
@@ -4286,6 +4352,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         _fmtAmt(item['roundUpAmount']),
         _fmtAmt(item['transactionAmount']),
         item['thirdPartyTransactionNumber']?.toString() ?? '--',
+        item['invoiceNo']?.toString() ?? '--',
       ];
     }).toList();
 
@@ -4298,9 +4365,15 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       rows: rows,
       sectionRows: const {},
       statusCol: -1,
+      sortKeys: sortKeys,
+      activeSortKey: _paymentCollectionSortKey,
+      sortAscending: _paymentCollectionSortAscending,
+      onSortKey: _togglePaymentCollectionSort,
       onExport: _handlePaymentCollectionExport,
       showTable: hasDetails,
       topSection: _buildPaymentCollectionSearchSection(hasDetails),
+      primaryColumnIndex: 1,
+      centerNonPrimaryColumns: true,
     );
   }
 
@@ -4334,6 +4407,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   List<String> _paymentCollectionExportHeaders() {
     final headers = <String>[
+      'Sl No',
       'Transaction ID',
       'Flat ID',
       'Tender',
@@ -4348,18 +4422,24 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'Round Up',
       'Transaction Amount',
       'Third Party Txn No',
+      'Invoice No',
     ]);
     return headers;
   }
 
   List<List<String>> _paymentCollectionExportRows() {
-    return _paymentCollectionDetails
-        .map((item) {
+    return _sortedPaymentCollectionDetails
+        .asMap()
+        .entries
+        .map((entry) {
+          final index = entry.key;
+          final item = entry.value;
           final rawTenders = item['tenderList'];
           final tenderText = rawTenders is List
               ? rawTenders.map((t) => t.toString()).join('\n')
               : rawTenders?.toString() ?? '--';
           final row = <String>[
+            (index + 1).toString(),
             item['transactionId']?.toString() ?? '--',
             item['flatId']?.toString() ?? '--',
             tenderText,
@@ -4376,6 +4456,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
             _fmtAmt(item['roundUpAmount']),
             _fmtAmt(item['transactionAmount']),
             item['thirdPartyTransactionNumber']?.toString() ?? '--',
+            item['invoiceNo']?.toString() ?? '--',
           ]);
           return row;
         })
@@ -4603,7 +4684,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         ..lineStyle = xlsio.LineStyle.thin
         ..color = '#B7D8D2';
       for (var column = 1; column <= headers.length; column++) {
-        sheet.getRangeByIndex(1, column).columnWidth = column == 3 ? 28 : 18;
+        sheet.getRangeByIndex(1, column).columnWidth = column == 1
+            ? 8
+            : (column == 4 ? 28 : 18);
       }
       final saved = await _saveBytesToFile(
         fileName:
@@ -5570,6 +5653,12 @@ class _ReportSheetScaffold extends StatelessWidget {
     required this.sectionRows,
     required this.statusCol,
     this.showTable = true,
+    this.sortKeys,
+    this.activeSortKey,
+    this.sortAscending = true,
+    this.onSortKey,
+    this.primaryColumnIndex = 0,
+    this.centerNonPrimaryColumns = false,
   });
 
   final Widget? topSection;
@@ -5583,6 +5672,12 @@ class _ReportSheetScaffold extends StatelessWidget {
   final Set<int> sectionRows;
   final int statusCol; // column index to apply status colour, or -1
   final bool showTable;
+  final List<String?>? sortKeys;
+  final String? activeSortKey;
+  final bool sortAscending;
+  final ValueChanged<String>? onSortKey;
+  final int primaryColumnIndex; // column that keeps left alignment/emphasis
+  final bool centerNonPrimaryColumns;
 
   static const Color _brandColor = Color(0xFF0F8F82);
   static const Color _brandTextColor = Color(0xFF124B45);
@@ -5716,29 +5811,85 @@ class _ReportSheetScaffold extends StatelessWidget {
             bottom: BorderSide(color: Colors.grey.shade200),
           ),
           columnWidths: _columnWidths(),
+          defaultVerticalAlignment: centerNonPrimaryColumns
+              ? TableCellVerticalAlignment.middle
+              : TableCellVerticalAlignment.top,
           children: [
             // Header row
             TableRow(
               decoration: const BoxDecoration(color: Color(0xFFE8F7F5)),
-              children: headers
-                  .map(
-                    (h) => Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Text(
-                        h,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: _brandTextColor,
-                        ),
+              children: List.generate(headers.length, (index) {
+                final header = headers[index];
+                final key = sortKeys != null && index < sortKeys!.length
+                    ? sortKeys![index]
+                    : null;
+                final isCentered =
+                    centerNonPrimaryColumns && index != primaryColumnIndex;
+                if (key == null) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      header,
+                      textAlign: isCentered
+                          ? TextAlign.center
+                          : TextAlign.start,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: _brandTextColor,
                       ),
                     ),
-                  )
-                  .toList(),
+                  );
+                }
+                final isActive = activeSortKey == key;
+                return InkWell(
+                  onTap: onSortKey == null ? null : () => onSortKey!(key),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: isCentered
+                          ? MainAxisAlignment.center
+                          : MainAxisAlignment.start,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            header,
+                            softWrap: true,
+                            textAlign: isCentered
+                                ? TextAlign.center
+                                : TextAlign.start,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: _brandTextColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          isActive
+                              ? (sortAscending
+                                    ? Icons.arrow_upward_rounded
+                                    : Icons.arrow_downward_rounded)
+                              : Icons.unfold_more_rounded,
+                          size: 14,
+                          color: isActive
+                              ? _brandColor
+                              : _brandTextColor.withOpacity(0.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ),
+
             // Data rows
             ...List.generate(rows.length, (i) {
               final row = rows[i];
@@ -5751,6 +5902,8 @@ class _ReportSheetScaffold extends StatelessWidget {
                 ),
                 children: List.generate(row.length, (j) {
                   final cell = row[j].toString();
+                  final isCentered =
+                      centerNonPrimaryColumns && j != primaryColumnIndex;
                   if (isSection && j == 0) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(
@@ -5773,22 +5926,37 @@ class _ReportSheetScaffold extends StatelessWidget {
                         horizontal: 12,
                         vertical: 8,
                       ),
-                      child: _StatusChip(cell),
+                      child: Align(
+                        alignment: isCentered
+                            ? Alignment.center
+                            : Alignment.centerLeft,
+                        child: _StatusChip(cell),
+                      ),
                     );
                   }
                   return Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
+                      horizontal: 8,
                       vertical: 8,
                     ),
-                    child: Text(
-                      cell,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: j == 0 ? Colors.black87 : Colors.black54,
-                        fontWeight: j == 0
-                            ? FontWeight.w500
-                            : FontWeight.normal,
+                    child: Align(
+                      alignment: isCentered
+                          ? Alignment.center
+                          : Alignment.centerLeft,
+                      child: Text(
+                        cell,
+                        textAlign: isCentered
+                            ? TextAlign.center
+                            : TextAlign.start,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: j == primaryColumnIndex
+                              ? Colors.black87
+                              : Colors.black54,
+                          fontWeight: j == primaryColumnIndex
+                              ? FontWeight.w500
+                              : FontWeight.normal,
+                        ),
                       ),
                     ),
                   );
@@ -5802,6 +5970,14 @@ class _ReportSheetScaffold extends StatelessWidget {
   }
 
   Map<int, TableColumnWidth> _columnWidths() {
+    if (headers.isEmpty) return {};
+    if (headers.first == 'Sl No') {
+      final widths = <int, TableColumnWidth>{0: const IntrinsicColumnWidth()};
+      if (headers.length > 2) {
+        widths[1] = const FlexColumnWidth(2);
+      }
+      return widths;
+    }
     if (headers.length <= 2) return {};
     return {0: const FlexColumnWidth(2)};
   }

@@ -1755,6 +1755,8 @@ class _DueSliderMetricCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       'Payment: ${due.displayPaymentName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.black87,
                         height: 1.35,
@@ -1763,6 +1765,8 @@ class _DueSliderMetricCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       'Type: ${due.displayPaymentType}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: overdue
                             ? const Color(0xFF8B1E1E)
@@ -1773,6 +1777,8 @@ class _DueSliderMetricCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       'Amount: ${formatAmount(due.totalAmount)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: overdue
                             ? const Color(0xFF8B1E1E)

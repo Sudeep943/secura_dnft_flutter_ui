@@ -1213,6 +1213,11 @@ class _WorklistDialogState extends State<_WorklistDialog>
   ) async {
     final typeOptions = _distinctTypeOptions(sourceRows);
     final flatNoOptions = _distinctFlatNoOptions(sourceRows);
+    final flatNoCounts = <String, int>{};
+    for (final item in sourceRows) {
+      final flatNo = _flatNoValue(item);
+      flatNoCounts[flatNo] = (flatNoCounts[flatNo] ?? 0) + 1;
+    }
     final transactionReviewRows = sourceRows
         .where(
           (item) => _typeValue(item).toUpperCase() == _transactionReviewType,
@@ -1495,12 +1500,17 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                                   itemBuilder: (context, index) {
                                                     final value =
                                                         filteredFlatNoOptions[index];
+                                                    final count =
+                                                        flatNoCounts[value] ??
+                                                        0;
                                                     return CheckboxListTile(
                                                       dense: true,
                                                       value: tempFlats.contains(
                                                         value,
                                                       ),
-                                                      title: Text(value),
+                                                      title: Text(
+                                                        '$value ($count)',
+                                                      ),
                                                       contentPadding:
                                                           const EdgeInsets.symmetric(
                                                             horizontal: 12,
@@ -1539,167 +1549,197 @@ class _WorklistDialogState extends State<_WorklistDialog>
                                     color: const Color(0xFFDCEAE7),
                                   ),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Transaction From',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      InkWell(
-                                        onTap: () async {
-                                          final picked = await showDatePicker(
-                                            context: context,
-                                            initialDate:
-                                                tempTransactionFromDate ??
-                                                DateTime.now(),
-                                            firstDate: DateTime(2000),
-                                            lastDate: DateTime(2100),
-                                          );
-                                          if (picked != null) {
-                                            setInnerState(() {
-                                              tempTransactionFromDate = picked;
-                                            });
-                                          }
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            border: Border.all(
-                                              color: const Color(0xFFDCEAE7),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.calendar_today_rounded,
-                                                size: 18,
-                                                color: Color(0xFF0F8F82),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Expanded(
-                                                child: Text(
-                                                  tempTransactionFromDate ==
-                                                          null
-                                                      ? 'Select from date'
-                                                      : '${tempTransactionFromDate!.day.toString().padLeft(2, '0')}-${tempTransactionFromDate!.month.toString().padLeft(2, '0')}-${tempTransactionFromDate!.year}',
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (tempTransactionFromDate !=
-                                                  null)
-                                                IconButton(
-                                                  visualDensity:
-                                                      VisualDensity.compact,
-                                                  onPressed: () {
-                                                    setInnerState(() {
-                                                      tempTransactionFromDate =
-                                                          null;
-                                                    });
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons.clear_rounded,
-                                                    size: 18,
-                                                  ),
-                                                  tooltip: 'Clear date',
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      const Text(
-                                        'Transaction To',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      InkWell(
-                                        onTap: () async {
-                                          final picked = await showDatePicker(
-                                            context: context,
-                                            initialDate:
-                                                tempTransactionToDate ??
-                                                DateTime.now(),
-                                            firstDate: DateTime(2000),
-                                            lastDate: DateTime(2100),
-                                          );
-                                          if (picked != null) {
-                                            setInnerState(() {
-                                              tempTransactionToDate = picked;
-                                            });
-                                          }
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            border: Border.all(
-                                              color: const Color(0xFFDCEAE7),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.calendar_today_rounded,
-                                                size: 18,
-                                                color: Color(0xFF0F8F82),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Expanded(
-                                                child: Text(
-                                                  tempTransactionToDate == null
-                                                      ? 'Select to date'
-                                                      : '${tempTransactionToDate!.day.toString().padLeft(2, '0')}-${tempTransactionToDate!.month.toString().padLeft(2, '0')}-${tempTransactionToDate!.year}',
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (tempTransactionToDate != null)
-                                                IconButton(
-                                                  visualDensity:
-                                                      VisualDensity.compact,
-                                                  onPressed: () {
-                                                    setInnerState(() {
-                                                      tempTransactionToDate =
-                                                          null;
-                                                    });
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons.clear_rounded,
-                                                    size: 18,
-                                                  ),
-                                                  tooltip: 'Clear date',
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                child: ExpansionTile(
+                                  initiallyExpanded: false,
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
                                   ),
+                                  title: const Text(
+                                    'Transaction Date',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        0,
+                                        12,
+                                        12,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Transaction From',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          InkWell(
+                                            onTap: () async {
+                                              final picked = await showDatePicker(
+                                                context: context,
+                                                initialDate:
+                                                    tempTransactionFromDate ??
+                                                    DateTime.now(),
+                                                firstDate: DateTime(2000),
+                                                lastDate: DateTime(2100),
+                                              );
+                                              if (picked != null) {
+                                                setInnerState(() {
+                                                  tempTransactionFromDate =
+                                                      picked;
+                                                });
+                                              }
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 12,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: const Color(
+                                                    0xFFDCEAE7,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons
+                                                        .calendar_today_rounded,
+                                                    size: 18,
+                                                    color: Color(0xFF0F8F82),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      tempTransactionFromDate ==
+                                                              null
+                                                          ? 'Select from date'
+                                                          : '${tempTransactionFromDate!.day.toString().padLeft(2, '0')}-${tempTransactionFromDate!.month.toString().padLeft(2, '0')}-${tempTransactionFromDate!.year}',
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (tempTransactionFromDate !=
+                                                      null)
+                                                    IconButton(
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      onPressed: () {
+                                                        setInnerState(() {
+                                                          tempTransactionFromDate =
+                                                              null;
+                                                        });
+                                                      },
+                                                      icon: const Icon(
+                                                        Icons.clear_rounded,
+                                                        size: 18,
+                                                      ),
+                                                      tooltip: 'Clear date',
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          const Text(
+                                            'Transaction To',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          InkWell(
+                                            onTap: () async {
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: context,
+                                                    initialDate:
+                                                        tempTransactionToDate ??
+                                                        DateTime.now(),
+                                                    firstDate: DateTime(2000),
+                                                    lastDate: DateTime(2100),
+                                                  );
+                                              if (picked != null) {
+                                                setInnerState(() {
+                                                  tempTransactionToDate =
+                                                      picked;
+                                                });
+                                              }
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 12,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: const Color(
+                                                    0xFFDCEAE7,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons
+                                                        .calendar_today_rounded,
+                                                    size: 18,
+                                                    color: Color(0xFF0F8F82),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      tempTransactionToDate ==
+                                                              null
+                                                          ? 'Select to date'
+                                                          : '${tempTransactionToDate!.day.toString().padLeft(2, '0')}-${tempTransactionToDate!.month.toString().padLeft(2, '0')}-${tempTransactionToDate!.year}',
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (tempTransactionToDate !=
+                                                      null)
+                                                    IconButton(
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      onPressed: () {
+                                                        setInnerState(() {
+                                                          tempTransactionToDate =
+                                                              null;
+                                                        });
+                                                      },
+                                                      icon: const Icon(
+                                                        Icons.clear_rounded,
+                                                        size: 18,
+                                                      ),
+                                                      tooltip: 'Clear date',
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               if (isTransactionReviewSelected) ...[

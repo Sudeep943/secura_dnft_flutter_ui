@@ -53,6 +53,12 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
         curve: Curves.easeInOut,
       );
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _showDandiyaVideoDialog();
+      }
+    });
   }
 
   @override
@@ -80,6 +86,14 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const DnFairytaleEventPage()));
+  }
+
+  Future<void> _showDandiyaVideoDialog() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _DandiyaVideoDialog(),
+    );
   }
 
   Widget _buildSectionTitle(String eyebrow, String title, String subtitle) {
@@ -1129,5 +1143,138 @@ class _RunningBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RunningBorderPainter oldDelegate) {
     return oldDelegate.progress != progress;
+  }
+}
+
+class _DandiyaVideoDialog extends StatefulWidget {
+  const _DandiyaVideoDialog();
+
+  @override
+  State<_DandiyaVideoDialog> createState() => _DandiyaVideoDialogState();
+}
+
+class _DandiyaVideoDialogState extends State<_DandiyaVideoDialog> {
+  Timer? _closeCountdownTimer;
+  Timer? _autoCloseTimer;
+  int _secondsUntilClose = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _closeCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _secondsUntilClose--;
+        if (_secondsUntilClose <= 0) {
+          _secondsUntilClose = 0;
+          timer.cancel();
+        }
+      });
+    });
+    _autoCloseTimer = Timer(const Duration(seconds: 18), _dismiss);
+  }
+
+  void _dismiss() {
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _closeCountdownTimer?.cancel();
+    _autoCloseTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const aspectRatio = 16 / 9;
+    final screenSize = MediaQuery.sizeOf(context);
+    final maxVideoHeight = screenSize.height * 0.72;
+    final dialogWidth = math.min(
+      math.min(screenSize.width - 48, 1280.0),
+      maxVideoHeight * aspectRatio,
+    );
+
+    return PopScope(
+      canPop: _secondsUntilClose == 0,
+      child: Dialog(
+        backgroundColor: const Color(0xFFFFFBF3),
+        insetPadding: const EdgeInsets.all(20),
+        constraints: BoxConstraints(maxWidth: dialogWidth),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFFC7A76C), width: 1.5),
+        ),
+        child: SizedBox(
+          width: dialogWidth,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.asset(
+                            'DNFarytaleIamges/dandiya_gif.gif',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(
+                                  child: Text(
+                                    'Unable to load the bundled Dandiya GIF.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: _DnFairytaleLandingPageState
+                                          ._brandNavy,
+                                    ),
+                                  ),
+                                ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Semantics(
+                          button: true,
+                          enabled: _secondsUntilClose == 0,
+                          label: 'Close Dandiya video',
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _secondsUntilClose == 0 ? _dismiss : null,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 28,
+                                color: Colors.white.withValues(
+                                  alpha: _secondsUntilClose == 0 ? 1 : 0.55,
+                                ),
+                                shadows: const [
+                                  Shadow(color: Colors.black54, blurRadius: 5),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

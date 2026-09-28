@@ -4061,20 +4061,44 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           0,
           (sum, tender) => sum + _asNum(tender['amountPaid']).toDouble(),
         );
+        final refreshedDueDetails =
+            (selection.tender == 'OFFLINE_BANK_TRANSFER' ||
+                selection.tender == 'QR_PAYMENT')
+            ? selection.paidDueDetails
+            : null;
 
         final requestBody = {
           'genericHeader': ApiService.userHeader != null
               ? Map<String, dynamic>.from(ApiService.userHeader!)
               : <String, dynamic>{},
-          'paymentId': paymentId,
-          'DueId': dueId,
+          'paymentId':
+              refreshedDueDetails?['paymentId']?.toString().trim() ?? paymentId,
+          'DueId':
+              refreshedDueDetails?['dueId']?.toString().trim() ??
+              refreshedDueDetails?['DueId']?.toString().trim() ??
+              dueId,
           'amount': _formatAmountForRequest(totalTenderAmount),
           'paymentTenderDataList': paymentTenderDataList,
-          'paymentCycle': payment['collectionCycle']?.toString().trim() ?? '',
-          'paymentName': payment['paymentName']?.toString().trim() ?? '',
-          'dueDate': payment['dueDate']?.toString().trim() ?? '',
-          'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
-          'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+          'paymentCycle':
+              refreshedDueDetails?['collectionCycle']?.toString().trim() ??
+              payment['collectionCycle']?.toString().trim() ??
+              '',
+          'paymentName':
+              refreshedDueDetails?['paymentName']?.toString().trim() ??
+              payment['paymentName']?.toString().trim() ??
+              '',
+          'dueDate':
+              refreshedDueDetails?['dueDate']?.toString().trim() ??
+              payment['dueDate']?.toString().trim() ??
+              '',
+          'dueStartDate':
+              refreshedDueDetails?['dueStartDate']?.toString().trim() ??
+              payment['dueStartDate']?.toString().trim() ??
+              '',
+          'dueEndDate':
+              refreshedDueDetails?['dueEndDate']?.toString().trim() ??
+              payment['dueEndDate']?.toString().trim() ??
+              '',
           'bankInstrumentTenderDetails': selection.bankInstrumentTenderDetails,
           'thirdPartyTransactionId': thirdPartyTransactionId,
           'transactionStatus': transactionStatus,
@@ -4086,54 +4110,70 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           'creditNoteConsumedAmount': _formatAmountForRequest(
             selection.creditNoteConsumedAmount,
           ),
-          'paidDueDetails': {
-            'dueId': dueId,
-            'collectionCycle':
-                payment['collectionCycle']?.toString().trim() ?? '',
-            'flatArea': payment['flatArea']?.toString().trim() ?? '',
-            'dueDate': payment['dueDate']?.toString().trim() ?? '',
-            'paymentId': paymentId,
-            'amount': payment['amount']?.toString().trim() ?? '',
-            'gstAmount': payment['gstAmount']?.toString().trim() ?? '',
-            'totalAmount': payment['totalAmount']?.toString().trim() ?? '',
-            'paymentName': payment['paymentName']?.toString().trim() ?? '',
-            'paymentType': payment['paymentType']?.toString().trim() ?? '',
-            'cause': payment['cause']?.toString().trim() ?? '',
-            'paymentCapita': payment['paymentCapita']?.toString().trim() ?? '',
-            'addedCharges': payment['addedCharges']?.toString().trim() ?? '',
-            'amountPerMonth':
-                payment['amountPerMonth']?.toString().trim() ?? '',
-            'totalAddedCharges':
-                payment['totalAddedCharges']?.toString().trim() ?? '',
-            'estimatedCollectionAmount':
-                payment['estimatedCollectionAmount']?.toString().trim() ?? '',
-            'gstPercentage': payment['gstPercentage']?.toString().trim() ?? '',
-            'discountCode': payment['discountCode']?.toString().trim() ?? '',
-            'discountMode': payment['discountMode']?.toString().trim() ?? '',
-            'cummilationCycle':
-                payment['cummilationCycle']?.toString().trim() ?? '',
-            'fineCode': payment['fineCode']?.toString().trim() ?? '',
-            'discValue': payment['discValue']?.toString().trim() ?? '',
-            'fnValue': payment['fnValue']?.toString().trim() ?? '',
-            'discountedAmount':
-                payment['discountedAmount']?.toString().trim() ?? '',
-            'fineAmount': payment['fineAmount']?.toString().trim() ?? '',
-            'fineMode': payment['fineMode']?.toString().trim() ?? '',
-            'fineType': payment['fineType']?.toString().trim() ?? '',
-            'roundUpAmount': payment['roundUpAmount']?.toString().trim() ?? '',
-            'alreadyPaidAmount':
-                payment['alreadyPaidAmount']?.toString().trim() ?? '',
-            'adminDiscount': payment['adminDiscount']?.toString().trim() ?? '',
-            'applicableFlats':
-                payment['applicableFlats']?.toString().trim() ?? '',
-            'paidFlats': payment['paidFlats']?.toString().trim() ?? '',
-            'allowedTenders':
-                payment['allowedTenders']?.toString().trim() ?? '',
-            'paymentStatus': payment['paymentStatus']?.toString().trim() ?? '',
-            'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
-            'dueStartDate': payment['dueStartDate']?.toString().trim() ?? '',
-            'paymentDate': payment['paymentDate']?.toString().trim() ?? '',
-          },
+          'paidDueDetails': refreshedDueDetails != null
+              ? refreshedDueDetails
+              : {
+                  'dueId': dueId,
+                  'collectionCycle':
+                      payment['collectionCycle']?.toString().trim() ?? '',
+                  'flatArea': payment['flatArea']?.toString().trim() ?? '',
+                  'dueDate': payment['dueDate']?.toString().trim() ?? '',
+                  'paymentId': paymentId,
+                  'amount': payment['amount']?.toString().trim() ?? '',
+                  'gstAmount': payment['gstAmount']?.toString().trim() ?? '',
+                  'totalAmount':
+                      payment['totalAmount']?.toString().trim() ?? '',
+                  'paymentName':
+                      payment['paymentName']?.toString().trim() ?? '',
+                  'paymentType':
+                      payment['paymentType']?.toString().trim() ?? '',
+                  'cause': payment['cause']?.toString().trim() ?? '',
+                  'paymentCapita':
+                      payment['paymentCapita']?.toString().trim() ?? '',
+                  'addedCharges':
+                      payment['addedCharges']?.toString().trim() ?? '',
+                  'amountPerMonth':
+                      payment['amountPerMonth']?.toString().trim() ?? '',
+                  'totalAddedCharges':
+                      payment['totalAddedCharges']?.toString().trim() ?? '',
+                  'estimatedCollectionAmount':
+                      payment['estimatedCollectionAmount']?.toString().trim() ??
+                      '',
+                  'gstPercentage':
+                      payment['gstPercentage']?.toString().trim() ?? '',
+                  'discountCode':
+                      payment['discountCode']?.toString().trim() ?? '',
+                  'discountMode':
+                      payment['discountMode']?.toString().trim() ?? '',
+                  'cummilationCycle':
+                      payment['cummilationCycle']?.toString().trim() ?? '',
+                  'fineCode': payment['fineCode']?.toString().trim() ?? '',
+                  'discValue': payment['discValue']?.toString().trim() ?? '',
+                  'fnValue': payment['fnValue']?.toString().trim() ?? '',
+                  'discountedAmount':
+                      payment['discountedAmount']?.toString().trim() ?? '',
+                  'fineAmount': payment['fineAmount']?.toString().trim() ?? '',
+                  'fineMode': payment['fineMode']?.toString().trim() ?? '',
+                  'fineType': payment['fineType']?.toString().trim() ?? '',
+                  'roundUpAmount':
+                      payment['roundUpAmount']?.toString().trim() ?? '',
+                  'alreadyPaidAmount':
+                      payment['alreadyPaidAmount']?.toString().trim() ?? '',
+                  'adminDiscount':
+                      payment['adminDiscount']?.toString().trim() ?? '',
+                  'applicableFlats':
+                      payment['applicableFlats']?.toString().trim() ?? '',
+                  'paidFlats': payment['paidFlats']?.toString().trim() ?? '',
+                  'allowedTenders':
+                      payment['allowedTenders']?.toString().trim() ?? '',
+                  'paymentStatus':
+                      payment['paymentStatus']?.toString().trim() ?? '',
+                  'dueEndDate': payment['dueEndDate']?.toString().trim() ?? '',
+                  'dueStartDate':
+                      payment['dueStartDate']?.toString().trim() ?? '',
+                  'paymentDate':
+                      payment['paymentDate']?.toString().trim() ?? '',
+                },
         };
 
         final response = await ApiService.payDues(requestBody);
@@ -4785,6 +4825,21 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  Widget _buildDueAsOfTodayNote({required bool isNarrow}) {
+    return SizedBox(
+      width: isNarrow ? 132 : 205,
+      child: const Text(
+        'Due Amount is Calculated As Of Today',
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          color: Color(0xFF526A63),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   Widget _buildGroupPanel(
     _DueGroupData group,
     int index, {
@@ -5018,28 +5073,43 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                               .toList(growable: false);
 
                           if (isNarrow) {
-                            return SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (final chip in cycleChips)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: chip,
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        for (final chip in cycleChips)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
+                                            child: chip,
+                                          ),
+                                      ],
                                     ),
-                                ],
-                              ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _buildDueAsOfTodayNote(isNarrow: true),
+                              ],
                             );
                           }
 
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: cycleChips,
-                            ),
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: cycleChips,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              _buildDueAsOfTodayNote(isNarrow: false),
+                            ],
                           );
                         },
                       ),
@@ -5181,27 +5251,40 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                     );
                   }).toList();
                   if (isNarrow) {
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final chip in chipWidgets)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: chip,
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final chip in chipWidgets)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: chip,
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildDueAsOfTodayNote(isNarrow: true),
+                      ],
                     );
                   }
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: chipWidgets,
-                    ),
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: chipWidgets,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _buildDueAsOfTodayNote(isNarrow: false),
+                    ],
                   );
                 },
               ),
@@ -5562,6 +5645,7 @@ class _DueTenderSelection {
     required this.noOfPersons,
     required this.listOfFiles,
     required this.bankInstrumentTenderDetails,
+    this.paidDueDetails,
     this.creditNoteUsed = false,
     this.creditNoteConsumedAmount = 0,
   });
@@ -5571,6 +5655,7 @@ class _DueTenderSelection {
   final int noOfPersons;
   final List<String> listOfFiles;
   final List<Map<String, dynamic>> bankInstrumentTenderDetails;
+  final Map<String, dynamic>? paidDueDetails;
   final bool creditNoteUsed;
   final double creditNoteConsumedAmount;
 }
@@ -5969,6 +6054,14 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   String? _serviceMessage;
   String? _validationMessage;
   bool _isCreatingOtp = false;
+  Map<String, dynamic>? _offlineTransactionDueDetails;
+  Map<String, dynamic>? _offlineTransactionDueAmountDetailsEntity;
+  bool _loadingOfflineTransactionDue = false;
+  String? _offlineTransactionDueError;
+  bool _showDueDetailsExtension = false;
+  Timer? _offlineTransferDateDebounce;
+  int _offlineDueRequestId = 0;
+  String? _offlineDueRequestKey;
 
   @override
   void initState() {
@@ -5977,6 +6070,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         ? widget.allowedModes.first
         : 'ONLINE';
     _personCount = 0;
+    _transferDateController.addListener(_onOfflineTransferDateChanged);
     if (_isPerHeadCapita) {
       _schedulePerHeadAmountRefresh(immediate: true);
     }
@@ -5985,6 +6079,8 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   @override
   void dispose() {
     _perHeadDebounce?.cancel();
+    _offlineTransferDateDebounce?.cancel();
+    _transferDateController.removeListener(_onOfflineTransferDateChanged);
     _personCountController.dispose();
     _chequeNumberController.dispose();
     _chequeDateController.dispose();
@@ -6060,9 +6156,477 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return null;
   }
 
+  // Recursively scan the response for due-like maps (any map exposing a
+  // dueId/DueId/id field) regardless of the wrapping key name or nesting
+  // depth, since different responses may not use the same envelope shape.
+  Map<String, dynamic> _normalizeOfflineTransactionDueDetails(
+    Map<String, dynamic> response,
+  ) {
+    String? extractDueId(Map entry) {
+      for (final key in ['DueId', 'dueId', 'id', 'dueID']) {
+        final text = entry[key]?.toString().trim() ?? '';
+        if (text.isNotEmpty && text.toLowerCase() != 'null') {
+          return text;
+        }
+      }
+      return null;
+    }
+
+    final normalized = <String, dynamic>{};
+
+    void collect(dynamic node, int depth) {
+      if (depth > 4) {
+        return;
+      }
+      if (node is Map) {
+        final dueId = extractDueId(node);
+        if (dueId != null) {
+          normalized[dueId] = Map<String, dynamic>.from(node);
+          return;
+        }
+        for (final value in node.values) {
+          collect(value, depth + 1);
+        }
+      } else if (node is List) {
+        for (final item in node) {
+          collect(item, depth + 1);
+        }
+      }
+    }
+
+    collect(response, 0);
+
+    if (normalized.isNotEmpty) {
+      return normalized;
+    }
+
+    return Map<String, dynamic>.from(response);
+  }
+
+  bool get _hasOfflineDueDetails =>
+      (_selectedTender == 'OFFLINE_BANK_TRANSFER' ||
+          _selectedTender == 'QR_PAYMENT') &&
+      _offlineTransactionDueDetails != null &&
+      _offlineTransactionDueDetails!.isNotEmpty &&
+      !_loadingOfflineTransactionDue;
+
+  bool get _offlineTransferReady {
+    final isOfflineTransfer = _selectedTender == 'OFFLINE_BANK_TRANSFER';
+    final isQrPayment = _selectedTender == 'QR_PAYMENT';
+    if (!isOfflineTransfer && !isQrPayment) {
+      return true;
+    }
+
+    final transactionDate = isQrPayment
+        ? _formatInstrumentDate(DateTime.now())
+        : _transferDateController.text.trim();
+    if (transactionDate.isEmpty) return false;
+
+    final parsedDate = _parseInstrumentDate(transactionDate);
+    final today = DateTime.now();
+    final isToday =
+        parsedDate != null &&
+        parsedDate.year == today.year &&
+        parsedDate.month == today.month &&
+        parsedDate.day == today.day;
+
+    // Today's date uses the original due, so no fetched details are needed.
+    if (isOfflineTransfer && isToday) {
+      return true;
+    }
+
+    return !_loadingOfflineTransactionDue &&
+        _offlineTransactionDueError == null &&
+        _offlineTransactionDueDetails != null &&
+        _offlineTransactionDueDetails!.isNotEmpty &&
+        _offlineTransactionDueAmountDetailsEntity != null &&
+        _offlineTransactionDueAmountDetailsEntity!.isNotEmpty;
+  }
+
+  Map<String, dynamic> _latestDueDetailsForPayDues() {
+    if (_selectedTender != 'OFFLINE_BANK_TRANSFER' &&
+        _selectedTender != 'QR_PAYMENT') {
+      return Map<String, dynamic>.from(widget.duePayment);
+    }
+
+    final dueAmountDetailsEntity = _offlineTransactionDueAmountDetailsEntity;
+    if (dueAmountDetailsEntity != null && dueAmountDetailsEntity.isNotEmpty) {
+      return Map<String, dynamic>.from(dueAmountDetailsEntity);
+    }
+
+    final latest = _offlineTransactionDueDetails;
+    if (latest == null || latest.isEmpty) {
+      return Map<String, dynamic>.from(widget.duePayment);
+    }
+
+    return _matchOfflineDueEntry(latest) ??
+        Map<String, dynamic>.from(widget.duePayment);
+  }
+
+  Map<String, dynamic>? _extractDueAmountDetailsEntity(
+    Map<String, dynamic> response,
+  ) {
+    final selectedDueId = _dueId.trim().toLowerCase();
+    final selectedStartDate =
+        widget.duePayment['dueStartDate']?.toString().trim() ?? '';
+    final selectedDueDate =
+        widget.duePayment['dueDate']?.toString().trim() ?? '';
+    final selectedEndDate =
+        widget.duePayment['dueEndDate']?.toString().trim() ?? '';
+    final candidates = <Map<String, dynamic>>[];
+
+    void collect(dynamic value) {
+      if (value is Map) {
+        if (value.containsKey('dueId') || value.containsKey('DueId')) {
+          candidates.add(Map<String, dynamic>.from(value));
+          return;
+        }
+        for (final nestedValue in value.values) {
+          collect(nestedValue);
+        }
+      } else if (value is List) {
+        for (final item in value) {
+          collect(item);
+        }
+      }
+    }
+
+    collect(response['dueDetails']);
+
+    for (final due in candidates) {
+      final dueId =
+          (due['dueId'] ?? due['DueId'])?.toString().trim().toLowerCase() ?? '';
+      final dueStartDate = due['dueStartDate']?.toString().trim() ?? '';
+      final dueDate = due['dueDate']?.toString().trim() ?? '';
+      final dueEndDate = due['dueEndDate']?.toString().trim() ?? '';
+      if (dueId == selectedDueId &&
+          dueStartDate == selectedStartDate &&
+          dueDate == selectedDueDate &&
+          dueEndDate == selectedEndDate) {
+        return due;
+      }
+    }
+
+    return null;
+  }
+
+  void _onOfflineTransferDateChanged() {
+    if (_selectedTender != 'OFFLINE_BANK_TRANSFER') {
+      return;
+    }
+    _offlineTransferDateDebounce?.cancel();
+    _offlineTransferDateDebounce = Timer(
+      const Duration(milliseconds: 300),
+      _handleOfflineTransferDateChange,
+    );
+  }
+
+  Future<void> _handleOfflineTransferDateChange() async {
+    _offlineTransferDateDebounce?.cancel();
+    _offlineTransferDateDebounce = null;
+
+    final isOfflineTransfer = _selectedTender == 'OFFLINE_BANK_TRANSFER';
+    final isQrPayment = _selectedTender == 'QR_PAYMENT';
+    if (!isOfflineTransfer && !isQrPayment) {
+      return;
+    }
+
+    final transactionDate = isQrPayment
+        ? _formatInstrumentDate(DateTime.now())
+        : _transferDateController.text.trim();
+    if (transactionDate.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      _offlineDueRequestKey = null;
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = null;
+        _offlineTransactionDueAmountDetailsEntity = null;
+        _offlineTransactionDueError = null;
+        _showDueDetailsExtension = false;
+      });
+      return;
+    }
+
+    final parsedDate = _parseInstrumentDate(transactionDate);
+    if (parsedDate == null) {
+      if (!mounted) {
+        return;
+      }
+      _offlineDueRequestKey = null;
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = null;
+        _offlineTransactionDueAmountDetailsEntity = null;
+        _offlineTransactionDueError = 'Please enter a valid transaction date.';
+        _showDueDetailsExtension = false;
+      });
+      return;
+    }
+
+    final today = DateTime.now();
+    final isToday =
+        parsedDate.year == today.year &&
+        parsedDate.month == today.month &&
+        parsedDate.day == today.day;
+
+    // Today's date keeps the original due display; only a backdated
+    // transaction date needs the as-of-date due details from the API.
+    if (isOfflineTransfer && isToday) {
+      if (!mounted) {
+        return;
+      }
+      _offlineDueRequestKey = null;
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = null;
+        _offlineTransactionDueAmountDetailsEntity = null;
+        _offlineTransactionDueError = null;
+        _showDueDetailsExtension = false;
+      });
+      return;
+    }
+
+    final flatId = _resolveFlatId();
+    if (flatId.isEmpty || flatId == '--') {
+      if (!mounted) {
+        return;
+      }
+      _offlineDueRequestKey = null;
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = null;
+        _offlineTransactionDueAmountDetailsEntity = null;
+        _offlineTransactionDueError =
+            'Unable to identify the selected flat for due validation.';
+        _showDueDetailsExtension = false;
+      });
+      return;
+    }
+
+    final requestDate = _normalizeInstrumentDateForRequest(transactionDate);
+    final requestKey = '$flatId|$requestDate';
+
+    // Skip re-fetching when a request for the same flat/date is already
+    // in-flight or has already completed successfully.
+    if (requestKey == _offlineDueRequestKey &&
+        (_loadingOfflineTransactionDue ||
+            (_offlineTransactionDueDetails != null &&
+                _offlineTransactionDueError == null))) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final requestId = ++_offlineDueRequestId;
+    _offlineDueRequestKey = requestKey;
+
+    setState(() {
+      _loadingOfflineTransactionDue = true;
+      _offlineTransactionDueAmountDetailsEntity = null;
+      _offlineTransactionDueError = null;
+      _showDueDetailsExtension = false;
+    });
+
+    try {
+      final response = await ApiService.getDueDetailsAsTransactionDate(
+        flatId: flatId,
+        transactionDate: requestDate,
+        specificDue: widget.duePayment,
+      );
+
+      if (!mounted || requestId != _offlineDueRequestId) {
+        return;
+      }
+
+      if (response == null || response.isEmpty) {
+        setState(() {
+          _loadingOfflineTransactionDue = false;
+          _offlineTransactionDueDetails = null;
+          _offlineTransactionDueAmountDetailsEntity = null;
+          _offlineTransactionDueError =
+              'Unable to fetch due details for the selected transaction date.';
+          _showDueDetailsExtension = false;
+        });
+        return;
+      }
+
+      final normalized = _normalizeOfflineTransactionDueDetails(response);
+      final matched = _matchOfflineDueEntry(normalized);
+      debugPrint(
+        '[OfflineDue] selectedDueId=$_dueId '
+        'selectedRange=${widget.duePayment['dueStartDate']}..${widget.duePayment['dueEndDate']} '
+        'normalized dueIds=${normalized.keys.toList()} '
+        'matched=${matched == null ? 'none' : '${matched['dueId'] ?? matched['DueId']} '
+                  '${matched['dueStartDate']}..${matched['dueEndDate']}'}',
+      );
+
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = normalized;
+        _offlineTransactionDueAmountDetailsEntity =
+            _extractDueAmountDetailsEntity(response);
+        _offlineTransactionDueError = null;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _offlineDueRequestId) {
+        return;
+      }
+      setState(() {
+        _loadingOfflineTransactionDue = false;
+        _offlineTransactionDueDetails = null;
+        _offlineTransactionDueAmountDetailsEntity = null;
+        _offlineTransactionDueError =
+            'Unable to fetch due details for the selected transaction date.';
+        _showDueDetailsExtension = false;
+      });
+    }
+  }
+
+  /// Finds the due entry in the fetched offline-transfer response that
+  /// corresponds to the due currently being paid. Matches by dueId first
+  /// (case/whitespace-insensitive), then by the exact due period
+  /// (dueStartDate + dueEndDate + collectionCycle) so cycles of the same
+  /// type (e.g. two quarterly dues) are never confused with each other,
+  /// then by dueDate + collectionCycle + cause, and finally to the sole
+  /// entry when the response only contains one due.
+  Map<String, dynamic>? _matchOfflineDueEntry(Map<String, dynamic> latest) {
+    Iterable<Map<String, dynamic>> allEntries() sync* {
+      for (final entry in latest.entries) {
+        final value = entry.value;
+        if (value is Map) {
+          yield Map<String, dynamic>.from(value);
+        } else if (value is List) {
+          for (final item in value) {
+            if (item is Map) {
+              yield Map<String, dynamic>.from(item);
+            }
+          }
+        }
+      }
+    }
+
+    final selectedDueId = _dueId.trim().toLowerCase();
+    if (selectedDueId.isNotEmpty) {
+      for (final entry in latest.entries) {
+        if (entry.key.trim().toLowerCase() == selectedDueId &&
+            entry.value is Map) {
+          return Map<String, dynamic>.from(entry.value as Map);
+        }
+      }
+
+      for (final due in allEntries()) {
+        final candidates = [
+          due['DueId'],
+          due['dueId'],
+          due['id'],
+          due['dueID'],
+        ];
+        for (final candidate in candidates) {
+          final candidateId = candidate?.toString().trim().toLowerCase() ?? '';
+          if (candidateId.isNotEmpty && candidateId == selectedDueId) {
+            return due;
+          }
+        }
+      }
+    }
+
+    final originalCycle = widget.duePayment['collectionCycle']
+        ?.toString()
+        .trim()
+        .toUpperCase();
+    final originalStartDate = widget.duePayment['dueStartDate']
+        ?.toString()
+        .trim();
+    final originalEndDate = widget.duePayment['dueEndDate']?.toString().trim();
+    final originalDueDate = widget.duePayment['dueDate']?.toString().trim();
+    final originalCause =
+        (widget.duePayment['cause'] ?? widget.duePayment['paymentName'])
+            ?.toString()
+            .trim()
+            .toLowerCase();
+
+    // Disambiguate between multiple dues of the same collectionCycle (e.g.
+    // two quarterly dues) using the exact start/end period, not just the
+    // cycle type.
+    if (originalCycle != null &&
+        originalCycle.isNotEmpty &&
+        originalStartDate != null &&
+        originalStartDate.isNotEmpty &&
+        originalEndDate != null &&
+        originalEndDate.isNotEmpty) {
+      for (final due in allEntries()) {
+        final cycle = due['collectionCycle']?.toString().trim().toUpperCase();
+        final startDate = due['dueStartDate']?.toString().trim();
+        final endDate = due['dueEndDate']?.toString().trim();
+        if (cycle == originalCycle &&
+            startDate == originalStartDate &&
+            endDate == originalEndDate) {
+          return due;
+        }
+      }
+    }
+
+    if (originalDueDate != null &&
+        originalDueDate.isNotEmpty &&
+        originalCycle != null &&
+        originalCycle.isNotEmpty) {
+      for (final due in allEntries()) {
+        final dueDate = due['dueDate']?.toString().trim();
+        final cycle = due['collectionCycle']?.toString().trim().toUpperCase();
+        final cause = (due['cause'] ?? due['paymentName'])
+            ?.toString()
+            .trim()
+            .toLowerCase();
+        if (dueDate == originalDueDate &&
+            cycle == originalCycle &&
+            (originalCause == null ||
+                originalCause.isEmpty ||
+                cause == originalCause)) {
+          return due;
+        }
+      }
+    }
+
+    if (latest.length == 1) {
+      final onlyValue = latest.values.first;
+      if (onlyValue is Map) {
+        return Map<String, dynamic>.from(onlyValue);
+      }
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> _resolvedDuePaymentForCurrentSelection() {
+    final dueAmountDetailsEntity = _offlineTransactionDueAmountDetailsEntity;
+    if ((_selectedTender == 'OFFLINE_BANK_TRANSFER' ||
+            _selectedTender == 'QR_PAYMENT') &&
+        dueAmountDetailsEntity != null &&
+        dueAmountDetailsEntity.isNotEmpty) {
+      return Map<String, dynamic>.from(dueAmountDetailsEntity);
+    }
+
+    final latest = _offlineTransactionDueDetails;
+    if (latest == null || latest.isEmpty) {
+      return Map<String, dynamic>.from(widget.duePayment);
+    }
+
+    return _matchOfflineDueEntry(latest) ??
+        Map<String, dynamic>.from(widget.duePayment);
+  }
+
   double get _baseAmount {
+    final dueDetails = _resolvedDuePaymentForCurrentSelection();
     final totalAmount =
-        widget.duePayment['totalAmount']?.toString().trim() ?? '';
+        dueDetails['totalAmount']?.toString().trim() ??
+        dueDetails['amount']?.toString().trim() ??
+        dueDetails['netAmount']?.toString().trim() ??
+        dueDetails['dueAmount']?.toString().trim() ??
+        '';
     final normalized = totalAmount.replaceAll(RegExp(r'[^0-9.]'), '');
     return double.tryParse(normalized) ?? 0;
   }
@@ -6436,6 +7000,13 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
   }
 
   void _clearTenderSpecificState() {
+    _showDueDetailsExtension = false;
+    _offlineDueRequestKey = null;
+    _offlineDueRequestId++;
+    _offlineTransactionDueDetails = null;
+    _offlineTransactionDueAmountDetailsEntity = null;
+    _loadingOfflineTransactionDue = false;
+    _offlineTransactionDueError = null;
     _receipts.clear();
     _chequeNumberController.clear();
     _chequeDateController.clear();
@@ -6555,8 +7126,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
-        readOnly: readOnly || isDateField,
-        onTap: onTap == null ? null : () => onTap(),
+        readOnly: readOnly || (isDateField && useReadOnlyFill),
+        onTap: (isDateField && useReadOnlyFill && onTap != null)
+            ? () => onTap()
+            : null,
         decoration: InputDecoration(
           labelText: label,
           filled: true,
@@ -6576,7 +7149,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
             borderSide: const BorderSide(color: Color(0xFF0F8F82), width: 1.4),
           ),
           suffixIcon: isDateField
-              ? const Icon(Icons.calendar_month_outlined)
+              ? IconButton(
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  onPressed: onTap == null ? null : () => onTap(),
+                )
               : null,
         ),
       ),
@@ -6605,6 +7181,44 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
 
     if (pickedDate == null) return;
     controller.text = _formatInstrumentDate(pickedDate);
+    if (controller == _transferDateController) {
+      _offlineTransferDateDebounce?.cancel();
+      _handleOfflineTransferDateChange();
+    }
+  }
+
+  int? _parseMonthToken(String token) {
+    final numMonth = int.tryParse(token);
+    if (numMonth != null && numMonth >= 1 && numMonth <= 12) {
+      return numMonth;
+    }
+    const months = {
+      'JAN': 1,
+      'JANUARY': 1,
+      'FEB': 2,
+      'FEBRUARY': 2,
+      'MAR': 3,
+      'MARCH': 3,
+      'APR': 4,
+      'APRIL': 4,
+      'MAY': 5,
+      'JUN': 6,
+      'JUNE': 6,
+      'JUL': 7,
+      'JULY': 7,
+      'AUG': 8,
+      'AUGUST': 8,
+      'SEP': 9,
+      'SEPT': 9,
+      'SEPTEMBER': 9,
+      'OCT': 10,
+      'OCTOBER': 10,
+      'NOV': 11,
+      'NOVEMBER': 11,
+      'DEC': 12,
+      'DECEMBER': 12,
+    };
+    return months[token.toUpperCase().trim()];
   }
 
   DateTime? _parseInstrumentDate(String value) {
@@ -6616,31 +7230,27 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
       return DateTime(directParse.year, directParse.month, directParse.day);
     }
 
-    final parts = trimmed.split('-');
+    final parts = trimmed.split(RegExp(r'[-/.\s]'));
     if (parts.length != 3) return null;
 
+    // Check if parts[0] is 4 digits: YYYY-MM-DD or YYYY/MM/DD
+    if (parts[0].length == 4) {
+      final year = int.tryParse(parts[0]);
+      final month = _parseMonthToken(parts[1]);
+      final day = int.tryParse(parts[2]);
+      if (year != null && month != null && day != null) {
+        return DateTime(year, month, day);
+      }
+    }
+
+    // Otherwise DD-MM-YYYY, DD/MM/YYYY, DD-MMM-YYYY
     final day = int.tryParse(parts[0]);
+    final month = _parseMonthToken(parts[1]);
     final year = int.tryParse(parts[2]);
-    if (day == null || year == null) return null;
+    if (day == null || month == null || year == null) return null;
 
-    const months = {
-      'JAN': 1,
-      'FEB': 2,
-      'MAR': 3,
-      'APR': 4,
-      'MAY': 5,
-      'JUN': 6,
-      'JUL': 7,
-      'AUG': 8,
-      'SEP': 9,
-      'OCT': 10,
-      'NOV': 11,
-      'DEC': 12,
-    };
-    final month = months[parts[1].toUpperCase()];
-    if (month == null) return null;
-
-    return DateTime(year, month, day);
+    final fullYear = year < 100 ? 2000 + year : year;
+    return DateTime(fullYear, month, day);
   }
 
   String _formatInstrumentDate(DateTime date) {
@@ -6683,6 +7293,304 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
     return '';
   }
 
+  String _toCamelCase(String text) {
+    if (text.isEmpty) return text;
+    return text
+        .split(RegExp(r'[\s_]+'))
+        .where((word) => word.isNotEmpty)
+        .map((word) {
+          final lower = word.toLowerCase();
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
+  }
+
+  Widget _buildDueDetailsExtensionPanel() {
+    final due = _resolvedDuePaymentForCurrentSelection();
+    final amount = due['amount']?.toString().trim() ?? '0';
+    final gstAmount = due['gstAmount']?.toString().trim() ?? '0';
+    final gstPercentage = due['gstPercentage']?.toString().trim() ?? '';
+    final totalAmount =
+        due['totalAmount']?.toString().trim() ??
+        due['netAmount']?.toString().trim() ??
+        due['dueAmount']?.toString().trim() ??
+        '0';
+    final totalAddedCharges =
+        due['totalAddedCharges']?.toString().trim() ?? '0';
+    final dueStartDate = due['dueStartDate']?.toString().trim() ?? '--';
+    final dueEndDate = due['dueEndDate']?.toString().trim() ?? '--';
+    final dueDate = due['dueDate']?.toString().trim() ?? '--';
+    final paymentType =
+        due['paymentType']?.toString().trim() ??
+        due['paymentName']?.toString().trim() ??
+        '--';
+    final discountCode = due['discountCode']?.toString().trim() ?? '';
+    final discountedAmount = due['discountedAmount']?.toString().trim() ?? '';
+    final fineAmount = due['fineAmount']?.toString().trim() ?? '';
+
+    final hasDiscountAmount =
+        discountedAmount.isNotEmpty &&
+        discountedAmount.toLowerCase() != 'null' &&
+        discountedAmount != '0';
+    final hasDiscountCode =
+        discountCode.isNotEmpty && discountCode.toLowerCase() != 'null';
+
+    final discountText = hasDiscountAmount
+        ? hasDiscountCode
+              ? '${widget.formatAsCurrency(discountedAmount)} ($discountCode)'
+              : widget.formatAsCurrency(discountedAmount)
+        : widget.formatAsCurrency('0');
+
+    final hasFineAmount =
+        fineAmount.isNotEmpty &&
+        fineAmount.toLowerCase() != 'null' &&
+        fineAmount != '0';
+
+    final fineText = hasFineAmount
+        ? widget.formatAsCurrency(fineAmount)
+        : widget.formatAsCurrency('0');
+
+    final totalSavingsText = hasDiscountAmount
+        ? widget.formatAsCurrency(discountedAmount)
+        : widget.formatAsCurrency('0');
+
+    final rawAmount = totalAmount
+        .replaceAll('₹', '')
+        .replaceAll(',', '')
+        .trim();
+    final parsedAmount = double.tryParse(rawAmount);
+    final normalizedAmount =
+        parsedAmount != null && parsedAmount == parsedAmount.truncateToDouble()
+        ? parsedAmount.toInt().toString()
+        : totalAmount;
+    final formattedAmount = widget.formatAsCurrency(normalizedAmount);
+    final paymentCapita = due['paymentCapita']?.toString().trim().toUpperCase();
+    final netPayableText = paymentCapita == 'PER_HEAD'
+        ? '$formattedAmount Per Head'
+        : formattedAmount;
+
+    final gstText =
+        gstPercentage.isNotEmpty && gstPercentage.toLowerCase() != 'null'
+        ? '${widget.formatAsCurrency(gstAmount)} ($gstPercentage%)'
+        : widget.formatAsCurrency(gstAmount);
+
+    final collectionCycle = due['collectionCycle']?.toString().trim() ?? '';
+    final isOnceCycle = collectionCycle.toUpperCase() == 'ONCE';
+    final rows = [
+      (isOnceCycle ? 'Payment Start' : 'Cycle Start', dueStartDate),
+      (isOnceCycle ? 'Payment End' : 'Cycle End', dueEndDate),
+      ('Due Date', dueDate),
+      ('Amount', widget.formatAsCurrency(amount)),
+      ('Discount', discountText),
+      ('GST', gstText),
+      ('Added Charges', widget.formatAsCurrency(totalAddedCharges)),
+      ('Fine', fineText),
+      ('Total Savings', totalSavingsText),
+      ('Payment Type', _toCamelCase(paymentType)),
+    ];
+
+    return Container(
+      width: 360,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FCFA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD7EAE3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2F3EF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.receipt_long_rounded,
+                  color: Color(0xFF0F8F82),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Due Details',
+                  style: TextStyle(
+                    color: Color(0xFF124B45),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: Color(0xFF5E6D6B),
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 28,
+                  height: 28,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _showDueDetailsExtension = false;
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD7EAE3)),
+            ),
+            child: Column(
+              children: [
+                ...rows.asMap().entries.map((entry) {
+                  final isLast = entry.key == rows.length - 1;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: entry.key.isEven
+                          ? const Color(0xFFEFF8F5)
+                          : Colors.white,
+                      borderRadius: isLast && netPayableText.isEmpty
+                          ? const BorderRadius.vertical(
+                              bottom: Radius.circular(12),
+                            )
+                          : (entry.key == 0
+                                ? const BorderRadius.vertical(
+                                    top: Radius.circular(12),
+                                  )
+                                : null),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 110,
+                            child: Text(
+                              entry.value.$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF3D6B63),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isDiscountRow =
+                                    entry.value.$1 == 'Discount';
+                                final value = entry.value.$2;
+                                if (isDiscountRow && value.contains('(')) {
+                                  final splitIdx = value.indexOf('(');
+                                  final part1 = value
+                                      .substring(0, splitIdx)
+                                      .trim();
+                                  final part2 = value.substring(splitIdx);
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        part1,
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF124B45),
+                                        ),
+                                      ),
+                                      Text(
+                                        part2,
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF124B45),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Text(
+                                  value,
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF124B45),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0F8F82),
+                    borderRadius: BorderRadius.vertical(
+                      bottom: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Net Payable',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        netPayableText,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReadOnlyAmountField() {
     final amountText = _requestAmountText;
     if (_readOnlyAmountController.text != amountText) {
@@ -6706,6 +7614,33 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
           ),
+          suffixIcon: _hasOfflineDueDetails
+              ? Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _showDueDetailsExtension = !_showDueDetailsExtension;
+                      });
+                    },
+                    icon: Icon(
+                      _showDueDetailsExtension
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 15,
+                      color: const Color(0xFF0F8F82),
+                    ),
+                    label: Text(
+                      _showDueDetailsExtension ? 'Hide' : 'View Details',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F8F82),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
         ),
       ),
     );
@@ -6996,12 +7931,15 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           return sum + parsed;
         });
 
+        final latestDueDetails = _latestDueDetailsForPayDues();
         final requestBody = {
           'genericHeader': ApiService.userHeader != null
               ? Map<String, dynamic>.from(ApiService.userHeader!)
               : <String, dynamic>{},
           'paymentId': widget.duePayment['paymentId']?.toString().trim() ?? '',
           'DueId':
+              latestDueDetails['DueId']?.toString().trim() ??
+              latestDueDetails['dueId']?.toString().trim() ??
               widget.duePayment['DueId']?.toString().trim() ??
               widget.duePayment['dueId']?.toString().trim() ??
               '',
@@ -7023,79 +7961,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           'noOfPersons': (_isPerHeadCapita ? _personCount : 0).toString(),
           'files': _receipts.map((receipt) => receipt.filePayload).toList(),
           'otpDetails': {'otp': otpInput.otp, 'otpId': otpInput.otpId},
-          'paidDueDetails': {
-            'dueId':
-                widget.duePayment['DueId']?.toString().trim() ??
-                widget.duePayment['dueId']?.toString().trim() ??
-                '',
-            'collectionCycle':
-                widget.duePayment['collectionCycle']?.toString().trim() ?? '',
-            'flatArea': widget.duePayment['flatArea']?.toString().trim() ?? '',
-            'dueDate': widget.duePayment['dueDate']?.toString().trim() ?? '',
-            'paymentId':
-                widget.duePayment['paymentId']?.toString().trim() ?? '',
-            'amount': widget.duePayment['amount']?.toString().trim() ?? '',
-            'gstAmount':
-                widget.duePayment['gstAmount']?.toString().trim() ?? '',
-            'totalAmount':
-                widget.duePayment['totalAmount']?.toString().trim() ?? '',
-            'paymentName':
-                widget.duePayment['paymentName']?.toString().trim() ?? '',
-            'paymentType':
-                widget.duePayment['paymentType']?.toString().trim() ?? '',
-            'cause': widget.duePayment['cause']?.toString().trim() ?? '',
-            'paymentCapita':
-                widget.duePayment['paymentCapita']?.toString().trim() ?? '',
-            'addedCharges':
-                widget.duePayment['addedCharges']?.toString().trim() ?? '',
-            'amountPerMonth':
-                widget.duePayment['amountPerMonth']?.toString().trim() ?? '',
-            'totalAddedCharges':
-                widget.duePayment['totalAddedCharges']?.toString().trim() ?? '',
-            'estimatedCollectionAmount':
-                widget.duePayment['estimatedCollectionAmount']
-                    ?.toString()
-                    .trim() ??
-                '',
-            'gstPercentage':
-                widget.duePayment['gstPercentage']?.toString().trim() ?? '',
-            'discountCode':
-                widget.duePayment['discountCode']?.toString().trim() ?? '',
-            'discountMode':
-                widget.duePayment['discountMode']?.toString().trim() ?? '',
-            'cummilationCycle':
-                widget.duePayment['cummilationCycle']?.toString().trim() ?? '',
-            'fineCode': widget.duePayment['fineCode']?.toString().trim() ?? '',
-            'discValue':
-                widget.duePayment['discValue']?.toString().trim() ?? '',
-            'fnValue': widget.duePayment['fnValue']?.toString().trim() ?? '',
-            'discountedAmount':
-                widget.duePayment['discountedAmount']?.toString().trim() ?? '',
-            'fineAmount':
-                widget.duePayment['fineAmount']?.toString().trim() ?? '',
-            'fineMode': widget.duePayment['fineMode']?.toString().trim() ?? '',
-            'fineType': widget.duePayment['fineType']?.toString().trim() ?? '',
-            'roundUpAmount':
-                widget.duePayment['roundUpAmount']?.toString().trim() ?? '',
-            'alreadyPaidAmount':
-                widget.duePayment['alreadyPaidAmount']?.toString().trim() ?? '',
-            'adminDiscount':
-                widget.duePayment['adminDiscount']?.toString().trim() ?? '',
-            'applicableFlats':
-                widget.duePayment['applicableFlats']?.toString().trim() ?? '',
-            'paidFlats':
-                widget.duePayment['paidFlats']?.toString().trim() ?? '',
-            'allowedTenders':
-                widget.duePayment['allowedTenders']?.toString().trim() ?? '',
-            'paymentStatus':
-                widget.duePayment['paymentStatus']?.toString().trim() ?? '',
-            'dueEndDate':
-                widget.duePayment['dueEndDate']?.toString().trim() ?? '',
-            'dueStartDate':
-                widget.duePayment['dueStartDate']?.toString().trim() ?? '',
-            'paymentDate':
-                widget.duePayment['paymentDate']?.toString().trim() ?? '',
-          },
+          'paidDueDetails': latestDueDetails,
         };
 
         final response = await ApiService.payDues(requestBody);
@@ -7161,6 +8027,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         noOfPersons: _isPerHeadCapita ? _personCount : 0,
         listOfFiles: _receipts.map((receipt) => receipt.filePayload).toList(),
         bankInstrumentTenderDetails: _buildBankInstrumentTenderDetails(),
+        paidDueDetails: _offlineTransactionDueAmountDetailsEntity == null
+            ? null
+            : _latestDueDetailsForPayDues(),
         creditNoteUsed: _useCreditNote,
         creditNoteConsumedAmount: _creditNoteConsumedAmount,
       ),
@@ -7212,268 +8081,156 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD7EAE3)),
-                ),
+      content: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Payment: $paymentName',
-                      style: const TextStyle(
-                        color: Color(0xFF124B45),
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFD7EAE3)),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Flat ID: $flatId',
-                      style: const TextStyle(
-                        color: Color(0xFF0F8F82),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Gross Amount: ${_formatAmountFieldValue(widget.duePayment['amount'])}',
-                      style: const TextStyle(
-                        color: Color(0xFF124B45),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (_creditNoteRemainingAmount > 0) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Credit Note Available: ${_formatSummaryAmount(_creditNoteRemainingAmount)}',
-                        style: const TextStyle(
-                          color: Color(0xFF0F8F82),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Text(
-                      'Payable Amount: ${_formatSummaryAmount(_netPayable)}',
-                      style: const TextStyle(
-                        color: Color(0xFF0F8F82),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_isPerHeadCapita && _loadingPerHeadAmount)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10),
-                  child: Text(
-                    'Fetching amount for entered person count...',
-                    style: TextStyle(color: Colors.black54, fontSize: 12),
-                  ),
-                ),
-              if (_isPerHeadCapita &&
-                  !_suppressPerHeadApiMessage &&
-                  _perHeadAmountError != null &&
-                  _perHeadAmountError!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _perHeadAmountError!,
-                    style: const TextStyle(
-                      color: Color(0xFFB3261E),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8D9),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE3C96F)),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'To Pay Physically Please Visit Activity Hall, Tower 10, Dn Fairytale.',
-                      style: TextStyle(
-                        color: Color(0xFF6A5723),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.call_rounded,
-                          size: 16,
-                          color: Color(0xFF876F2C),
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          '9777160816',
-                          style: TextStyle(
-                            color: Color(0xFF6A5723),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 500;
-                  final horizontalSpacing = isNarrow ? 8.0 : 10.0;
-                  final chipWidth = isNarrow
-                      ? (constraints.maxWidth - (horizontalSpacing * 2)) / 3
-                      : 150.0;
-                  final chipHeight = isNarrow ? 44.0 : 46.0;
-                  return Wrap(
-                    spacing: horizontalSpacing,
-                    runSpacing: 8,
-                    children: widget.allowedModes.map((mode) {
-                      final isSelected = _selectedTender == mode;
-                      return SizedBox(
-                        width: chipWidth,
-                        height: chipHeight,
-                        child: ChoiceChip(
-                          avatar: Icon(
-                            _tenderModeIcon(mode),
-                            size: isNarrow ? 16 : 18,
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF0F8F82),
-                          ),
-                          label: SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              _displayMode(mode),
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Payment: $paymentName',
+                            style: const TextStyle(
+                              color: Color(0xFF124B45),
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          selected: isSelected,
-                          showCheckmark: false,
-                          visualDensity: isNarrow
-                              ? VisualDensity.compact
-                              : VisualDensity.standard,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isNarrow ? 6 : 8,
-                            vertical: isNarrow ? 2 : 4,
+                          const SizedBox(height: 6),
+                          Text(
+                            'Flat ID: $flatId',
+                            style: const TextStyle(
+                              color: Color(0xFF0F8F82),
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                          onSelected: (_) {
-                            setState(() {
-                              if (_selectedTender != mode) {
-                                _clearTenderSpecificState();
-                              }
-                              _selectedTender = mode;
-                            });
-                          },
-                          selectedColor: const Color(0xFF0F8F82),
-                          backgroundColor: Colors.white,
-                          side: const BorderSide(color: Color(0xFF0F8F82)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Gross Amount: ${_formatAmountFieldValue(_resolvedDuePaymentForCurrentSelection()['amount'])}',
+                            style: const TextStyle(
+                              color: Color(0xFF124B45),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF124B45),
-                            fontWeight: FontWeight.w700,
-                            fontSize: isNarrow ? 11 : 12,
-                            height: 1.1,
+                          if (_creditNoteRemainingAmount > 0) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Credit Note Available: ${_formatSummaryAmount(_creditNoteRemainingAmount)}',
+                              style: const TextStyle(
+                                color: Color(0xFF0F8F82),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Payable Amount: ${_formatSummaryAmount(_netPayable)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF0F8F82),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              if (_hasOfflineDueDetails)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _showDueDetailsExtension =
+                                            !_showDueDetailsExtension;
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _showDueDetailsExtension
+                                          ? Icons.visibility_off_outlined
+                                          : Icons.visibility_outlined,
+                                      size: 15,
+                                    ),
+                                    label: Text(
+                                      _showDueDetailsExtension
+                                          ? 'Hide Details'
+                                          : 'View Details',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF0F8F82),
+                                      side: const BorderSide(
+                                        color: Color(0xFF0F8F82),
+                                      ),
+                                      backgroundColor: _showDueDetailsExtension
+                                          ? const Color(0xFFE2F3EF)
+                                          : Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-              if (_isPerHeadCapita) ...[
-                const SizedBox(height: 14),
-                TextFormField(
-                  controller: _personCountController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Number Of Persons *',
-                    helperText: 'Total amount is fetched based on person count',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFD7EAE3)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Color(0xFF0F8F82),
-                        width: 1.4,
+                        ],
                       ),
                     ),
-                  ),
-                  onChanged: (value) {
-                    final parsed = int.tryParse(value.trim()) ?? 0;
-                    setState(() {
-                      _personCount = parsed < 0 ? 0 : parsed;
-                    });
-                    _schedulePerHeadAmountRefresh();
-                  },
-                ),
-              ],
-              _buildBankInstrumentDetailsSection(),
-              if (_validationMessage != null && _validationMessage!.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(top: 12),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF4F4),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFB3261E)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        size: 18,
-                        color: Color(0xFFB3261E),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
+                    if (_isPerHeadCapita && _loadingPerHeadAmount)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 10),
                         child: Text(
-                          _validationMessage!,
+                          'Fetching amount for entered person count...',
+                          style: TextStyle(color: Colors.black54, fontSize: 12),
+                        ),
+                      ),
+                    if ((_selectedTender == 'OFFLINE_BANK_TRANSFER' &&
+                                _transferDateController.text
+                                    .trim()
+                                    .isNotEmpty ||
+                            _selectedTender == 'QR_PAYMENT') &&
+                        _loadingOfflineTransactionDue)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 10),
+                        child: Text(
+                          'Fetching due details for selected transaction date...',
+                          style: TextStyle(color: Colors.black54, fontSize: 12),
+                        ),
+                      ),
+                    if ((_selectedTender == 'OFFLINE_BANK_TRANSFER' ||
+                            _selectedTender == 'QR_PAYMENT') &&
+                        _offlineTransactionDueError != null &&
+                        _offlineTransactionDueError!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _offlineTransactionDueError!,
                           style: const TextStyle(
                             color: Color(0xFFB3261E),
                             fontSize: 12,
@@ -7481,201 +8238,442 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              if (_creditNoteRemainingAmount > 0) ...[
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7F3),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFCFE6DF)),
-                  ),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: _useCreditNote,
-                        activeColor: const Color(0xFF0F8F82),
-                        onChanged: (value) {
-                          setState(() {
-                            _useCreditNote = value == true;
-                            _validationMessage = null;
-                          });
-                        },
-                      ),
-                      const Expanded(
+                    if (_isPerHeadCapita &&
+                        !_suppressPerHeadApiMessage &&
+                        _perHeadAmountError != null &&
+                        _perHeadAmountError!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          'Use My Credit Note Amount',
-                          style: TextStyle(
-                            color: Color(0xFF124B45),
-                            fontWeight: FontWeight.w700,
+                          _perHeadAmountError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB3261E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-              if (_requiresReceipts) ...[
-                const SizedBox(height: 4),
-                if (_selectedTender == 'OFFLINE_BANK_TRANSFER')
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF5E8),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFFFFA33A),
-                        width: 1.8,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x66FF8A00),
-                          blurRadius: 26,
-                          spreadRadius: 3,
-                          offset: Offset(0, 0),
-                        ),
-                        BoxShadow(
-                          color: Color(0x55FF9B3D),
-                          blurRadius: 18,
-                          spreadRadius: 2,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Attach Screenshot',
-                          style: TextStyle(
-                            color: Color(0xFF124B45),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Upload Transaction Screenshot For Reconciliation',
-                          style: TextStyle(
-                            color: Color(0xFF8C4C11),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: _pickReceipts,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Document'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _selectedTender == 'OFFLINE_BANK_TRANSFER'
-                        ? const Color(0xFF8C4C11)
-                        : const Color(0xFF0F8F82),
-                    side: BorderSide(
-                      color: _selectedTender == 'OFFLINE_BANK_TRANSFER'
-                          ? const Color(0xFFFFA33A)
-                          : const Color(0xFF0F8F82),
-                    ),
-                    backgroundColor: _selectedTender == 'OFFLINE_BANK_TRANSFER'
-                        ? const Color(0xFFFFF5E8)
-                        : null,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (_receiptFileError != null && _receiptFileError!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _receiptFileError!,
-                      style: const TextStyle(
-                        color: Color(0xFFB3261E),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                if (_receipts.isEmpty)
-                  const Text(
-                    'Accepted formats: JPG, JPEG, PNG',
-                    style: TextStyle(color: Color(0xFF51605F), fontSize: 13),
-                  )
-                else
-                  ..._receipts.asMap().entries.map((entry) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 12,
+                        vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFD7EAE3)),
+                        color: const Color(0xFFFFF8D9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE3C96F)),
                       ),
-                      child: Row(
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.attachment_rounded,
-                            size: 16,
-                            color: Color(0xFF0F8F82),
+                          Text(
+                            'To Pay Physically Please Visit Activity Hall, Tower 10, Dn Fairytale.',
+                            style: TextStyle(
+                              color: Color(0xFF6A5723),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
+                            ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              entry.value.fileName,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFF124B45),
-                                fontWeight: FontWeight.w600,
+                          SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.call_rounded,
+                                size: 16,
+                                color: Color(0xFF876F2C),
                               ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _receipts.removeAt(entry.key);
-                              });
-                            },
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: Color(0xFF5E6D6B),
-                            ),
-                            constraints: const BoxConstraints.tightFor(
-                              width: 28,
-                              height: 28,
-                            ),
-                            padding: EdgeInsets.zero,
+                              SizedBox(width: 6),
+                              Text(
+                                '9777160816',
+                                style: TextStyle(
+                                  color: Color(0xFF6A5723),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    );
-                  }),
-              ],
+                    ),
+                    const SizedBox(height: 14),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isNarrow = constraints.maxWidth < 500;
+                        final horizontalSpacing = isNarrow ? 8.0 : 10.0;
+                        final chipWidth = isNarrow
+                            ? (constraints.maxWidth - (horizontalSpacing * 2)) /
+                                  3
+                            : 150.0;
+                        final chipHeight = isNarrow ? 44.0 : 46.0;
+                        return Wrap(
+                          spacing: horizontalSpacing,
+                          runSpacing: 8,
+                          children: widget.allowedModes.map((mode) {
+                            final isSelected = _selectedTender == mode;
+                            return SizedBox(
+                              width: chipWidth,
+                              height: chipHeight,
+                              child: ChoiceChip(
+                                avatar: Icon(
+                                  _tenderModeIcon(mode),
+                                  size: isNarrow ? 16 : 18,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF0F8F82),
+                                ),
+                                label: SizedBox(
+                                  width: double.infinity,
+                                  child: Text(
+                                    _displayMode(mode),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                selected: isSelected,
+                                showCheckmark: false,
+                                visualDensity: isNarrow
+                                    ? VisualDensity.compact
+                                    : VisualDensity.standard,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isNarrow ? 6 : 8,
+                                  vertical: isNarrow ? 2 : 4,
+                                ),
+                                onSelected: (_) {
+                                  setState(() {
+                                    if (_selectedTender != mode) {
+                                      _clearTenderSpecificState();
+                                    }
+                                    _selectedTender = mode;
+                                  });
+                                  if (mode == 'OFFLINE_BANK_TRANSFER' &&
+                                      _transferDateController.text
+                                          .trim()
+                                          .isNotEmpty) {
+                                    _handleOfflineTransferDateChange();
+                                  } else if (mode == 'QR_PAYMENT') {
+                                    _handleOfflineTransferDateChange();
+                                  }
+                                },
+                                selectedColor: const Color(0xFF0F8F82),
+                                backgroundColor: Colors.white,
+                                side: const BorderSide(
+                                  color: Color(0xFF0F8F82),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF124B45),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: isNarrow ? 11 : 12,
+                                  height: 1.1,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                    if (_isPerHeadCapita) ...[
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _personCountController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Number Of Persons *',
+                          helperText:
+                              'Total amount is fetched based on person count',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD7EAE3),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFD7EAE3),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF0F8F82),
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          final parsed = int.tryParse(value.trim()) ?? 0;
+                          setState(() {
+                            _personCount = parsed < 0 ? 0 : parsed;
+                          });
+                          _schedulePerHeadAmountRefresh();
+                        },
+                      ),
+                    ],
+                    _buildBankInstrumentDetailsSection(),
+                    if (_validationMessage != null &&
+                        _validationMessage!.isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4F4),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFB3261E)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              size: 18,
+                              color: Color(0xFFB3261E),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _validationMessage!,
+                                style: const TextStyle(
+                                  color: Color(0xFFB3261E),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (_creditNoteRemainingAmount > 0) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF7F3),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCFE6DF)),
+                        ),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: _useCreditNote,
+                              activeColor: const Color(0xFF0F8F82),
+                              onChanged: (value) {
+                                setState(() {
+                                  _useCreditNote = value == true;
+                                  _validationMessage = null;
+                                });
+                              },
+                            ),
+                            const Expanded(
+                              child: Text(
+                                'Use My Credit Note Amount',
+                                style: TextStyle(
+                                  color: Color(0xFF124B45),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (_requiresReceipts) ...[
+                      const SizedBox(height: 4),
+                      if (_selectedTender == 'OFFLINE_BANK_TRANSFER')
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF5E8),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFFFA33A),
+                              width: 1.8,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x66FF8A00),
+                                blurRadius: 26,
+                                spreadRadius: 3,
+                                offset: Offset(0, 0),
+                              ),
+                              BoxShadow(
+                                color: Color(0x55FF9B3D),
+                                blurRadius: 18,
+                                spreadRadius: 2,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Attach Screenshot',
+                                style: TextStyle(
+                                  color: Color(0xFF124B45),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Upload Transaction Screenshot For Reconciliation',
+                                style: TextStyle(
+                                  color: Color(0xFF8C4C11),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      OutlinedButton.icon(
+                        onPressed:
+                            (_selectedTender == 'OFFLINE_BANK_TRANSFER' &&
+                                !_offlineTransferReady)
+                            ? null
+                            : _pickReceipts,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Document'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                              ? const Color(0xFF8C4C11)
+                              : const Color(0xFF0F8F82),
+                          side: BorderSide(
+                            color: _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                                ? const Color(0xFFFFA33A)
+                                : const Color(0xFF0F8F82),
+                          ),
+                          backgroundColor:
+                              _selectedTender == 'OFFLINE_BANK_TRANSFER'
+                              ? const Color(0xFFFFF5E8)
+                              : null,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_receiptFileError != null &&
+                          _receiptFileError!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            _receiptFileError!,
+                            style: const TextStyle(
+                              color: Color(0xFFB3261E),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (_receipts.isEmpty)
+                        const Text(
+                          'Accepted formats: JPG, JPEG, PNG',
+                          style: TextStyle(
+                            color: Color(0xFF51605F),
+                            fontSize: 13,
+                          ),
+                        )
+                      else
+                        ..._receipts.asMap().entries.map((entry) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFD7EAE3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.attachment_rounded,
+                                  size: 16,
+                                  color: Color(0xFF0F8F82),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    entry.value.fileName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF124B45),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _receipts.removeAt(entry.key);
+                                    });
+                                  },
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                    color: Color(0xFF5E6D6B),
+                                  ),
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 28,
+                                    height: 28,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (_showDueDetailsExtension && _hasOfflineDueDetails) ...[
+              const SizedBox(width: 16),
+              Container(width: 1, color: const Color(0xFFD7EAE3)),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 360,
+                child: SingleChildScrollView(
+                  child: _buildDueDetailsExtensionPanel(),
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
       actions: [
@@ -7699,7 +8697,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
           onPressed:
               (_receiptFileError != null && _receiptFileError!.isNotEmpty) ||
                   _isCreatingOtp ||
-                  (_isPerHeadCapita && _personCount <= 0)
+                  (_isPerHeadCapita && _personCount <= 0) ||
+                  (_selectedTender == 'QR_PAYMENT' && !_offlineTransferReady) ||
+                  (_selectedTender == 'OFFLINE_BANK_TRANSFER' &&
+                      (!_offlineTransferReady || _receipts.isEmpty))
               ? null
               : () async => _confirmSelection(),
           child: _isCreatingOtp

@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../pages/home_page.dart';
 import '../pages/login_page.dart';
@@ -39,39 +37,13 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   bool _loadingFlats = false;
   String? _flatLoadError;
   bool _loadingDueDetails = false;
-  final PageController _eventController = PageController();
-  Timer? _eventSlideTimer;
-  int _eventIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadPublicFlats();
-    if (widget.eventMode) {
-      _eventSlideTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-        if (!_eventController.hasClients) return;
-        final next = (_eventIndex + 1) % 2;
-        _eventController.animateToPage(
-          next,
-          duration: const Duration(milliseconds: 700),
-          curve: Curves.easeInOut,
-        );
-      });
+    if (!widget.eventMode) {
+      _loadPublicFlats();
     }
-  }
-
-  @override
-  void dispose() {
-    _eventSlideTimer?.cancel();
-    _eventController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _openPerformanceForm() async {
-    final uri = Uri.parse(
-      'https://docs.google.com/forms/d/e/1FAIpQLScKLhfy0_U8JiiZQFpyxKzHp_iwmZe-ZbiEjVEOaaAvL87nfA/viewform?pli=1',
-    );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _loadPublicFlats() async {
@@ -346,6 +318,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   }
 
   String _buildSelectedFlatDisplayText() {
+    if (widget.eventMode) {
+      return 'Available when registration opens';
+    }
     if (_loadingFlats) {
       return 'Loading flats...';
     }
@@ -817,10 +792,11 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   Widget _leftEventPanel({required bool compact}) {
     final events = [
       (
-        title: 'Nua Khai',
-        image: 'DNFarytaleIamges/Nuakhai.jpg',
-        date: '25th Sep 2026',
-        detail: 'Per-head dinner collection\nBanquet Hall, 3rd Floor',
+        title: 'Dandiya Night',
+        image: 'DNFarytaleIamges/dandiya.png',
+        date: 'Coming Soon',
+        detail:
+            'An evening of music, dance, and festive celebration. More details will be shared soon.',
       ),
     ];
 
@@ -832,9 +808,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: PageView.builder(
-              controller: _eventController,
               itemCount: events.length,
-              onPageChanged: (index) => _eventIndex = index,
               itemBuilder: (context, index) {
                 final event = events[index];
                 return Container(
@@ -868,7 +842,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                                 ),
                               ),
                               Text(
-                                '${event.date}  •  ${event.detail.replaceAll('\n', '  •  ')}',
+                                '${event.date}  •  ${event.detail}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -900,7 +874,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'How To Pay',
+                    'Event Update',
                     style: TextStyle(
                       color: _title,
                       fontSize: 20,
@@ -909,13 +883,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    '1. Select your Flat ID, then click Proceed and confirm your owner details.\n\n'
-                    '2. Select and expand the event you want to join. Payment details will appear under Festival Funds.\n\n'
-                    '3. Choose a tender (Offline Bank Transfer or QR Payment), enter the number of persons to enroll, and review the total amount on screen.\n\n'
-                    '4. Complete the payment and keep the transaction screenshot with the UTR/Transaction No. ready.\n\n'
-                    '5. Upload the screenshot and press Proceed.\n\n'
-                    '6. Keep the Transaction ID that appears on screen once the process is complete.\n\n'
-                    '7. For assistance, contact the Help Desk: 977760816.',
+                    'Dandiya Night is coming soon. Event dates, venue, and registration details will be announced here.',
                     style: TextStyle(
                       color: Color(0xFF526A63),
                       fontSize: 13,
@@ -977,14 +945,18 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           const SizedBox(height: 10),
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: _loadingFlats || _flatNodes.isEmpty
+            onTap: widget.eventMode || _loadingFlats || _flatNodes.isEmpty
                 ? null
                 : _openFlatSelectionDialog,
             child: InputDecorator(
               decoration: InputDecoration(
-                hintText: 'Enter your flat id',
+                hintText: widget.eventMode
+                    ? 'Available when registration opens'
+                    : 'Enter your flat id',
                 filled: true,
-                fillColor: const Color(0xFFF9FCFB),
+                fillColor: widget.eventMode
+                    ? const Color(0xFFF0F4F2)
+                    : const Color(0xFFF9FCFB),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
@@ -993,7 +965,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
                 ),
-                suffixIcon: _loadingFlats
+                suffixIcon: widget.eventMode
+                    ? const Icon(Icons.lock_outline_rounded)
+                    : _loadingFlats
                     ? const Padding(
                         padding: EdgeInsets.all(10),
                         child: SizedBox(
@@ -1037,7 +1011,9 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Selected flat ID: ${_selectedFlatId ?? '--'}',
+                  widget.eventMode
+                      ? 'Flat selection opens when registration begins.'
+                      : 'Selected flat ID: ${_selectedFlatId ?? '--'}',
                   style: const TextStyle(
                     color: Color(0xFF5F7973),
                     fontSize: 13,
@@ -1051,16 +1027,23 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed:
-                  (_loadingDueDetails ||
+                  (widget.eventMode ||
+                      _loadingDueDetails ||
                       _loadingFlats ||
                       (_selectedFlatId?.trim().isEmpty ?? true))
                   ? null
                   : _openDueDetailsDialog,
-              icon: const Icon(Icons.payments_outlined),
+              icon: Icon(
+                widget.eventMode
+                    ? Icons.event_available_outlined
+                    : Icons.payments_outlined,
+              ),
               label: Text(
-                _loadingDueDetails
+                widget.eventMode
+                    ? 'Coming Soon'
+                    : _loadingDueDetails
                     ? 'Loading...'
-                    : (widget.eventMode ? 'Proceed' : 'View Due Details'),
+                    : 'View Due Details',
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: _brand,
@@ -1072,31 +1055,25 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: widget.eventMode
-                  ? _openPerformanceForm
-                  : _openResidentLogin,
-              icon: Icon(
-                widget.eventMode
-                    ? Icons.theater_comedy_outlined
-                    : Icons.person_outline_rounded,
-              ),
-              label: Text(
-                widget.eventMode ? 'Enroll For Performance' : 'Login',
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _brandDark,
-                side: const BorderSide(color: Color(0xFF0F8F82)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          if (!widget.eventMode) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openResidentLogin,
+                icon: const Icon(Icons.person_outline_rounded),
+                label: const Text('Login'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _brandDark,
+                  side: const BorderSide(color: Color(0xFF0F8F82)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

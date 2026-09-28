@@ -8,10 +8,10 @@ class DnFairytaleEventPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DnFairytalePayCamPage(
-      pageTitle: 'Join Us Here',
-      pageSubtitle: 'Select your flat ID to view event payment details.',
-      heroTitle: 'Join Us Here',
-      heroSubtitle: 'Celebrate together at DN Fairytale.',
+      pageTitle: 'Dandiya Night',
+      pageSubtitle: 'Coming Soon. More event details will be shared soon.',
+      heroTitle: 'Dandiya Night',
+      heroSubtitle: 'An evening of music, dance, and celebration.',
       eventMode: true,
     );
   }

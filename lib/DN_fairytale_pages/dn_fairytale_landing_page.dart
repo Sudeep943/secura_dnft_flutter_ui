@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../pages/login_page.dart';
 import 'dn_fairytale_event_page.dart';
 import 'dn_fairytale_paycam_page.dart';
@@ -24,10 +22,8 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
   final PageController _heroController = PageController();
   final PageController _eventController = PageController();
   Timer? _slideTimer;
-  Timer? _eventSlideTimer;
   late final AnimationController _logoBorderController;
   int _heroIndex = 0;
-  int _eventIndex = 0;
 
   final List<String> _heroImages = const [
     'DNFarytaleIamges/image1.jpg',
@@ -57,25 +53,11 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
         curve: Curves.easeInOut,
       );
     });
-
-    _eventSlideTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      if (!_eventController.hasClients) {
-        return;
-      }
-
-      final next = (_eventIndex + 1) % 2;
-      _eventController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeInOut,
-      );
-    });
   }
 
   @override
   void dispose() {
     _slideTimer?.cancel();
-    _eventSlideTimer?.cancel();
     _logoBorderController.dispose();
     _heroController.dispose();
     _eventController.dispose();
@@ -141,13 +123,6 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
         ),
       ],
     );
-  }
-
-  Future<void> _openPerformanceForm() async {
-    final uri = Uri.parse(
-      'https://docs.google.com/forms/d/e/1FAIpQLScKLhfy0_U8JiiZQFpyxKzHp_iwmZe-ZbiEjVEOaaAvL87nfA/viewform?pli=1',
-    );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Widget _featureTile(IconData icon, String title, String body) {
@@ -751,12 +726,11 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
   Widget _buildUpcomingEventsSection() {
     final events = [
       (
-        title: 'Nua Khai',
-        image: 'DNFarytaleIamges/Nuakhai.jpg',
-        date: '25th Sep 2026',
+        title: 'Dandiya Night',
+        image: 'DNFarytaleIamges/dandiya.png',
+        date: 'Coming Soon',
         body:
-            'Celebrate Nua Khai with the DN Fairytale community as we welcome the new harvest with gratitude, tradition, and shared joy.',
-        meal: 'Dinner arranged on a per-head collection basis.',
+            'Get ready for an evening of music, dance, and festive celebration. More details will be shared soon.',
       ),
     ];
 
@@ -780,9 +754,6 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
             height: 250,
             child: PageView.builder(
               controller: _eventController,
-              onPageChanged: (index) {
-                _eventIndex = index;
-              },
               itemCount: events.length,
               itemBuilder: (context, index) {
                 final event = events[index];
@@ -859,33 +830,6 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  event.meal,
-                                  style: const TextStyle(
-                                    color: Color(0xFF66502A),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Banquet Hall, 3rd Floor',
-                                  style: TextStyle(
-                                    color: Color(0xFF526275),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                if (event.title == 'Nua Khai') ...[
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'Interested people can enroll for performances as per their eligibility.',
-                                    style: TextStyle(
-                                      color: Color(0xFF66502A),
-                                      fontSize: 11,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
                               ],
                             ),
                           ),
@@ -897,43 +841,17 @@ class _DnFairytaleLandingPageState extends State<DnFairytaleLandingPage>
               },
             ),
           ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _openEventPage,
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text('Pay Now'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _brandTeal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _openPerformanceForm,
-                    icon: const Icon(Icons.theater_comedy_outlined),
-                    label: const Text('Enroll For Performance'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _brandTeal,
-                      side: const BorderSide(color: _brandTeal),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _openEventPage,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: const Text('Read More'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandTeal,
+                side: const BorderSide(color: _brandTeal),
+              ),
             ),
           ),
         ],

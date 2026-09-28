@@ -1072,6 +1072,61 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  static Future<Map<String, dynamic>?> getDueDetailsAsTransactionDate({
+    String? flatId,
+    required String transactionDate,
+    Map<String, dynamic>? specificDue,
+  }) async {
+    final resolvedFlatId = (flatId != null && flatId.trim().isNotEmpty)
+        ? flatId.trim()
+        : getLoggedInFlatNo();
+    if (resolvedFlatId == null || resolvedFlatId.isEmpty) {
+      return null;
+    }
+
+    final trimmedDate = transactionDate.trim();
+    if (trimmedDate.isEmpty) {
+      return null;
+    }
+
+    final genericHeader = userHeader != null
+        ? Map<String, dynamic>.from(userHeader!)
+        : _buildPublicGenericHeader(resolvedFlatId);
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (token != null && token!.trim().isNotEmpty)
+        'Authorization': 'Bearer $token',
+    };
+
+    final response = await http.post(
+      Uri.parse("$_baseUrl/publicapis/getDueDetailsAsTransactionDate"),
+      headers: headers,
+      body: jsonEncode({
+        'genericHeader': genericHeader,
+        'flatId': resolvedFlatId,
+        'transactionDate': trimmedDate,
+        if (specificDue != null && specificDue.isNotEmpty)
+          'specificDue': specificDue,
+      }),
+    );
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    if (data is List) {
+      // Some deployments return the due list directly as the response body.
+      return {'duePaymentList': data};
+    }
+
+    return null;
+  }
+
   static Map<String, dynamic>? _buildCreditNoteHeader() {
     final header =
         _buildLoginResponseHeader() ??

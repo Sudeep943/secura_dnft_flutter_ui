@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../pages/home_page.dart';
 import '../pages/login_page.dart';
 import '../services/api_service.dart';
+import 'dandiya_video.dart';
 
 class DnFairytalePayCamPage extends StatefulWidget {
   const DnFairytalePayCamPage({
@@ -41,9 +42,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   @override
   void initState() {
     super.initState();
-    if (!widget.eventMode) {
-      _loadPublicFlats();
-    }
+    _loadPublicFlats();
   }
 
   Future<void> _loadPublicFlats() async {
@@ -318,9 +317,6 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
   }
 
   String _buildSelectedFlatDisplayText() {
-    if (widget.eventMode) {
-      return 'Available when registration opens';
-    }
     if (_loadingFlats) {
       return 'Loading flats...';
     }
@@ -476,6 +472,10 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     return flatList;
   }
 
+  bool _isNotPayableNow(dynamic value) {
+    return value == false || value?.toString().trim().toLowerCase() == 'false';
+  }
+
   Future<void> _openDueDetailsDialog() async {
     final flatId = _selectedFlatId?.trim() ?? '';
     if (_loadingDueDetails) {
@@ -501,8 +501,13 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         return;
       }
 
-      final response = await ApiService.getDueDetailsForFlatPublic(
+      final today = DateTime.now();
+      final transactionDate =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}T00:00:00';
+      final response = await ApiService.getDueDetailsAsTransactionDate(
         flatId: flatId,
+        transactionDate: transactionDate,
+        specificDue: null,
       );
       if (!mounted) {
         return;
@@ -510,9 +515,22 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
 
       final duePaymentList = response?['duePaymentList'];
       final dueDetailsByPayment = _dueDetailsByPaymentFromResponse(response);
+      final rawCauseWiseDues = response?['causeWiseCollectionAllPaybleDues'];
+      final causeWiseCollectionAllPaybleDues = rawCauseWiseDues is Map
+          ? Map<String, dynamic>.from(rawCauseWiseDues)
+          : null;
+      dueDetailsByPayment.updateAll(
+        (_, dues) =>
+            dues.where((due) => !_isNotPayableNow(due['paybleNow'])).toList(),
+      );
+      dueDetailsByPayment.removeWhere((_, dues) => dues.isEmpty);
 
       final normalizedDueList = duePaymentList is List
           ? duePaymentList
+                .where(
+                  (due) => due is! Map || !_isNotPayableNow(due['paybleNow']),
+                )
+                .toList()
           : const <dynamic>[];
       final displayDueList = normalizedDueList.isNotEmpty
           ? normalizedDueList
@@ -532,6 +550,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
         builder: (_) => PaymentDetailsModal(
           duePaymentList: displayDueList,
           dueDetailsByPayment: dueDetailsByPayment,
+          causeWiseCollectionAllPaybleDues: causeWiseCollectionAllPaybleDues,
           formatAsCurrency: _formatAsCurrency,
         ),
       );
@@ -793,10 +812,10 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
     final events = [
       (
         title: 'Dandiya Night',
-        image: 'DNFarytaleIamges/dandiya.png',
-        date: 'Coming Soon',
+        image: 'DNFarytaleIamges/dandiya_rec.png',
+        date: '11 Oct, 7 PM',
         detail:
-            'An evening of music, dance, and festive celebration. More details will be shared soon.',
+            'Venue: Basketball Court. An evening of music, dance, and festive celebration.',
       ),
     ];
 
@@ -816,7 +835,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.asset(event.image, fit: BoxFit.contain),
+                      const DandiyaVideo(),
                       Align(
                         alignment: Alignment.bottomLeft,
                         child: Container(
@@ -883,11 +902,65 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    'Dandiya Night is coming soon. Event dates, venue, and registration details will be announced here.',
+                    'Dandiya Night\nDate: 11 Oct, 7 PM\nVenue: Basketball Court',
                     style: TextStyle(
                       color: Color(0xFF526A63),
                       fontSize: 13,
                       height: 1.42,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'How to Pay',
+                    style: TextStyle(
+                      color: _title,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Select Item: Choose "Festival Fund".\n\nAdd Quantity: Enter the number of heads (people) you are paying for.\n\nChoose Your Payment Method (Tender):',
+                    style: TextStyle(
+                      color: Color(0xFF526A63),
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Option A: Offline Bank Transfer',
+                    style: TextStyle(
+                      color: _title,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '• Pay the net amount via Bandhan Bank Account Transfer or by scanning the QR code shared with you on WhatsApp.\n• Take a screenshot of your payment confirmation.\n• Upload the screenshot to the "Attach Document" field, ensuring the UTR number is clearly visible.\n• Click "Proceed."',
+                    style: TextStyle(
+                      color: Color(0xFF526A63),
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Option B: QR Payment',
+                    style: TextStyle(
+                      color: _title,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '• Click "Generate QR" to get your unique payment code.\n• Scan and pay the amount.\n• Take a screenshot of your payment confirmation.\n• Upload the screenshot to the "Attach Document" field, ensuring the UTR number is clearly visible.\n• Click "Proceed."',
+                    style: TextStyle(
+                      color: Color(0xFF526A63),
+                      fontSize: 13,
+                      height: 1.5,
                     ),
                   ),
                 ],
@@ -945,18 +1018,14 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
           const SizedBox(height: 10),
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: widget.eventMode || _loadingFlats || _flatNodes.isEmpty
+            onTap: _loadingFlats || _flatNodes.isEmpty
                 ? null
                 : _openFlatSelectionDialog,
             child: InputDecorator(
               decoration: InputDecoration(
-                hintText: widget.eventMode
-                    ? 'Available when registration opens'
-                    : 'Enter your flat id',
+                hintText: 'Enter your flat id',
                 filled: true,
-                fillColor: widget.eventMode
-                    ? const Color(0xFFF0F4F2)
-                    : const Color(0xFFF9FCFB),
+                fillColor: const Color(0xFFF9FCFB),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
@@ -965,9 +1034,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: Color(0xFFD5E6E2)),
                 ),
-                suffixIcon: widget.eventMode
-                    ? const Icon(Icons.lock_outline_rounded)
-                    : _loadingFlats
+                suffixIcon: _loadingFlats
                     ? const Padding(
                         padding: EdgeInsets.all(10),
                         child: SizedBox(
@@ -1011,9 +1078,7 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  widget.eventMode
-                      ? 'Flat selection opens when registration begins.'
-                      : 'Selected flat ID: ${_selectedFlatId ?? '--'}',
+                  'Selected flat ID: ${_selectedFlatId ?? '--'}',
                   style: const TextStyle(
                     color: Color(0xFF5F7973),
                     fontSize: 13,
@@ -1027,20 +1092,19 @@ class _DnFairytalePayCamPageState extends State<DnFairytalePayCamPage> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed:
-                  (widget.eventMode ||
-                      _loadingDueDetails ||
+                  (_loadingDueDetails ||
                       _loadingFlats ||
                       (_selectedFlatId?.trim().isEmpty ?? true))
                   ? null
                   : _openDueDetailsDialog,
               icon: Icon(
                 widget.eventMode
-                    ? Icons.event_available_outlined
+                    ? Icons.arrow_forward_rounded
                     : Icons.payments_outlined,
               ),
               label: Text(
                 widget.eventMode
-                    ? 'Coming Soon'
+                    ? 'Proceed'
                     : _loadingDueDetails
                     ? 'Loading...'
                     : 'View Due Details',

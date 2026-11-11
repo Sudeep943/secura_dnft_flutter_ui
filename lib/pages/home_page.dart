@@ -2254,11 +2254,13 @@ class PaymentDetailsModal extends StatefulWidget {
     required this.duePaymentList,
     required this.formatAsCurrency,
     this.dueDetailsByPayment,
+    this.causeWiseCollectionAllPaybleDues,
     this.onPaymentCompleted,
   });
 
   final List<dynamic> duePaymentList;
   final Map<String, List<Map<String, dynamic>>>? dueDetailsByPayment;
+  final Map<String, dynamic>? causeWiseCollectionAllPaybleDues;
   final String Function(String amount) formatAsCurrency;
 
   final Future<void> Function()? onPaymentCompleted;
@@ -2276,6 +2278,7 @@ class _DueGroupData {
     required this.paymentName,
     required this.bankId,
     required this.paymentCause,
+    required this.remainingDue,
     required this.dues,
   });
 
@@ -2284,6 +2287,7 @@ class _DueGroupData {
   final String paymentName;
   final String bankId;
   final String paymentCause;
+  final String remainingDue;
   final List<Map<String, dynamic>> dues;
 }
 
@@ -2396,40 +2400,78 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         (double.tryParse(discountedAmount) ?? 0.0) > 0;
   }
 
-  Widget _buildOverdueBanner() {
+  Widget _buildOverdueIndicator() {
     return AnimatedBuilder(
       animation: _pulseAnimation,
       builder: (context, _) {
         return Opacity(
           opacity: _pulseAnimation.value,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFD32F2F),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.white,
-                  size: 16,
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 26,
+                height: 26,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      Icons.timer_outlined,
+                      color: Color(0xFFFFC107),
+                      size: 25,
+                    ),
+                    Positioned(
+                      left: -3,
+                      bottom: -2,
+                      child: Icon(
+                        Icons.warning_rounded,
+                        color: Color(0xFFD32F2F),
+                        size: 14,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 5),
-                Text(
-                  'Overdue Pending',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
+              ),
+              SizedBox(width: 3),
+              Text(
+                'Overdue',
+                style: TextStyle(
+                  color: Color(0xFFD32F2F),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRemainingDueBadge(_DueGroupData group) {
+    final amount = group.remainingDue.trim();
+    if (amount.isEmpty || amount.toLowerCase() == 'null') {
+      return const SizedBox.shrink();
+    }
+    final displayAmount = amount
+        .replaceFirst(RegExp(r'(\.\d*?[1-9])0+$'), r'$1')
+        .replaceFirst(RegExp(r'\.0+$'), '');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9FFF7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFB9DED2)),
+      ),
+      child: Text(
+        'Net Remaining Due: ${widget.formatAsCurrency(displayAmount)}',
+        style: const TextStyle(
+          color: Color(0xFF124B45),
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      ),
     );
   }
 
@@ -2679,6 +2721,20 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     return '';
   }
 
+  String _remainingDueFromGroupKey(String key) {
+    try {
+      final decoded = jsonDecode(key);
+      if (decoded is Map) {
+        final remainingDue = decoded['remainingDue']?.toString().trim() ?? '';
+        return remainingDue.toLowerCase() == 'null' ? '' : remainingDue;
+      }
+    } catch (_) {
+      // Non-JSON group keys do not include payment-level remaining due.
+    }
+
+    return '';
+  }
+
   List<Map<String, dynamic>> _normalizePaymentMaps(dynamic rawValue) {
     final list = <Map<String, dynamic>>[];
 
@@ -2744,6 +2800,10 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
         final paymentId = _paymentIdFromGroupKey(rawKey);
         final bankId = _bankIdFromGroupKey(rawKey);
         final paymentCause = _paymentCauseFromGroupKey(rawKey);
+        final keyRemainingDue = _remainingDueFromGroupKey(rawKey);
+        final remainingDue = keyRemainingDue.isNotEmpty
+            ? keyRemainingDue
+            : dues.first['remainingDue']?.toString().trim() ?? '';
         final groupId = paymentId.isNotEmpty
             ? paymentId
             : '$paymentName-${rawKey.hashCode}';
@@ -2757,6 +2817,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
             paymentCause: paymentCause.isNotEmpty
                 ? paymentCause
                 : dues.first['cause']?.toString().trim() ?? 'Other',
+            remainingDue: remainingDue,
             dues: dues,
           ),
         );
@@ -2798,6 +2859,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
               dues.first['cause']?.toString().trim().isNotEmpty == true
               ? dues.first['cause'].toString().trim()
               : 'Other',
+          remainingDue: dues.first['remainingDue']?.toString().trim() ?? '',
           dues: _sortDuesByCycleSequence(dues),
         ),
       );
@@ -4897,35 +4959,28 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                   fontWeight: FontWeight.w800,
                 ),
               );
-              if (isNarrow) {
-                return Row(
-                  children: [
-                    Flexible(child: nameText),
-                    if (_groupHasOptionalDue(group)) ...[
-                      const SizedBox(width: 6),
-                      _buildOptionalPaymentBanner(),
-                    ],
-                  ],
-                );
-              }
               return Row(
                 children: [
                   Expanded(
-                    child: Row(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Flexible(child: nameText),
+                        nameText,
+                        if (hasOverdue) _buildOverdueIndicator(),
                         if (_groupHasOptionalDue(group)) ...[
-                          const SizedBox(width: 6),
                           _buildOptionalPaymentBanner(),
                         ],
                       ],
                     ),
                   ),
-                  if (hasOverdue) ...[
+                  if (group.remainingDue.isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    _buildOverdueBanner(),
+                    _buildRemainingDueBadge(group),
                   ],
-                  if (discountCycles.isNotEmpty &&
+                  if (!isNarrow &&
+                      discountCycles.isNotEmpty &&
                       _isEarlyBirdOfferActive()) ...[
                     const SizedBox(width: 6),
                     _buildDiscountBanner(discountCycles),
@@ -4936,9 +4991,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           ),
           subtitle: Builder(
             builder: (context) {
-              final hasOverdue = _groupHasOverdue(group);
               final discountCycles = _groupCyclesWithDiscount(group);
-              final hasBadges = hasOverdue || discountCycles.isNotEmpty;
               final isNarrow = MediaQuery.of(context).size.width < 600;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4948,15 +5001,11 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                     'Select Any One Payment Cycle To Proceed',
                     style: TextStyle(color: Colors.black54),
                   ),
-                  if (isNarrow && hasBadges) ...[
+                  if (isNarrow &&
+                      discountCycles.isNotEmpty &&
+                      _isEarlyBirdOfferActive()) ...[
                     const SizedBox(height: 6),
-                    if (hasOverdue) _buildOverdueBanner(),
-                    if (hasOverdue &&
-                        discountCycles.isNotEmpty &&
-                        _isEarlyBirdOfferActive())
-                      const SizedBox(height: 4),
-                    if (discountCycles.isNotEmpty && _isEarlyBirdOfferActive())
-                      _buildDiscountBanner(discountCycles),
+                    _buildDiscountBanner(discountCycles),
                   ],
                 ],
               );
@@ -5329,6 +5378,47 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
     );
   }
 
+  String? _causeWiseCollectionTotal(String cause) {
+    final causeWiseDues = widget.causeWiseCollectionAllPaybleDues;
+    if (causeWiseDues == null) {
+      return null;
+    }
+
+    dynamic rawDues;
+    for (final entry in causeWiseDues.entries) {
+      if (entry.key.trim().toUpperCase() == cause.trim().toUpperCase()) {
+        rawDues = entry.value;
+        break;
+      }
+    }
+    if (rawDues == null) {
+      return null;
+    }
+
+    final dues = rawDues is List
+        ? rawDues.whereType<Map>()
+        : rawDues is Map
+        ? <Map>[rawDues]
+        : const <Map>[];
+    var totalInCents = 0;
+    for (final due in dues) {
+      final rawAmount = due['totalAmount']?.toString().replaceAll(',', '');
+      final amount = double.tryParse(rawAmount ?? '');
+      if (amount != null && amount.isFinite) {
+        totalInCents += (amount * 100).round();
+      }
+    }
+
+    final isNegative = totalInCents < 0;
+    final absoluteTotal = totalInCents.abs();
+    final wholeAmount = absoluteTotal ~/ 100;
+    final cents = absoluteTotal % 100;
+    final amount = cents == 0
+        ? '${isNegative ? '-' : ''}$wholeAmount'
+        : '${isNegative ? '-' : ''}$wholeAmount.${cents.toString().padLeft(2, '0').replaceFirst(RegExp(r'0+$'), '')}';
+    return widget.formatAsCurrency(amount);
+  }
+
   List<Widget> _buildPaymentCauseSections(
     List<_DueGroupData> groupedPayments, {
     required bool initiallyExpanded,
@@ -5350,6 +5440,7 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
           final cause = causeDisplayLabels[causeKey] ?? causeKey;
           final groups = entry.$2.value;
           final appearance = _paymentCauseAppearance(cause, entry.$1);
+          final causeTotal = _causeWiseCollectionTotal(cause);
           final earliestDueDate = groups
               .map(_earliestDueDateForGroup)
               .whereType<DateTime>()
@@ -5417,6 +5508,16 @@ class _PaymentDetailsModalState extends State<PaymentDetailsModal>
                         ),
                       ),
                     ),
+                    if (causeTotal != null) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        'Total ${_toCamelCase(cause)} Due: $causeTotal',
+                        style: TextStyle(
+                          color: appearance.color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -6222,19 +6323,6 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         : _transferDateController.text.trim();
     if (transactionDate.isEmpty) return false;
 
-    final parsedDate = _parseInstrumentDate(transactionDate);
-    final today = DateTime.now();
-    final isToday =
-        parsedDate != null &&
-        parsedDate.year == today.year &&
-        parsedDate.month == today.month &&
-        parsedDate.day == today.day;
-
-    // Today's date uses the original due, so no fetched details are needed.
-    if (isOfflineTransfer && isToday) {
-      return true;
-    }
-
     return !_loadingOfflineTransactionDue &&
         _offlineTransactionDueError == null &&
         _offlineTransactionDueDetails != null &&
@@ -6360,29 +6448,6 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
         _offlineTransactionDueDetails = null;
         _offlineTransactionDueAmountDetailsEntity = null;
         _offlineTransactionDueError = 'Please enter a valid transaction date.';
-        _showDueDetailsExtension = false;
-      });
-      return;
-    }
-
-    final today = DateTime.now();
-    final isToday =
-        parsedDate.year == today.year &&
-        parsedDate.month == today.month &&
-        parsedDate.day == today.day;
-
-    // Today's date keeps the original due display; only a backdated
-    // transaction date needs the as-of-date due details from the API.
-    if (isOfflineTransfer && isToday) {
-      if (!mounted) {
-        return;
-      }
-      _offlineDueRequestKey = null;
-      setState(() {
-        _loadingOfflineTransactionDue = false;
-        _offlineTransactionDueDetails = null;
-        _offlineTransactionDueAmountDetailsEntity = null;
-        _offlineTransactionDueError = null;
         _showDueDetailsExtension = false;
       });
       return;
@@ -8551,11 +8616,7 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                           ),
                         ),
                       OutlinedButton.icon(
-                        onPressed:
-                            (_selectedTender == 'OFFLINE_BANK_TRANSFER' &&
-                                !_offlineTransferReady)
-                            ? null
-                            : _pickReceipts,
+                        onPressed: _pickReceipts,
                         icon: const Icon(Icons.add),
                         label: const Text('Add Document'),
                         style: OutlinedButton.styleFrom(
@@ -8698,9 +8759,10 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
               (_receiptFileError != null && _receiptFileError!.isNotEmpty) ||
                   _isCreatingOtp ||
                   (_isPerHeadCapita && _personCount <= 0) ||
-                  (_selectedTender == 'QR_PAYMENT' && !_offlineTransferReady) ||
                   (_selectedTender == 'OFFLINE_BANK_TRANSFER' &&
-                      (!_offlineTransferReady || _receipts.isEmpty))
+                      (_transferDateController.text.trim().isEmpty ||
+                          _loadingOfflineTransactionDue ||
+                          _receipts.isEmpty))
               ? null
               : () async => _confirmSelection(),
           child: _isCreatingOtp
@@ -8712,7 +8774,9 @@ class _DueTenderDialogState extends State<_DueTenderDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Proceed'),
+              : Text(
+                  _selectedTender == 'QR_PAYMENT' ? 'Generate QR' : 'Proceed',
+                ),
         ),
       ],
     );
@@ -10290,7 +10354,7 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'After Payment, Tap Done To Continue.',
+                      'After Payment, Tap Proceed To Continue.',
                       style: TextStyle(
                         color: Color(0xFF124B45),
                         fontSize: 12,
@@ -10306,6 +10370,10 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
       ),
       actions: [
         TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF124B45),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
           onPressed: () {
             if (!mounted) {
               return;
@@ -10314,9 +10382,17 @@ class _DeepLinkPaymentDialogState extends State<_DeepLinkPaymentDialog> {
           },
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF0F8F82),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
           onPressed: _attachedScreenshot == null ? null : _handleDone,
-          child: const Text('Done'),
+          child: const Text('Proceed'),
         ),
       ],
     );

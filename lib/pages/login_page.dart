@@ -11,7 +11,6 @@ import '../services/browser_face_detector_stub.dart'
     if (dart.library.html) '../services/browser_face_detector_web.dart'
     as browser_face_detector;
 import '../services/api_service.dart';
-import '../widgets/brand_artwork.dart';
 import 'app_shell.dart';
 
 enum _LoginMode { adminLogin, attendanceEntry, attendanceExit }
@@ -1382,24 +1381,24 @@ class _LoginPageState extends State<LoginPage> {
       autofillHints: autofillHints,
       onSubmitted: onSubmitted,
       style: const TextStyle(
-        color: Color(0xFF183B55),
+        color: Color(0xFF153D36),
         fontSize: 15,
         fontWeight: FontWeight.w500,
       ),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF57718A), size: 20),
+        prefixIcon: Icon(icon, color: const Color(0xFF64817B), size: 20),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: const Color(0xFFF9FBFD),
+        fillColor: const Color(0xFFFAFCFB),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 17,
         ),
-        labelStyle: const TextStyle(color: Color(0xFF61758A), fontSize: 14),
+        labelStyle: const TextStyle(color: Color(0xFF667B76), fontSize: 14),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(13),
-          borderSide: const BorderSide(color: Color(0xFFD8E1EA)),
+          borderSide: const BorderSide(color: Color(0xFFD8E6E2)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(13),
@@ -1425,10 +1424,10 @@ class _LoginPageState extends State<LoginPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE7EDF2)),
+        border: Border.all(color: const Color(0xFFE3ECE9)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x180D2840),
+            color: Color(0x180D4038),
             blurRadius: 34,
             offset: Offset(0, 16),
           ),
@@ -1438,46 +1437,37 @@ class _LoginPageState extends State<LoginPage> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            alignment: Alignment.center,
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F5F2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.person_outline_rounded,
-              color: _brandColor,
-              size: 28,
+          Align(
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5F2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.lock_open_rounded,
+                color: _brandColor,
+                size: 28,
+              ),
             ),
           ),
           const SizedBox(height: 20),
           const Text(
-            'Welcome Back',
+            'Log In',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF12345A),
+              color: Color(0xFF153D36),
               fontSize: 30,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 7),
-          const Text(
-            'User Login',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF61758A),
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
           const SizedBox(height: 28),
           _buildLoginTextField(
             controller: username,
-            label: 'Email Address / Username',
-            icon: Icons.mail_outline_rounded,
+            label: 'Email / Phone Number',
+            icon: Icons.person_outline_rounded,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.username],
             onSubmitted: (_) =>
@@ -1503,7 +1493,7 @@ class _LoginPageState extends State<LoginPage> {
                 _obscurePassword
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
-                color: const Color(0xFF61758A),
+                color: const Color(0xFF667B76),
                 size: 20,
               ),
               tooltip: _obscurePassword ? 'Show password' : 'Hide password',
@@ -1515,9 +1505,9 @@ class _LoginPageState extends State<LoginPage> {
             child: FilledButton(
               onPressed: loading ? null : _submitIfReady,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0B3977),
+                backgroundColor: _brandColor,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFF7B91AA),
+                disabledBackgroundColor: const Color(0xFF79AFA8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -1548,20 +1538,20 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 22),
           const Row(
             children: [
-              Expanded(child: Divider(color: Color(0xFFE2E9EF))),
+              Expanded(child: Divider(color: Color(0xFFE0EAE7))),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12),
                 child: Text(
                   'SECURE COMMUNITY ACCESS',
                   style: TextStyle(
-                    color: Color(0xFF8293A3),
+                    color: Color(0xFF82958F),
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.8,
                   ),
                 ),
               ),
-              Expanded(child: Divider(color: Color(0xFFE2E9EF))),
+              Expanded(child: Divider(color: Color(0xFFE0EAE7))),
             ],
           ),
           const SizedBox(height: 18),
@@ -1569,7 +1559,7 @@ class _LoginPageState extends State<LoginPage> {
             'Need help signing in? Contact your administrator.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF61758A),
+              color: Color(0xFF667B76),
               fontSize: 12,
               height: 1.45,
             ),
@@ -1584,10 +1574,9 @@ class _LoginPageState extends State<LoginPage> {
     return Container(
       width: double.infinity,
       height: compact ? null : double.infinity,
-      constraints: compact ? null : const BoxConstraints(minHeight: 680),
       decoration: const BoxDecoration(
         image: DecorationImage(
-          image: AssetImage('DNFarytaleIamges/image3.jpg'),
+          image: AssetImage('lib/DN_fairytale_pages/login_iamge.png'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
         ),
@@ -1602,8 +1591,8 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF071F3D).withValues(alpha: 0.58),
-              const Color(0xFF0A2E54).withValues(alpha: 0.80),
+              const Color(0xFF062C27).withValues(alpha: 0.58),
+              const Color(0xFF0A463F).withValues(alpha: 0.80),
             ],
           ),
         ),
@@ -1611,27 +1600,13 @@ class _LoginPageState extends State<LoginPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: compact
               ? MainAxisAlignment.start
-              : MainAxisAlignment.spaceBetween,
+              : MainAxisAlignment.end,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Image.asset(
-                'secura_logo.png',
-                width: compact ? 112 : 142,
-                height: compact ? 86 : 108,
-                fit: BoxFit.contain,
-              ),
-            ),
-            if (compact) const SizedBox(height: 24),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Community Living\\nMade Better',
+                  'Community Living\nMade Better',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: compact ? 30 : 46,
@@ -1658,15 +1633,15 @@ class _LoginPageState extends State<LoginPage> {
                     children: [
                       _LoginFeature(
                         icon: Icons.account_balance_wallet_outlined,
-                        label: 'Online\\nPayments',
+                        label: 'Online\nPayments',
                       ),
                       _LoginFeature(
                         icon: Icons.receipt_long_outlined,
-                        label: 'View\\nStatements',
+                        label: 'View\nStatements',
                       ),
                       _LoginFeature(
                         icon: Icons.notifications_none_rounded,
-                        label: 'Stay\\nInformed',
+                        label: 'Stay\nInformed',
                       ),
                     ],
                   ),
@@ -1679,10 +1654,50 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  Widget _buildLoginLogo({required bool compact}) {
+    return Image.asset(
+      'secura_logo.png',
+      width: compact ? 248 : 320,
+      height: compact ? 198 : 243,
+      fit: BoxFit.contain,
+    );
+  }
+
+  Widget _buildMobileLoginHeroContent() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Community Living\nMade Better',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              height: 1.08,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Manage your home, payments, and community — all in one place.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FA),
+      backgroundColor: const Color(0xFFF5FBF9),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -1690,28 +1705,47 @@ class _LoginPageState extends State<LoginPage> {
             if (isWide) {
               return Row(
                 children: [
-                  Expanded(
-                    flex: 11,
-                    child: _buildLoginHero(compact: false),
-                  ),
+                  Expanded(flex: 11, child: _buildLoginHero(compact: false)),
                   Expanded(
                     flex: 9,
-                    child: Container(
-                      height: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 36,
-                        vertical: 28,
-                      ),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFFF6F9FC), Color(0xFFEAF1F6)],
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFFF9FBF8),
+                                Color(0xFFF5F6F1),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Center(
-                        child: SingleChildScrollView(child: _buildLoginForm()),
-                      ),
+                        const CustomPaint(
+                          painter: _LoginBackdropPattern(),
+                        ),
+                        Container(
+                          height: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 36,
+                            vertical: 28,
+                          ),
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildLoginLogo(compact: false),
+                                  const SizedBox(height: 8),
+                                  _buildLoginForm(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1725,7 +1759,7 @@ class _LoginPageState extends State<LoginPage> {
                 fit: StackFit.expand,
                 children: [
                   const Image(
-                    image: AssetImage('DNFarytaleIamges/image3.jpg'),
+                    image: AssetImage('lib/DN_fairytale_pages/login_iamge.png'),
                     fit: BoxFit.cover,
                   ),
                   const DecoratedBox(
@@ -1734,12 +1768,15 @@ class _LoginPageState extends State<LoginPage> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0x99071F3D),
-                          Color(0xCC0A2E54),
-                          Color(0xF20A2E54),
+                          Color(0x99062C27),
+                          Color(0xCC0A463F),
+                          Color(0xF20A463F),
                         ],
                       ),
                     ),
+                  ),
+                  const CustomPaint(
+                    painter: _LoginBackdropPattern(onPhoto: true),
                   ),
                   SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
@@ -1753,8 +1790,10 @@ class _LoginPageState extends State<LoginPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _buildLoginHero(compact: true),
-                          const SizedBox(height: 22),
+                          _buildMobileLoginHeroContent(),
+                          const SizedBox(height: 8),
+                          _buildLoginLogo(compact: true),
+                          const SizedBox(height: 14),
                           _buildLoginForm(),
                         ],
                       ),
@@ -1767,6 +1806,50 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ),
     );
+  }
+}
+
+class _LoginBackdropPattern extends CustomPainter {
+  const _LoginBackdropPattern({this.onPhoto = false});
+
+  final bool onPhoto;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = onPhoto
+          ? Colors.white.withValues(alpha: 0.13)
+          : const Color(0xFF927F68).withValues(alpha: 0.14)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    final topPattern = Path()
+      ..moveTo(size.width * 0.72, 0)
+      ..lineTo(size.width * 0.87, size.height * 0.13)
+      ..lineTo(size.width, size.height * 0.04)
+      ..moveTo(size.width * 0.68, 0)
+      ..lineTo(size.width * 0.87, size.height * 0.17)
+      ..lineTo(size.width, size.height * 0.08)
+      ..moveTo(size.width * 0.64, 0)
+      ..lineTo(size.width * 0.87, size.height * 0.21)
+      ..lineTo(size.width, size.height * 0.12);
+    canvas.drawPath(topPattern, paint);
+
+    final bottomPattern = Path()
+      ..moveTo(0, size.height * 0.76)
+      ..lineTo(size.width * 0.17, size.height * 0.91)
+      ..lineTo(size.width * 0.34, size.height * 0.80)
+      ..lineTo(size.width * 0.48, size.height)
+      ..moveTo(0, size.height * 0.82)
+      ..lineTo(size.width * 0.17, size.height * 0.97)
+      ..lineTo(size.width * 0.30, size.height * 0.88)
+      ..lineTo(size.width * 0.39, size.height);
+    canvas.drawPath(bottomPattern, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LoginBackdropPattern oldDelegate) {
+    return oldDelegate.onPhoto != onPhoto;
   }
 }
 

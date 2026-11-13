@@ -2743,10 +2743,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     for (final field in optionalAmountFields.entries) {
       final value = _dueDetailText(due, field.key);
       if (value != '--' && !_isZeroDueAmount(value)) {
-        detailRows.add({
-          'label': field.value,
-          'value': _formatAmount(value),
-        });
+        detailRows.add({'label': field.value, 'value': _formatAmount(value)});
       }
     }
 
@@ -3581,7 +3578,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
               child: FadeTransition(
                 opacity: _duplicateWarningController,
                 child: const Text(
-                  'Duplicate Bank Transaction Id. Verify Before Approving',
+                  'Duplicate Bank Transaction Id',
                   style: TextStyle(
                     color: Colors.red,
                     fontWeight: FontWeight.w700,
@@ -3880,7 +3877,8 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
                   if (widget.canTakeAction) ...[
                     const Spacer(),
                     FilledButton(
-                      onPressed: _loadingAction == null &&
+                      onPressed:
+                          _loadingAction == null &&
                               _thirdPartyTrnsRef.isNotEmpty
                           ? () => _handleAction(_approveAction)
                           : null,

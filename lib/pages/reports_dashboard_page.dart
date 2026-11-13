@@ -4536,8 +4536,39 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     ];
   }
 
+  Future<void> _showPaymentCollectionExportLoader(String fileType) async {
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: _brandColor),
+              const SizedBox(width: 20),
+              Flexible(child: Text('Preparing $fileType...')),
+            ],
+          ),
+        ),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+
+  void _hidePaymentCollectionExportLoader() {
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
   Future<void> _downloadPaymentCollectionAsPdf() async {
+    var loaderVisible = false;
     try {
+      await _showPaymentCollectionExportLoader('PDF');
+      loaderVisible = true;
       final pdfBaseFont = await PdfGoogleFonts.notoSansRegular();
       final pdfBoldFont = await PdfGoogleFonts.notoSansBold();
       final document = pw.Document(
@@ -4645,10 +4676,13 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
           ],
         ),
       );
+      final bytes = Uint8List.fromList(await document.save());
+      _hidePaymentCollectionExportLoader();
+      loaderVisible = false;
       final saved = await _saveBytesToFile(
         fileName:
             'payment_collection_${DateTime.now().millisecondsSinceEpoch}.pdf',
-        bytes: Uint8List.fromList(await document.save()),
+        bytes: bytes,
         dialogTitle: 'Download Payment Collection PDF',
         allowedExtensions: const ['pdf'],
       );
@@ -4664,6 +4698,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         );
     } catch (error) {
       debugPrint('Payment collection PDF export failed: $error');
+      if (loaderVisible) {
+        _hidePaymentCollectionExportLoader();
+      }
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Unable to generate PDF right now.')),
@@ -4673,7 +4710,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
 
   Future<void> _downloadPaymentCollectionAsExcel() async {
     final workbook = xlsio.Workbook();
+    var loaderVisible = false;
     try {
+      await _showPaymentCollectionExportLoader('Excel');
+      loaderVisible = true;
       final sheet = workbook.worksheets[0];
       sheet.name = 'Payment Collection';
       final logoBytes = await _loadSecuraLogoBytes();
@@ -4728,10 +4768,13 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
             ? 8
             : (column == 4 ? 28 : 18);
       }
+      final bytes = Uint8List.fromList(workbook.saveSync());
+      _hidePaymentCollectionExportLoader();
+      loaderVisible = false;
       final saved = await _saveBytesToFile(
         fileName:
             'payment_collection_${DateTime.now().millisecondsSinceEpoch}.xlsx',
-        bytes: Uint8List.fromList(workbook.saveSync()),
+        bytes: bytes,
         dialogTitle: 'Download Payment Collection Excel',
         allowedExtensions: const ['xlsx'],
       );
@@ -4747,6 +4790,9 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         );
     } catch (error) {
       debugPrint('Payment collection Excel export failed: $error');
+      if (loaderVisible) {
+        _hidePaymentCollectionExportLoader();
+      }
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Unable to generate Excel right now.')),

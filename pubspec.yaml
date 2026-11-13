@@ -79,6 +79,7 @@ flutter:
   assets:
     - secura_logo.png
     - DNFarytaleIamges/
+    - lib/DN_fairytale_pages/login_iamge.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

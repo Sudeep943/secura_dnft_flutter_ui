@@ -4009,6 +4009,26 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
     return '${parsed.day}-${months[parsed.month - 1]}-${parsed.year}';
   }
 
+  bool _hasPaymentCollectionDuePeriod(Map<String, dynamic> item) {
+    bool hasValue(String key) {
+      final value = item[key]?.toString().trim() ?? '';
+      return value.isNotEmpty && value.toLowerCase() != 'null';
+    }
+
+    return hasValue('dueStartDate') && hasValue('dueEndDate');
+  }
+
+  bool get _paymentCollectionHasDuePeriodDates =>
+      _paymentCollectionDetails.any(_hasPaymentCollectionDuePeriod);
+
+  String _formatPaymentCollectionDueDate(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return '--';
+    }
+    return _formatPaymentCollectionDate(text);
+  }
+
   bool get _paymentCollectionUsesPerHeadAmount {
     final totalHeads = num.tryParse(
       _paymentCollectionTotalNoOfPerson.replaceAll(',', '').trim(),
@@ -4302,6 +4322,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'Flat ID',
       'Tender',
       'Transaction Date',
+      if (_paymentCollectionHasDuePeriodDates) ...[
+        'Due Start Date',
+        'Due End Date',
+      ],
       'Cycle',
       usesPerHeadAmount ? 'Per Head Amount' : 'Due Amount',
       if (usesPerHeadAmount) 'Total Head',
@@ -4318,6 +4342,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'flatId',
       null,
       'transactionDate',
+      if (_paymentCollectionHasDuePeriodDates) ...[null, null],
       null,
       null,
       if (usesPerHeadAmount) null,
@@ -4344,6 +4369,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
         item['flatId']?.toString() ?? '--',
         tenderText,
         _formatPaymentCollectionDate(item['transactionDate']?.toString()),
+        if (_paymentCollectionHasDuePeriodDates) ...[
+          _formatPaymentCollectionDueDate(item['dueStartDate']),
+          _formatPaymentCollectionDueDate(item['dueEndDate']),
+        ],
         item['cycleOfPayment']?.toString() ?? '--',
         _fmtAmt(item['dueAmount']),
         if (usesPerHeadAmount) item['noOfHead']?.toString() ?? '--',
@@ -4412,6 +4441,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       'Flat ID',
       'Tender',
       'Transaction Date',
+      if (_paymentCollectionHasDuePeriodDates) ...[
+        'Due Start Date',
+        'Due End Date',
+      ],
       'Cycle',
       _paymentCollectionUsesPerHeadAmount ? 'Per Head Amount' : 'Due Amount',
     ];
@@ -4444,6 +4477,10 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
             item['flatId']?.toString() ?? '--',
             tenderText,
             _formatPaymentCollectionDate(item['transactionDate']?.toString()),
+            if (_paymentCollectionHasDuePeriodDates) ...[
+              _formatPaymentCollectionDueDate(item['dueStartDate']),
+              _formatPaymentCollectionDueDate(item['dueEndDate']),
+            ],
             item['cycleOfPayment']?.toString() ?? '--',
             _fmtAmt(item['dueAmount']),
           ];
@@ -4510,9 +4547,12 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
       final logoBytes = await _loadSecuraLogoBytes();
       if (logoBytes != null) logoImage = pw.MemoryImage(logoBytes);
       final infoRows = _paymentCollectionInformationRows();
+      final exportHeaders = _paymentCollectionExportHeaders();
+      final exportRows = _paymentCollectionExportRows();
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4.landscape,
+          maxPages: exportRows.length + 20,
           margin: const pw.EdgeInsets.fromLTRB(14, 16, 14, 14),
           header: (context) => pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -4591,8 +4631,8 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
               style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
             ),
             pw.Table.fromTextArray(
-              headers: _paymentCollectionExportHeaders(),
-              data: _paymentCollectionExportRows(),
+              headers: exportHeaders,
+              data: exportRows,
               headerDecoration: const pw.BoxDecoration(
                 color: PdfColor.fromInt(0xFFE8F7F5),
               ),
@@ -4837,6 +4877,7 @@ class _ReportsDashboardPageState extends State<ReportsDashboardPage>
                     ),
                   ),
                   dropdownColor: const Color(0xFFF7FCFA),
+                  menuMaxHeight: 5 * kMinInteractiveDimension,
                   icon: const Icon(Icons.expand_more, color: _brandColor),
                   selectedItemBuilder: (context) => distinctOptions
                       .map(

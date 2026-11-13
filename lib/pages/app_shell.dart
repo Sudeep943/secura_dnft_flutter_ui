@@ -2395,7 +2395,8 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
   }
 
   bool get _isDuplicateBankTransactionId {
-    return _externalTransactionNoDetails?['usedInMultipleTransction'] == true;
+    final value = _externalTransactionNoDetails?['usedInMultipleTransction'];
+    return value == true || value?.toString().trim().toLowerCase() == 'true';
   }
 
   bool _isHeadCountKey(String key) {
@@ -2416,7 +2417,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     for (final entry in widget.transaction.entries) {
       if (_isThirdPartyTrnsRefKey(entry.key)) {
         final value = entry.value?.toString().trim() ?? '';
-        if (value.isNotEmpty) {
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
           return value;
         }
       }
@@ -2424,7 +2425,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     for (final entry in widget.transaction.entries) {
       if (_isExternalTransactionReferenceKey(entry.key)) {
         final value = entry.value?.toString().trim() ?? '';
-        if (value.isNotEmpty) {
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
           return value;
         }
       }
@@ -2650,6 +2651,179 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     return 5;
   }
 
+  bool _isTransactionDueDetailsKey(String key) {
+    final normalized = _normalizeKey(key);
+    return normalized == 'duedeatilslistoftransaction' ||
+        normalized == 'duedetailslistoftransaction';
+  }
+
+  List<Map<String, dynamic>> _transactionDueDetails() {
+    for (final entry in widget.transaction.entries) {
+      final rawDues = entry.value;
+      if (_isTransactionDueDetailsKey(entry.key) && rawDues is List) {
+        return rawDues
+            .whereType<Map>()
+            .map((due) => Map<String, dynamic>.from(due))
+            .toList();
+      }
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  String _dueDetailText(Map<String, dynamic> due, String key) {
+    final text = due[key]?.toString().trim() ?? '';
+    return text.isEmpty || text.toLowerCase() == 'null' ? '--' : text;
+  }
+
+  bool _isZeroDueAmount(String value) {
+    final normalized = value.replaceAll(',', '').replaceAll('₹', '').trim();
+    final amount = double.tryParse(normalized);
+    return amount != null && amount == 0;
+  }
+
+  Widget _buildTransactionDueDetailsSection() {
+    final dues = _transactionDueDetails();
+    if (dues.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFA),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          title: const Text(
+            'Due Details',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF134E47),
+            ),
+          ),
+          children: dues
+              .map(_buildTransactionDueDetailTile)
+              .toList(growable: false),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionDueDetailTile(Map<String, dynamic> due) {
+    final cycle = _toTitleWords(_dueDetailText(due, 'collectionCycle'));
+    final dueStartDate = _dueDetailText(due, 'dueStartDate');
+    final dueEndDate = _dueDetailText(due, 'dueEndDate');
+    final totalAmount = _dueDetailText(due, 'totalAmount');
+    final dueAmount = totalAmount == '--'
+        ? totalAmount
+        : _formatAmount(totalAmount);
+    final summaryFirstLine = 'Cycle: $cycle | Due Amount: $dueAmount';
+    final summarySecondLine =
+        'Due Start Date: $dueStartDate | Due End Date: $dueEndDate';
+    final detailRows = <Map<String, String>>[];
+
+    final grossAmount = _dueDetailText(due, 'amount');
+    if (grossAmount != '--') {
+      detailRows.add({
+        'label': 'Gross Amount',
+        'value': _formatAmount(grossAmount),
+      });
+    }
+
+    const optionalAmountFields = {
+      'gstAmount': 'GST Amount',
+      'roundUpAmount': 'Round Up Amount',
+      'discountedAmount': 'Discounted Amount',
+      'fineAmount': 'Fine Amount',
+    };
+    for (final field in optionalAmountFields.entries) {
+      final value = _dueDetailText(due, field.key);
+      if (value != '--' && !_isZeroDueAmount(value)) {
+        detailRows.add({
+          'label': field.value,
+          'value': _formatAmount(value),
+        });
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE1ECE9)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                summaryFirstLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF2A4A47),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                summarySecondLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF2A4A47),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          children: detailRows
+              .map(
+                (row) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 130,
+                        child: Text(
+                          row['label']!,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF134E47),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          row['value']!,
+                          style: const TextStyle(
+                            color: Color(0xFF2A4A47),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    );
+  }
+
   List<String> _formatOwnerNames(dynamic value) {
     if (value is List) {
       return value
@@ -2778,6 +2952,9 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
       if (entry.key == 'trnsFiles' || entry.key == 'trnsTender') {
         continue;
       }
+      if (_isTransactionDueDetailsKey(entry.key)) {
+        continue;
+      }
       if (_hiddenDetailKeys.contains(normalizedKey) ||
           normalizedKey.contains('createdby') ||
           _isCreatorUserIdKey(entry.key)) {
@@ -2813,6 +2990,42 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     }
 
     return entries;
+  }
+
+  Widget _buildTransactionDetailRow(Map<String, String> entry) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFA),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(
+              entry['label'] ?? '--',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF134E47),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              entry['value'] ?? '--',
+              style: const TextStyle(
+                color: Color(0xFF2A4A47),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   List<Map<String, String>> _bankInstrumentTenderDetails() {
@@ -2987,6 +3200,13 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
       return;
     }
 
+    if (action == _approveAction && _isDuplicateBankTransactionId) {
+      final shouldApprove = await _confirmDuplicateReferenceApproval();
+      if (!mounted || shouldApprove != true) {
+        return;
+      }
+    }
+
     setState(() {
       _loadingAction = action;
     });
@@ -3088,6 +3308,65 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
 
     Navigator.of(context).pop();
     await widget.onActionCompleted();
+  }
+
+  Future<bool?> _confirmDuplicateReferenceApproval() {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFF7FCFA),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFD7EAE3)),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFB3261E)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Duplicate Transaction Reference',
+                style: TextStyle(
+                  color: Color(0xFF124B45),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'The Transaction Reference No Is Used In Another Transaction In The System. Are You Sure To Approve?',
+          style: TextStyle(color: Color(0xFF2A4A47), height: 1.4),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF124B45),
+              side: const BorderSide(color: Color(0xFFD7EAE3)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: _brandColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openAttachmentZoom(Uint8List bytes) async {
@@ -3329,6 +3608,27 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
     );
   }
 
+  Widget _buildMissingReferenceHint() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8DF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF1D57A)),
+      ),
+      child: const Text(
+        'Enter The Transaction Reference No To Approve The Transaction.',
+        style: TextStyle(
+          color: Color(0xFF8A5A00),
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final files = _trnsFiles;
@@ -3418,45 +3718,19 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
                           padding: const EdgeInsets.all(18),
                           child: Column(
                             children: [
-                              ...details.map(
-                                (entry) => Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF7FAFA),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      SizedBox(
-                                        width: 160,
-                                        child: Text(
-                                          entry['label'] ?? '--',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF134E47),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          entry['value'] ?? '--',
-                                          style: const TextStyle(
-                                            color: Color(0xFF2A4A47),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              ...details.expand(
+                                (entry) => <Widget>[
+                                  _buildTransactionDetailRow(entry),
+                                  if (entry['label'] == 'Transaction ID') ...[
+                                    _buildTransactionDueDetailsSection(),
+                                  ],
+                                ],
                               ),
+                              if (!details.any(
+                                (entry) => entry['label'] == 'Transaction ID',
+                              )) ...[
+                                _buildTransactionDueDetailsSection(),
+                              ],
                               _buildBankInstrumentSection(
                                 bankInstrumentDetails,
                               ),
@@ -3582,6 +3856,8 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
                               ),
                             ],
                             _buildReferenceIdSection(),
+                            if (_thirdPartyTrnsRef.isEmpty)
+                              _buildMissingReferenceHint(),
                           ],
                         ),
                       ),
@@ -3604,7 +3880,8 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog>
                   if (widget.canTakeAction) ...[
                     const Spacer(),
                     FilledButton(
-                      onPressed: _loadingAction == null
+                      onPressed: _loadingAction == null &&
+                              _thirdPartyTrnsRef.isNotEmpty
                           ? () => _handleAction(_approveAction)
                           : null,
                       child: _loadingAction == _approveAction
